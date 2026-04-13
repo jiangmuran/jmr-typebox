@@ -173,6 +173,23 @@ function onKeydown(e) {
   if (e.key === 'F11') { e.preventDefault(); toggleZen() }
 }
 
+function handleClearAll() {
+  closeDD()
+  if (!confirm(t('menu.clearAllConfirm'))) return
+  // Clear all localStorage data
+  const keys = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith('tb-')) keys.push(k)
+  }
+  keys.forEach(k => localStorage.removeItem(k))
+  // Reset state
+  newDocument()
+  activeTab.value = isMobile.value ? 'txt' : 'markdown'
+  viewMode.value = isMobile.value ? 'editor' : 'split'
+  showToast(t('menu.clearAllDone'))
+}
+
 function handleNew() {
   closeDD()
   if (content.value && !confirm(t('toast.startFresh'))) return
@@ -301,6 +318,8 @@ onUnmounted(() => {
             <button @click="closeDD(); searchOpen = !searchOpen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg>{{ t('menu.find') }} <kbd>{{ modLabel }}F</kbd></button>
             <button @click="closeDD(); toggleZen()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 5.5V3a.5.5 0 0 1 .5-.5h2.5M10.5 2.5H13a.5.5 0 0 1 .5.5v2.5M13.5 10.5V13a.5.5 0 0 1-.5.5h-2.5M5.5 13.5H3a.5.5 0 0 1-.5-.5v-2.5"/></svg>{{ t('menu.zen') }} <kbd>F11</kbd></button>
             <button @click="closeDD(); window.print()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="8.5" width="10" height="5" rx="1"/><path d="M4 8.5V3.5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/></svg>{{ t('menu.print') }}</button>
+            <div class="dd-sep"></div>
+            <button class="dd-danger" @click="handleClearAll()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><polyline points="3 4 4 4 13 4"/><path d="M5.5 4V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"/><path d="M12 4v9a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 13V4"/><line x1="7" y1="7" x2="7" y2="12"/><line x1="9" y1="7" x2="9" y2="12"/></svg>{{ t('menu.clearAll') }}</button>
             <div class="dd-sep"></div>
             <div class="dd-about">
               <strong>{{ t('menu.about.title') }}</strong> — {{ t('menu.about.desc') }}<br>
@@ -483,6 +502,9 @@ onUnmounted(() => {
 }
 .dd-menu button:hover { background: var(--surface-hover); }
 .dd-menu button:active { background: var(--surface-active); }
+.dd-menu button.dd-danger { color: #ff453a; }
+.dd-menu button.dd-danger:hover { background: rgba(255,69,58,0.08); }
+.dd-menu button.dd-danger svg { color: #ff453a; }
 .dd-menu button svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-secondary); }
 .dd-menu button kbd {
   margin-left: auto; font-size: 10px; color: var(--text-tertiary);
