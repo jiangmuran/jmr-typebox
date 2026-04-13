@@ -1,0 +1,1 @@
+const o=new Set;function d(e){return o.has(e)?Promise.resolve():new Promise((t,n)=>{if(document.querySelector(`script[src="${e}"]`))return o.add(e),t();const r=document.createElement("script");r.src=e,r.onload=()=>{o.add(e),t()},r.onerror=()=>n(new Error("Script load failed")),document.head.appendChild(r)})}export{d as loadScript};
