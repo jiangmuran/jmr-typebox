@@ -80,7 +80,7 @@ export async function exportPNG(content, filename, isDark) {
   const borderColor = isDark ? '#38383a' : '#e5e5ea'
   const textColor = isDark ? '#636366' : '#aeaeb2'
   footer.style.cssText = `margin-top:32px;padding-top:16px;border-top:1px solid ${borderColor};font-size:12px;color:${textColor};display:flex;align-items:center;gap:8px;`
-  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><defs><linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><rect width="16" height="16" rx="4" fill="url(#wg)"/><path d="M5 5.5h6M8 5.5v6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · github.com/jmr/typebox</span>`
+  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="${isDark ? '#f5f5f7' : '#1c1c1e'}"/><path d="M5 5.5h6M8 5.5v6" stroke="${isDark ? '#1c1c1e' : '#fff'}" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · github.com/jiangmuran/jmr-typebox</span>`
   el.appendChild(footer)
 
   const bg = isDark ? '#1c1c1e' : '#fff'

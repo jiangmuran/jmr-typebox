@@ -106,7 +106,7 @@ const dict = {
     'toast.startFresh': 'Start fresh? Current content will be cleared.',
 
     // Branding (for image export)
-    'brand.watermark': 'Made with TypeBox · github.com/jmr/typebox',
+    'brand.watermark': 'Made with TypeBox · github.com/jiangmuran/jmr-typebox',
 
     // Welcome dialog
     'welcome.title': 'TypeBox',
@@ -217,7 +217,7 @@ const dict = {
     'toast.zenHint': '专注模式 — 按 Esc 退出',
     'toast.startFresh': '新建文档？当前内容将被清除。',
 
-    'brand.watermark': 'Made with TypeBox · github.com/jmr/typebox',
+    'brand.watermark': 'Made with TypeBox · github.com/jiangmuran/jmr-typebox',
 
     // Welcome dialog
     'welcome.title': 'TypeBox',
