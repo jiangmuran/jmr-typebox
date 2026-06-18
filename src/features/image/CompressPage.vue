@@ -86,6 +86,7 @@ const saved = computed(() =>
           @drop="src.onDrop"
           @dragover="src.onDragOver"
           @dragleave="src.onDragLeave"
+          @file="src.setFile"
         />
 
         <template v-else>

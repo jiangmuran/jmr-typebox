@@ -144,6 +144,7 @@ function reset() { src.reset() }
           @drop="src.onDrop"
           @dragover="src.onDragOver"
           @dragleave="src.onDragLeave"
+          @file="src.setFile"
         />
 
         <div v-else class="layout">

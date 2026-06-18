@@ -139,6 +139,7 @@ const isLossyFmt = (f) => mimeForFormat(f) !== 'image/png'
           @drop="onDrop"
           @dragover="onDragOver"
           @dragleave="onDragLeave"
+          @file="addFiles([$event])"
         />
 
         <template v-else>

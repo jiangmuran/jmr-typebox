@@ -1,38 +1,45 @@
 <script setup>
 // Shared empty-state drop target used by every image page. Pure presentational —
 // the parent owns the loading logic (useImageSource) and passes handlers down.
+// Also offers optional "import from URL" (via the backend proxy) which re-emits a File.
+import ImportFromUrl from '../../components/ImportFromUrl.vue'
+
 defineProps({
   title: { type: String, default: '' },
   hint: { type: String, default: '' },
   dragOver: { type: Boolean, default: false },
 })
-const emit = defineEmits(['pick', 'drop', 'dragover', 'dragleave'])
+const emit = defineEmits(['pick', 'drop', 'dragover', 'dragleave', 'file'])
 </script>
 
 <template>
-  <div
-    class="drop-zone"
-    :class="{ over: dragOver }"
-    role="button"
-    tabindex="0"
-    @click="emit('pick')"
-    @keydown.enter.prevent="emit('pick')"
-    @keydown.space.prevent="emit('pick')"
-    @dragover.prevent="emit('dragover', $event)"
-    @dragleave="emit('dragleave', $event)"
-    @drop.prevent="emit('drop', $event)"
-  >
-    <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="4" y="8" width="40" height="32" rx="4"/>
-      <circle cx="16" cy="20" r="4"/>
-      <path d="M44 32l-12-10-10 8-6-4L4 34"/>
-    </svg>
-    <h3>{{ title }}</h3>
-    <p>{{ hint }}</p>
+  <div class="drop-wrap">
+    <div
+      class="drop-zone"
+      :class="{ over: dragOver }"
+      role="button"
+      tabindex="0"
+      @click="emit('pick')"
+      @keydown.enter.prevent="emit('pick')"
+      @keydown.space.prevent="emit('pick')"
+      @dragover.prevent="emit('dragover', $event)"
+      @dragleave="emit('dragleave', $event)"
+      @drop.prevent="emit('drop', $event)"
+    >
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="8" width="40" height="32" rx="4"/>
+        <circle cx="16" cy="20" r="4"/>
+        <path d="M44 32l-12-10-10 8-6-4L4 34"/>
+      </svg>
+      <h3>{{ title }}</h3>
+      <p>{{ hint }}</p>
+    </div>
+    <ImportFromUrl accept="image/" @file="emit('file', $event)" />
   </div>
 </template>
 
 <style scoped>
+.drop-wrap { display: flex; flex-direction: column; gap: 10px; }
 .drop-zone {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 52px 40px; border: 2px dashed var(--border); border-radius: var(--radius-lg);
