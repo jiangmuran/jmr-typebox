@@ -12,8 +12,5 @@ function copyInto(srcDir, destDir, files) {
   console.log(`[copy-assets] ${destDir} ← ${n} file(s)`)
 }
 
-// ffmpeg.wasm single-thread core
-copyInto('node_modules/@ffmpeg/core/dist/umd', 'public/ffmpeg', ['ffmpeg-core.js', 'ffmpeg-core.wasm'])
-
 // Pyodide core (base Python runs offline; package wheels are fetched on demand by the Python tool)
 copyInto('node_modules/pyodide', 'public/pyodide', ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json'])

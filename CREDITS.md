@@ -10,7 +10,7 @@ TypeBox stands on excellent open-source work. All libraries are bundled or self-
 - [pdfjs-dist](https://mozilla.github.io/pdf.js/) — PDF text extraction
 - [html2canvas](https://html2canvas.hertzen.com/) + [jsPDF](https://github.com/parallax/jsPDF) — image-based PDF/PNG export
 - [@turbodocx/html-to-docx](https://github.com/TurboDocx/html-to-docx) — Markdown/HTML → DOCX
-- [@ffmpeg/ffmpeg + @ffmpeg/core](https://github.com/ffmpegwasm/ffmpeg.wasm) — audio transcoding (self-hosted single-thread core)
+- [@breezystack/lamejs](https://github.com/breezystack/lamejs) — MP3 encoding (paired with the browser's native Web Audio decoder + a WAV writer for audio conversion). *(ffmpeg.wasm is planned for video, pending large-asset hosting since its 31MB core exceeds Cloudflare's 25MB asset limit.)*
 - [Pyodide](https://pyodide.org/) — Python in the browser *(planned)*
 
 ## Themes

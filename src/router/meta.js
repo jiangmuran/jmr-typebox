@@ -77,15 +77,15 @@ export const ROUTE_META = {
   // ---- Media ----
   '/media/mp3-to-wav': {
     title: 'MP3 to WAV Converter — TypeBox',
-    description: 'Convert MP3 audio to WAV in your browser with ffmpeg.wasm. Private, no upload, runs entirely on your device.',
+    description: 'Convert MP3 audio to WAV in your browser — private, no upload, runs entirely on your device.',
     h1: 'MP3 to WAV',
-    keywords: 'mp3 to wav, audio converter, convert mp3, ffmpeg wasm',
+    keywords: 'mp3 to wav, audio converter, convert mp3 online',
   },
   '/media/wav-to-mp3': {
     title: 'WAV to MP3 Converter — TypeBox',
-    description: 'Convert WAV audio to MP3 in your browser with ffmpeg.wasm. Adjustable bitrate, private and offline-capable.',
+    description: 'Convert WAV audio to MP3 in your browser. Adjustable bitrate, private and offline-capable.',
     h1: 'WAV to MP3',
-    keywords: 'wav to mp3, audio converter, convert wav, ffmpeg wasm',
+    keywords: 'wav to mp3, audio converter, convert wav online',
   },
 
   // ---- Toolbox ----

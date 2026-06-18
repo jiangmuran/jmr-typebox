@@ -30,7 +30,7 @@ The page stays minimal on purpose; press **⌘K / Ctrl+K** to find any tool, act
 | **🔤 TXT** | Quick plain-text file creator — handy on mobile. |
 | **🖼️ Image** | **Compress** · **Convert** (PNG/JPG/WebP/AVIF) · **Watermark** (text/image, 9-grid) · **Edit** (doodle, add text, redact with mosaic/blur, undo/redo). All on-canvas, no upload. |
 | **🔄 Convert** | Markdown → PDF (vector, selectable text) / DOCX / HTML, and PDF → Markdown / Word. Export themes inspired by Typora, with hover preview. |
-| **🎵 Media** | Audio conversion (MP3 ↔ WAV, …) via self-hosted **ffmpeg.wasm**. |
+| **🎵 Media** | Audio conversion (MP3 ↔ WAV) in your browser via Web Audio + **lamejs** — fully local. |
 | **🧰 Toolbox** | Base64 / Hex / URL / HTML encode-decode, **AES** encrypt/decrypt, **hashes** (MD5/SHA/HMAC), JSON formatter, JWT decoder, word count. |
 | **🐍 Python** | Run Python in the browser via **Pyodide** — plots, packages, and HTML output, fully sandboxed. |
 | **🔌 Right-click plugins** | Select text in the editor and transform it in place (encode, case, JSON, sort/dedupe lines, hash…). |
@@ -65,7 +65,7 @@ Single Cloudflare Worker
 ```
 
 - **Frontend:** Vue 3 + Vite + [vite-ssg](https://github.com/antfu/vite-ssg) (every route prerendered to static HTML for SEO) + `@unhead/vue`.
-- **Everything client-side by default:** image/audio/text/crypto/conversions run in your browser (Canvas, Web Crypto, ffmpeg.wasm, Pyodide, html-to-docx). No library is loaded from a CDN — all are bundled or self-hosted. (The one exception is the privacy-friendly Cloudflare Web Analytics beacon.)
+- **Everything client-side by default:** image/audio/text/crypto/conversions run in your browser (Canvas, Web Crypto, Web Audio + lamejs, Pyodide, html-to-docx). No library is loaded from a CDN — all are bundled or self-hosted. (The one exception is the privacy-friendly Cloudflare Web Analytics beacon.)
 - **Heavy assets are lazy-loaded and cached** (ffmpeg core, Pyodide, etc.) so the editor opens fast.
 
 ## Optional backend
