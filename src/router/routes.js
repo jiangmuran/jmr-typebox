@@ -11,11 +11,22 @@ export function tabOf(p) {
   return 'tools'
 }
 
-// Phase 0 routes every path to ToolStub (renders correct SEO <head> + H1).
-// Task 4 / Phase 1 swap individual paths to their real page components.
+// Existing, already-working tools keep their real component so the routing refactor
+// does not regress functionality; not-yet-built routes use ToolStub (Phase 1 fills them in).
+function componentFor(p) {
+  switch (p) {
+    case '/': return () => import('../pages/EditorPage.vue')
+    case '/txt': return () => import('../pages/TxtPage.vue')
+    case '/convert/pdf-to-markdown': return () => import('../pages/PdfToMarkdownPage.vue')
+    case '/image/compress':
+    case '/image/convert': return () => import('../pages/ImageLegacyPage.vue')
+    default: return () => import('../pages/ToolStub.vue')
+  }
+}
+
 export const routes = ALL_PATHS.map(path => ({
   path,
   name: path === '/' ? 'home' : path.replace(/^\//, '').replace(/\//g, '-'),
-  component: () => import('../pages/ToolStub.vue'),
+  component: componentFor(path),
   meta: { tab: tabOf(path), path },
 }))

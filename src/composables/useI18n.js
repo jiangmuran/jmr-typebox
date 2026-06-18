@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import { load, save } from '../utils/storage'
 
-const locale = ref(load('lang', navigator.language.startsWith('zh') ? 'zh' : 'en'))
+const browserZh = typeof navigator !== 'undefined' && navigator.language?.startsWith('zh')
+const locale = ref(load('lang', browserZh ? 'zh' : 'en'))
 
 const dict = {
   en: {
@@ -10,6 +11,10 @@ const dict = {
     'tab.txt': 'TXT',
     'tab.pdf': 'PDF',
     'tab.image': 'Image',
+    'tab.convert': 'Convert',
+    'tab.media': 'Media',
+    'tab.tools': 'Tools',
+    'tab.python': 'Python',
 
     // Top bar
     'file.placeholder': 'untitled',
@@ -133,6 +138,10 @@ const dict = {
     'tab.txt': 'TXT',
     'tab.pdf': 'PDF',
     'tab.image': '图片',
+    'tab.convert': '转换',
+    'tab.media': '媒体',
+    'tab.tools': '工具箱',
+    'tab.python': 'Python',
 
     'file.placeholder': '未命名',
 

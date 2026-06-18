@@ -1,15 +1,17 @@
 import { ref, watchEffect } from 'vue'
 import { load, save } from '../utils/storage'
 
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+// SSG-safe: window/document are undefined during prerender.
+const systemDark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
 const theme = ref(load('theme', systemDark ? 'dark' : 'light'))
 
 export function useTheme() {
   function setTheme(t) {
-    document.documentElement.classList.add('theme-transition')
     theme.value = t
-    document.documentElement.dataset.theme = t
     save('theme', t)
+    if (typeof document === 'undefined') return
+    document.documentElement.classList.add('theme-transition')
+    document.documentElement.dataset.theme = t
     requestAnimationFrame(() => {
       setTimeout(() => document.documentElement.classList.remove('theme-transition'), 550)
     })
@@ -19,9 +21,8 @@ export function useTheme() {
     setTheme(theme.value === 'dark' ? 'light' : 'dark')
   }
 
-  // Apply on init
   watchEffect(() => {
-    document.documentElement.dataset.theme = theme.value
+    if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme.value
   })
 
   return { theme, setTheme, toggleTheme }

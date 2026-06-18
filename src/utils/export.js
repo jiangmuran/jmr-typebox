@@ -1,5 +1,4 @@
 import { renderMarkdown, buildStandaloneHTML } from './markdown'
-import { loadScript } from './loadScript'
 
 function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type })
@@ -43,16 +42,14 @@ export function exportHTML(content, filename) {
 }
 
 export async function exportPDF(content, filename) {
-  await Promise.all([
-    loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
-    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
   ])
   const el = createExportElement(renderMarkdown(content), false)
   el.style.background = '#fff'; el.style.color = '#1c1c1e'
-  const canvas = await window.html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
   document.body.removeChild(el)
-
-  const { jsPDF } = window.jspdf
   const pdf = new jsPDF('p', 'px', 'a4', true)
   const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight()
   const ratio = pw / canvas.width
@@ -72,7 +69,7 @@ export async function exportPDF(content, filename) {
 }
 
 export async function exportPNG(content, filename, isDark) {
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js')
+  const { default: html2canvas } = await import('html2canvas')
   const el = createExportElement(renderMarkdown(content), isDark)
 
   // Branding footer
@@ -84,7 +81,7 @@ export async function exportPNG(content, filename, isDark) {
   el.appendChild(footer)
 
   const bg = isDark ? '#1c1c1e' : '#fff'
-  const canvas = await window.html2canvas(el, { scale: 2, useCORS: true, backgroundColor: bg, logging: false })
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: bg, logging: false })
   document.body.removeChild(el)
   const link = document.createElement('a'); link.download = `${filename}.png`; link.href = canvas.toDataURL('image/png'); link.click()
   return { key: 'toast.pngDone' }
