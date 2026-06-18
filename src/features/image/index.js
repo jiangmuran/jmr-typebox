@@ -34,6 +34,10 @@ export default {
       'img2.fontSize': 'Font size',
 
       // Compress
+      'img2.nav.compress': 'Compress',
+      'img2.nav.convert': 'Convert',
+      'img2.nav.watermark': 'Watermark',
+      'img2.nav.edit': 'Edit',
       'img2.compress.title': 'Compress Image',
       'img2.compress.sub': 'Shrink file size with adjustable quality — fully private.',
       'img2.before': 'Before',
@@ -99,6 +103,10 @@ export default {
       'img2.fontSize': '字号',
 
       // Compress
+      'img2.nav.compress': '压缩',
+      'img2.nav.convert': '转格式',
+      'img2.nav.watermark': '水印',
+      'img2.nav.edit': '编辑',
       'img2.compress.title': '压缩图片',
       'img2.compress.sub': '调节质量以减小文件体积 — 全程本地处理。',
       'img2.before': '压缩前',

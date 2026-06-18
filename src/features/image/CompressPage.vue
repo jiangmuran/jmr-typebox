@@ -5,6 +5,7 @@ import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ClientOnly from '../../components/ClientOnly.vue'
 import ImageDropZone from './ImageDropZone.vue'
+import ImageToolNav from './ImageToolNav.vue'
 import { useImageSource } from './useImageSource'
 import { drawToCanvas, encodeCanvas, downloadBlob } from './canvasUtils'
 import {
@@ -72,6 +73,7 @@ const saved = computed(() =>
     <h1 class="sr-only">{{ m.h1 }}</h1>
     <ClientOnly>
       <main class="img-wrap">
+        <ImageToolNav />
         <header class="img-head">
           <h2>{{ t('img2.compress.title') }}</h2>
           <p>{{ t('img2.compress.sub') }}</p>

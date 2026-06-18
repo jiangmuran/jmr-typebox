@@ -5,6 +5,7 @@ import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ClientOnly from '../../components/ClientOnly.vue'
 import ImageDropZone from './ImageDropZone.vue'
+import ImageToolNav from './ImageToolNav.vue'
 import { useImageSource } from './useImageSource'
 import { canvasToBlob, downloadBlob } from './canvasUtils'
 import { pixelate, boxBlur, normalizeRect } from './redact'
@@ -276,6 +277,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize))
     <h1 class="sr-only">{{ m.h1 }}</h1>
     <ClientOnly>
       <main class="img-wrap wide">
+        <ImageToolNav />
         <header class="img-head">
           <h2>{{ t('img2.edit.title') }}</h2>
           <p>{{ t('img2.edit.sub') }}</p>

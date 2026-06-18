@@ -16,7 +16,7 @@
  * theme CSS applies verbatim with zero leakage into the app. Loaded CSS is
  * cached by the registry, so re-hovering a theme is instant.
  */
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { THEMES, getThemeCss, buildThemedHtmlSync } from './registry'
 import { renderMarkdown } from '../utils/markdown'
 
@@ -33,6 +33,9 @@ const open = ref(false)
 const hoverId = ref('')
 const previewHtml = ref('') // iframe srcdoc for the hovered theme
 const rootEl = ref(null)
+const triggerEl = ref(null)
+const popEl = ref(null)
+const popStyle = ref({}) // fixed-position style so the popover escapes any clipping ancestor
 
 const selected = computed(() => THEMES.find((t) => t.id === model.value) || null)
 const buttonLabel = computed(() => props.label || selected.value?.name || (model.value === 'default' ? 'Default' : 'Theme'))
@@ -73,16 +76,30 @@ function choose(id) {
   clearPreview()
 }
 
-function toggle() {
+async function toggle() {
   open.value = !open.value
-  if (!open.value) clearPreview()
+  if (open.value) { await nextTick(); positionPop() }
+  else clearPreview()
+}
+function positionPop() {
+  const el = triggerEl.value
+  if (!el || typeof window === 'undefined') return
+  const r = el.getBoundingClientRect()
+  popStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(r.bottom + 6)}px`,
+    right: `${Math.round(Math.max(8, window.innerWidth - r.right))}px`,
+    left: 'auto',
+  }
 }
 
 // Warm the selected theme so the editor can paint immediately.
 watch(model, (id) => { if (id && id !== 'default') getThemeCss(id) }, { immediate: true })
 
 function onDocClick(e) {
-  if (rootEl.value && !rootEl.value.contains(e.target)) {
+  const inRoot = rootEl.value && rootEl.value.contains(e.target)
+  const inPop = popEl.value && popEl.value.contains(e.target)
+  if (!inRoot && !inPop) {
     open.value = false
     clearPreview()
   }
@@ -96,7 +113,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
 <template>
   <div ref="rootEl" class="theme-picker">
-    <button type="button" class="tp-trigger" :aria-expanded="open" @click="toggle">
+    <button ref="triggerEl" type="button" class="tp-trigger" :aria-expanded="open" @click="toggle">
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
         <path d="M8 1.5a6.5 6.5 0 1 0 0 13c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H12a3 3 0 0 0 3-3c0-3.31-3.13-5.5-7-5.5Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
         <circle cx="5" cy="6.5" r="1" fill="currentColor"/>
@@ -109,7 +126,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
       </svg>
     </button>
 
-    <div v-if="open" class="tp-pop" role="listbox">
+    <Teleport to="body">
+    <div v-if="open" ref="popEl" class="tp-pop" role="listbox" :style="popStyle">
       <div class="tp-list" @mouseleave="clearPreview">
         <button
           type="button" role="option" class="tp-item" :class="{ active: !model || model === 'default' }"
@@ -165,6 +183,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
         <div v-else class="tp-preview-hint">Hover a theme to preview</div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -185,12 +204,12 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .tp-caret.up { transform: rotate(180deg); }
 
 .tp-pop {
-  position: absolute; z-index: 50; top: calc(100% + 6px); left: 0;
-  display: flex; gap: 0;
+  position: absolute; z-index: 600; top: calc(100% + 6px); right: 0;
+  display: flex; gap: 0; max-width: 92vw;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-lg);
   overflow: hidden; animation: scaleIn 0.16s var(--ease-out);
-  transform-origin: top left;
+  transform-origin: top right;
 }
 
 .tp-list {

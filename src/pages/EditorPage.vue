@@ -267,11 +267,17 @@ onUnmounted(() => {
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg>
         </button>
         <div class="dd-wrap">
-          <button class="ec-btn" @click="exportOpen = !exportOpen" :title="t('export')">
+          <button class="ec-btn ec-export" @click="exportOpen = !exportOpen" :title="t('export')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 10v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V10"/><polyline points="5 7 8 10 11 7"/><line x1="8" y1="10" x2="8" y2="2"/></svg>
+            <span class="ec-export-lbl">{{ t('export') }}</span>
           </button>
           <Transition name="dd">
             <div v-if="exportOpen" class="dd-menu">
+              <div class="dd-theme">
+                <span class="dd-theme-lbl">{{ t('settings.exportTheme') }}</span>
+                <ThemePicker v-model="exportTheme" :preview-markdown="content" />
+              </div>
+              <div class="dd-sep"></div>
               <div class="dd-label">{{ t('export.download') }}</div>
               <button @click="doExport('md')">{{ t('export.md') }}<kbd>{{ modLabel }}S</kbd></button>
               <button @click="doExport('txt')">{{ t('export.txt') }}</button>
@@ -316,7 +322,7 @@ onUnmounted(() => {
 <style scoped>
 .editor-page { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .editor-body { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.start-overlay { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; overflow-y: auto; }
+.start-overlay { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 /* Document tabs */
@@ -330,10 +336,10 @@ onUnmounted(() => {
 .doc-tab-new { width: 26px; flex-shrink: 0; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
 .doc-tab-new:hover { background: var(--surface-hover); color: var(--text); }
 
-.editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
-.editor-controls::-webkit-scrollbar { display: none; }
+.editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; flex-wrap: wrap; }
 .ec-theme { flex-shrink: 0; }
 .ec-theme :deep(.tp-trigger) { height: 30px; }
+@media (max-width: 768px) { .ec-theme :deep(.tp-trigger-label) { display: none; } }
 .ec-file { display: flex; align-items: center; }
 .ec-file input { border: none; background: transparent; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); outline: none; width: 120px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; }
 .ec-file input:hover { background: var(--surface-hover); }
@@ -353,6 +359,11 @@ onUnmounted(() => {
 .ec-btn svg { width: 15px; height: 15px; }
 
 .dd-wrap { position: relative; }
+.ec-export { width: auto; gap: 5px; padding: 0 11px; }
+.ec-export-lbl { font-size: 12px; font-weight: 500; }
+.dd-theme { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 8px; }
+.dd-theme-lbl { font-size: 11px; color: var(--text-tertiary); }
+@media (max-width: 768px) { .ec-export-lbl { display: none; } }
 .dd-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 200px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; z-index: 200; }
 .dd-menu button { display: flex; align-items: center; width: 100%; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text); font-size: 13px; font-family: var(--font-sans); cursor: pointer; text-align: left; }
 .dd-menu button:hover { background: var(--surface-hover); }
