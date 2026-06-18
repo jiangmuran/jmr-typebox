@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
+    "@codemirror/lang-python": "^6.2.1",
     "@turbodocx/html-to-docx": "^1.22.0",
     "@unhead/vue": "^2.1.15",
+    "codemirror": "^6.0.2",
     "dompurify": "^3.3.3",
     "highlight.js": "^11.11.1",
     "html2canvas": "^1.4.1",
