@@ -81,6 +81,15 @@ const dict = {
     'cmdk.placeholder': 'Search tools, actions, settings…',
     'cmdk.empty': 'No results',
     'cmdk.open': 'Search',
+    'start.tagline': 'A fast, private toolkit for writing, images, files & code.',
+    'start.tip': 'Press ⌘K to search everything',
+    'start.write': 'Start writing',
+    'start.desc.txt': 'Quick plain-text notes',
+    'start.desc.image': 'Compress, convert, watermark, edit',
+    'start.desc.convert': 'Markdown ↔ PDF / Word / HTML',
+    'start.desc.media': 'Convert audio with ffmpeg',
+    'start.desc.tools': 'Base64, hashing, JSON, AES…',
+    'start.desc.python': 'Run Python in your browser',
 
     // Editor
     'editor.placeholder': 'Start writing Markdown here...',
@@ -235,6 +244,15 @@ const dict = {
     'cmdk.placeholder': '搜索工具、操作、设置…',
     'cmdk.empty': '无结果',
     'cmdk.open': '搜索',
+    'start.tagline': '快速、私密的写作 · 图片 · 文件 · 代码工具箱。',
+    'start.tip': '按 ⌘K 搜索一切',
+    'start.write': '开始写作',
+    'start.desc.txt': '快速记纯文本',
+    'start.desc.image': '压缩 · 转格式 · 水印 · 编辑',
+    'start.desc.convert': 'Markdown ↔ PDF / Word / HTML',
+    'start.desc.media': '用 ffmpeg 转换音频',
+    'start.desc.tools': 'Base64 · 哈希 · JSON · AES…',
+    'start.desc.python': '在浏览器里运行 Python',
 
     'editor.placeholder': '在此输入 Markdown...',
 

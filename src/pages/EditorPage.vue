@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRouteHead } from '../composables/useRouteHead'
 import { useEditor } from '../composables/useEditor'
@@ -12,6 +12,7 @@ import MdToolbar from '../components/MdToolbar.vue'
 import SearchBar from '../components/SearchBar.vue'
 import Workspace from '../components/Workspace.vue'
 import StatusBar from '../components/StatusBar.vue'
+import StartPanel from '../components/StartPanel.vue'
 
 const { meta: m } = useRouteHead()
 const router = useRouter()
@@ -28,6 +29,9 @@ const isMobile = ref(false)
 const isMac = ref(false)
 const modLabel = ref('Ctrl+')
 const zenMode = ref(false)
+const startDismissed = ref(false)
+const showStart = computed(() => !content.value.trim() && !startDismissed.value && !zenMode.value)
+function startWriting() { startDismissed.value = true; nextTick(() => editorRef.value?.focus()) }
 
 function setViewMode(mode) { viewMode.value = mode; save('view', mode) }
 
@@ -100,7 +104,7 @@ function onDrop(e) {
 
 function handleNew() {
   if (content.value && !confirm(t('toast.startFresh'))) return
-  newDocument(); showToast(t('toast.newDoc'))
+  newDocument(); startDismissed.value = false; showToast(t('toast.newDoc'))
 }
 
 function onKeydown(e) {
@@ -199,10 +203,13 @@ onUnmounted(() => {
 
       <div v-if="exportOpen" class="click-away" @click="exportOpen = false"></div>
 
-      <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
-      <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
-      <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="el => editorRef = el" />
-      <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
+      <div class="editor-body">
+        <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
+        <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
+        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="el => editorRef = el" />
+        <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
+        <StartPanel v-if="showStart" class="start-overlay" @write="startWriting" />
+      </div>
 
       <Transition name="fade">
         <div v-if="dragging" class="drag-overlay">
@@ -216,6 +223,8 @@ onUnmounted(() => {
 
 <style scoped>
 .editor-page { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.editor-body { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.start-overlay { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; overflow-y: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 .editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
