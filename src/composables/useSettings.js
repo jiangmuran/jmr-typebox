@@ -8,12 +8,12 @@ export const DEFAULT_SETTINGS = {
   editorFontSize: 15,
   editorLineHeight: 1.7,
   density: 'comfortable',   // 'comfortable' | 'compact'
-  tabsVisible: ['markdown', 'txt', 'image', 'convert', 'media', 'tools', 'python'],
-  tabsOrder: ['markdown', 'txt', 'image', 'convert', 'media', 'tools', 'python'],
+  tabsVisible: ['markdown', 'image', 'media', 'python'],
+  tabsOrder: ['markdown', 'image', 'media', 'python'],
   defaultTool: '/',
   restoreLast: true,
   writingTheme: 'default',
-  exportTheme: 'github',
+  exportTheme: 'inkwell',
   backendEnabled: true,
 }
 

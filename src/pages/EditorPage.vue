@@ -7,6 +7,10 @@ import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import { useTheme } from '../composables/useTheme'
 import { convertersFor } from '../converters/registry'
+import { renderMarkdown } from '../utils/markdown'
+import { useSettings } from '../composables/useSettings'
+import { buildThemedHtml } from '../themes/registry'
+import ThemePicker from '../themes/ThemePicker.vue'
 import { load, save } from '../utils/storage'
 import ClientOnly from '../components/ClientOnly.vue'
 import MdToolbar from '../components/MdToolbar.vue'
@@ -22,6 +26,10 @@ const { docs, activeId, content, filename, dirty, stats, updateContent, updateFi
 const { showToast } = useToast()
 const { t } = useI18n()
 const { theme } = useTheme()
+const { settings, setSetting } = useSettings()
+const writingTheme = computed({ get: () => settings.writingTheme, set: v => setSetting('writingTheme', v) })
+const exportTheme = computed({ get: () => settings.exportTheme, set: v => setSetting('exportTheme', v) })
+function exportThemeId() { return (exportTheme.value && exportTheme.value !== 'default') ? exportTheme.value : 'inkwell' }
 
 const editorRef = ref(null)
 const searchOpen = ref(false)
@@ -95,6 +103,16 @@ function downloadBlob(blob, name) {
 }
 
 // ---- Export (conversions live in the editor) ----
+async function printThemed() {
+  showToast(t('toast.genPdf'))
+  const html = await buildThemedHtml(renderMarkdown(content.value), exportThemeId())
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;'
+  iframe.onload = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {} ; setTimeout(() => iframe.remove(), 2000) }
+  document.body.appendChild(iframe)
+  iframe.srcdoc = html
+}
+
 async function doExport(fmt) {
   exportOpen.value = false
   const fn = filename.value || 'untitled'
@@ -103,18 +121,23 @@ async function doExport(fmt) {
       const conv = convertersFor('md').find(c => c.output === 'docx')
       if (!conv) { showToast(t('toast.exportFailed')); return }
       showToast(t('toast.genDocx'))
-      const blob = await conv.run(content.value, {})
-      downloadBlob(blob, `${fn}.docx`)
+      downloadBlob(await conv.run(content.value, {}), `${fn}.docx`)
       showToast(`${t('toast.downloaded')} ${fn}.docx`)
       return
     }
-    const { exportTXT, exportMD, exportHTML, exportPDF, exportPNG, copyHTML, copyMarkdown } = await import('../utils/export')
+    if (fmt === 'html') {
+      const html = await buildThemedHtml(renderMarkdown(content.value), exportThemeId())
+      downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), `${fn}.html`)
+      showToast(`${t('toast.downloaded')} ${fn}.html`)
+      return
+    }
+    if (fmt === 'pdf') { await printThemed(); return }
+
+    const { exportTXT, exportMD, exportPNG, copyHTML, copyMarkdown } = await import('../utils/export')
     let result
     switch (fmt) {
       case 'txt': result = exportTXT(content.value, fn); break
       case 'md': result = exportMD(content.value, fn); break
-      case 'html': result = exportHTML(content.value, fn); break
-      case 'pdf': showToast(t('toast.genPdf')); result = await exportPDF(content.value, fn); break
       case 'png': showToast(t('toast.genImg')); result = await exportPNG(content.value, fn, theme.value === 'dark'); break
       case 'copyHtml': result = await copyHTML(content.value); break
       case 'copyMd': result = await copyMarkdown(content.value); break
@@ -184,7 +207,10 @@ function onKeydown(e) {
   } else if (e.key === 'F11') { e.preventDefault(); toggleZen() }
 }
 
-function handleResize() { isMobile.value = window.innerWidth <= 768 }
+function handleResize() {
+  isMobile.value = window.innerWidth <= 768
+  if (isMobile.value && viewMode.value === 'split') viewMode.value = 'editor'
+}
 
 onMounted(() => {
   isMac.value = navigator.platform?.includes('Mac')
@@ -233,6 +259,7 @@ onUnmounted(() => {
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
           </button>
         </div>
+        <ThemePicker v-model="writingTheme" :preview-markdown="content" class="ec-theme" />
         <button class="ec-btn" @click="openFilePicker" :title="t('menu.open')">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 13.5V4a1 1 0 0 1 1-1h3.6l1.4 2H13a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>
         </button>
@@ -303,7 +330,10 @@ onUnmounted(() => {
 .doc-tab-new { width: 26px; flex-shrink: 0; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
 .doc-tab-new:hover { background: var(--surface-hover); color: var(--text); }
 
-.editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
+.editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+.editor-controls::-webkit-scrollbar { display: none; }
+.ec-theme { flex-shrink: 0; }
+.ec-theme :deep(.tp-trigger) { height: 30px; }
 .ec-file { display: flex; align-items: center; }
 .ec-file input { border: none; background: transparent; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); outline: none; width: 120px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; }
 .ec-file input:hover { background: var(--surface-hover); }

@@ -2,6 +2,7 @@
 import { useSettings } from '../composables/useSettings'
 import { useI18n } from '../composables/useI18n'
 import BackendInfo from './BackendInfo.vue'
+import { THEMES as TYPORA_THEMES } from '../themes/registry'
 
 const open = defineModel('open', { default: false })
 const { settings, setSetting, resetSettings, clearAllData } = useSettings()
@@ -11,9 +12,10 @@ const THEMES = ['light', 'dark', 'system']
 const DENSITIES = ['comfortable', 'compact']
 const ACCENTS = ['', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 const TOOLS = [
-  { id: 'markdown', path: '/' }, { id: 'txt', path: '/txt' }, { id: 'image', path: '/image/compress' },
-  { id: 'convert', path: '/convert/markdown-to-pdf' }, { id: 'media', path: '/media/mp3-to-wav' },
-  { id: 'tools', path: '/tools/base64' }, { id: 'python', path: '/python' },
+  { id: 'markdown', path: '/' },
+  { id: 'image', path: '/image/compress' },
+  { id: 'media', path: '/media/mp3-to-wav' },
+  { id: 'python', path: '/python' },
 ]
 
 function toggleTool(id) {
@@ -74,6 +76,22 @@ const REPO = 'https://github.com/jiangmuran/jmr-typebox'
             </label>
             <label class="row col">{{ t('settings.lineHeight') }}: {{ settings.editorLineHeight }}
               <input type="range" min="1.3" max="2.2" step="0.1" :value="settings.editorLineHeight" @input="setSetting('editorLineHeight', +$event.target.value)">
+            </label>
+          </section>
+
+          <!-- Themes -->
+          <section>
+            <h3>{{ t('settings.themes') }}</h3>
+            <label class="row">{{ t('settings.writingTheme') }}
+              <select :value="settings.writingTheme" @change="setSetting('writingTheme', $event.target.value)">
+                <option value="default">Default</option>
+                <option v-for="th in TYPORA_THEMES" :key="th.id" :value="th.id">{{ th.name }}</option>
+              </select>
+            </label>
+            <label class="row">{{ t('settings.exportTheme') }}
+              <select :value="settings.exportTheme" @change="setSetting('exportTheme', $event.target.value)">
+                <option v-for="th in TYPORA_THEMES" :key="th.id" :value="th.id">{{ th.name }}</option>
+              </select>
             </label>
           </section>
 

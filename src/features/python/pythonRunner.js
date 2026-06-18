@@ -98,13 +98,96 @@ async function bootstrap(py) {
   bootstrapped = true
 }
 
-// Run a snippet. Streams stdout/stderr via the provided callbacks (already batched by the
-// caller) and returns a structured result:
+// Working directory inside Pyodide's virtual FS where project files are written. It's added to
+// sys.path so cross-file `import othermodule` resolves to the user's sibling files.
+const WORK_DIR = '/home/pyodide/project'
+let workDirReady = false
+const writtenFiles = new Set() // filenames currently on disk in WORK_DIR (for stale cleanup)
+
+// Mirror the in-memory project (a { filename: source } map) into the virtual FS so multi-file
+// imports work. Files removed since the last run are deleted, and modules whose source changed
+// are invalidated from importlib's caches so the next import re-reads them. WORK_DIR is ensured
+// on sys.path. Pure-Python only; the heavy work is the wasm FS write, hence it lives here.
+function writeFiles(py, files) {
+  const FS = py.FS
+  if (!workDirReady) {
+    try { FS.mkdirTree(WORK_DIR) } catch { /* already exists */ }
+    // Prepend WORK_DIR to sys.path once so bare imports find the project files first.
+    py.runPython(
+      'import sys\n' +
+      `_p = ${JSON.stringify(WORK_DIR)}\n` +
+      'if _p not in sys.path:\n    sys.path.insert(0, _p)\n'
+    )
+    workDirReady = true
+  }
+
+  const names = Object.keys(files || {})
+  const keep = new Set(names)
+
+  // Remove files that were deleted/renamed away since the last run.
+  for (const old of [...writtenFiles]) {
+    if (!keep.has(old)) {
+      try { FS.unlink(`${WORK_DIR}/${old}`) } catch { /* already gone */ }
+      writtenFiles.delete(old)
+    }
+  }
+
+  // (Re)write every current file. Writing unconditionally is cheap and guarantees the FS matches
+  // the editor exactly, including unsaved edits.
+  for (const name of names) {
+    FS.writeFile(`${WORK_DIR}/${name}`, String(files[name] ?? ''), { encoding: 'utf8' })
+    writtenFiles.add(name)
+  }
+
+  // Drop cached bytecode + already-imported user modules so edits to imported files take effect
+  // on the next run (otherwise Python would keep the first version it imported).
+  const modList = names
+    .filter(n => n.endsWith('.py'))
+    .map(n => n.slice(0, -3))
+  py.runPython(
+    'import importlib, sys\n' +
+    'importlib.invalidate_caches()\n' +
+    `_mods = ${JSON.stringify(modList)}\n` +
+    'for _m in _mods:\n' +
+    '    sys.modules.pop(_m, None)\n'
+  )
+}
+
+// Run the active file of a multi-file project (or a bare code string for back-compat).
+//
+// Signature:
+//   runPython(codeString, opts)                       — run a single snippet (legacy)
+//   runPython({ files, entry }, opts)                  — write ALL files to the virtual FS,
+//                                                        then run the entry file's source
+//
+// `files` is a { 'main.py': source, 'utils.py': source } map; `entry` is the filename to
+// execute (defaults to 'main.py', or the first file). Writing every file first is what makes
+// cross-file `import utils` work. Streams stdout/stderr via the provided callbacks (already
+// batched by the caller) and returns a structured result:
 //   { ok, result: { kind, data }, figures: string[] (base64 png), error: string|null }
 // The last top-level expression's value is captured the way a REPL would show it.
-export async function runPython(code, { onStdout, onStderr, onStatus } = {}) {
+export async function runPython(codeOrProject, { onStdout, onStderr, onStatus } = {}) {
   const py = await getPyodide({ onStatus })
   await bootstrap(py)
+
+  // Normalize input into { files, entry, code }. A bare string runs as a one-file program.
+  let files = null
+  let entry = null
+  let code
+  if (codeOrProject && typeof codeOrProject === 'object' && codeOrProject.files) {
+    files = codeOrProject.files
+    const names = Object.keys(files)
+    entry = names.includes(codeOrProject.entry) ? codeOrProject.entry
+      : (names.includes('main.py') ? 'main.py' : names[0])
+    code = String(files[entry] ?? '')
+  } else {
+    code = String(codeOrProject ?? '')
+  }
+
+  // Mirror every project file into the virtual FS so imports across files resolve.
+  if (files) {
+    try { writeFiles(py, files) } catch { /* FS write failure surfaces as an import error below */ }
+  }
 
   // Route stdout/stderr to the UI. setStdout/setStderr accept a batched callback that gets
   // whole strings; we forward them straight to the caller's batcher.
@@ -119,9 +202,11 @@ export async function runPython(code, { onStdout, onStderr, onStatus } = {}) {
     // Since Pyodide 0.18, runPythonAsync does NOT auto-install packages referenced by import
     // statements. loadPackagesFromImports inspects the code and loads any packages that are
     // bundled with Pyodide (numpy, matplotlib, pandas, …) from the self-hosted lock — this is
-    // OFFLINE (no network); micropip is only needed for packages not in the lock.
+    // OFFLINE (no network); micropip is only needed for packages not in the lock. Scan EVERY
+    // file so a bundled dependency imported only by a sibling module is still preloaded.
     try {
-      await py.loadPackagesFromImports(code)
+      const scanSrc = files ? Object.values(files).join('\n') : code
+      await py.loadPackagesFromImports(scanSrc)
     } catch { /* unknown/3rd-party imports — let the run raise a clear ModuleNotFoundError */ }
 
     // matplotlib may have just been loaded; (re)install the Agg backend + show() capture.
@@ -201,4 +286,6 @@ export function _resetRunner() {
   loadPromise = null
   bootstrapped = false
   matplotlibPatched = false
+  workDirReady = false
+  writtenFiles.clear()
 }

@@ -30,6 +30,10 @@ for (const route of ROUTES) {
     const mounted = await page.evaluate(() => !!document.querySelector('#app') && document.querySelector('#app').childElementCount > 0)
     const slug = route === '/' ? 'home' : route.replace(/\//g, '_')
     await page.screenshot({ path: `${OUT}/${slug}.png` })
+    // Mobile viewport capture (iPhone-ish) to audit responsive layout.
+    await page.setViewport({ width: 390, height: 844 })
+    await new Promise(r => setTimeout(r, 350))
+    await page.screenshot({ path: `${OUT}/${slug}-m.png` })
     const ok = mounted && errors.length === 0
     if (!ok) failures++
     console.log(`${ok ? 'PASS' : 'FAIL'} ${route.padEnd(28)} mounted=${mounted} errors=${errors.length}`)

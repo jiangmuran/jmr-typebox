@@ -8,11 +8,13 @@ import ToastNotification from './ToastNotification.vue'
 import WelcomeDialog from './WelcomeDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
 import CommandPalette from './CommandPalette.vue'
+import { useSettings } from '../composables/useSettings'
 
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
 const { toastMessage, toastVisible } = useToast()
 const { t, setLocale } = useI18n()
+const { settings } = useSettings()
 
 // Top-level tabs → primary route for each group.
 // Editor-centric IA: only 4 top tabs. Convert/export, document import, and text tools
@@ -25,6 +27,14 @@ const TABS = [
   { id: 'python', to: '/python', icon: 'python' },
 ]
 const activeTab = computed(() => route.meta?.tab || 'markdown')
+
+// Tabs the user has chosen to show, in their chosen order (Settings → customization).
+const visibleTabs = computed(() => {
+  const order = settings.tabsOrder?.length ? settings.tabsOrder : TABS.map(t => t.id)
+  const vis = new Set(settings.tabsVisible?.length ? settings.tabsVisible : TABS.map(t => t.id))
+  const ordered = order.map(id => TABS.find(t => t.id === id)).filter(Boolean).filter(t => vis.has(t.id))
+  return ordered.length ? ordered : TABS
+})
 
 const isMobile = ref(false)
 function handleResize() { isMobile.value = window.innerWidth <= 768 }
@@ -48,7 +58,7 @@ function openSettings() { settingsOpen.value = true }
       </router-link>
 
       <nav class="tool-tabs">
-        <router-link v-for="tb in TABS" :key="tb.id" :to="tb.to" :class="{ active: activeTab === tb.id }" :title="t('tab.' + tb.id)">
+        <router-link v-for="tb in visibleTabs" :key="tb.id" :to="tb.to" :class="{ active: activeTab === tb.id }" :title="t('tab.' + tb.id)">
           <svg v-if="tb.icon==='edit'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
           <svg v-else-if="tb.icon==='file'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h5l4 4V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z"/><path d="M9 1.5V6h4.5"/></svg>
           <svg v-else-if="tb.icon==='image'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><path d="M14.5 11l-4-3.5-3 2.5-2-1.5L1.5 11.5"/></svg>

@@ -1,6 +1,8 @@
 <script setup>
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
+import { useSettings } from '../composables/useSettings'
+import { buildThemedHtml } from '../themes/registry'
 import '../styles/markdown.css'
 
 const props = defineProps({
@@ -15,6 +17,24 @@ const emit = defineEmits(['update:content', 'editor-mounted'])
 const editorEl = ref(null)
 const previewHTML = ref('')
 let renderTimer = null
+
+// On mobile, split view would squish two panes into a narrow screen — collapse to a single
+// pane (editor) reactively so the layout is never broken regardless of the stored view.
+const effectiveView = computed(() => (props.isMobile && props.viewMode === 'split') ? 'editor' : props.viewMode)
+
+// Writing theme: when a real Typora theme is chosen, render the preview in an isolated
+// iframe so the theme CSS applies faithfully. 'default' keeps the fast app preview.
+const { settings } = useSettings()
+const themed = computed(() => !!settings.writingTheme && settings.writingTheme !== 'default')
+const frameHtml = ref('')
+let frameTimer = null
+function scheduleFrame() {
+  clearTimeout(frameTimer)
+  frameTimer = setTimeout(async () => {
+    try { frameHtml.value = await buildThemedHtml(renderMarkdown(props.content), settings.writingTheme) } catch { /* ignore */ }
+  }, props.isMobile ? 200 : 100)
+}
+watch([() => props.content, () => settings.writingTheme], () => { if (themed.value) scheduleFrame() }, { immediate: true })
 
 function scheduleRender() {
   clearTimeout(renderTimer)
@@ -43,7 +63,7 @@ function onTab(e) {
 
 // Scroll sync
 function onEditorScroll() {
-  if (props.viewMode !== 'split') return
+  if (effectiveView.value !== 'split') return
   const el = editorEl.value
   if (!el) return
   const ratio = el.scrollTop / (el.scrollHeight - el.clientHeight || 1)
@@ -59,7 +79,7 @@ const editorFlex = ref(1)
 const previewFlex = ref(1)
 
 function onDividerDown(e) {
-  if (props.viewMode !== 'split') return
+  if (effectiveView.value !== 'split') return
   isDragging.value = true
   e.preventDefault()
 }
@@ -89,12 +109,12 @@ onMounted(async () => {
 <template>
   <main
     class="workspace"
-    :data-view="viewMode"
+    :data-view="effectiveView"
     :class="{ dragging: isDragging }"
   >
     <div
       class="pane editor-pane"
-      :style="viewMode === 'split' ? { flex: editorFlex } : {}"
+      :style="effectiveView === 'split' ? { flex: editorFlex } : {}"
     >
       <textarea
         ref="editorEl"
@@ -108,7 +128,7 @@ onMounted(async () => {
     </div>
 
     <div
-      v-if="viewMode === 'split'"
+      v-if="effectiveView === 'split'"
       class="divider"
       @mousedown="onDividerDown"
     >
@@ -117,9 +137,10 @@ onMounted(async () => {
 
     <div
       class="pane preview-pane"
-      :style="viewMode === 'split' ? { flex: previewFlex } : {}"
+      :style="effectiveView === 'split' ? { flex: previewFlex } : {}"
     >
-      <article class="markdown-body" v-html="previewHTML"></article>
+      <iframe v-if="themed" class="preview-frame" :srcdoc="frameHtml" sandbox="allow-same-origin" title="Themed preview"></iframe>
+      <article v-else class="markdown-body" v-html="previewHTML"></article>
     </div>
   </main>
 </template>
@@ -149,6 +170,7 @@ onMounted(async () => {
 
 .editor-pane { flex: 1; min-width: 0; background: var(--surface); }
 .preview-pane { flex: 1; min-width: 0; overflow-y: auto; background: var(--surface); }
+.preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 
 /* View modes */
 .workspace[data-view="editor"] .preview-pane,
@@ -176,9 +198,9 @@ textarea {
   border: none;
   resize: none;
   padding: 24px;
-  font-size: 14px;
-  font-family: var(--font-mono);
-  line-height: 1.75;
+  font-size: var(--editor-font-size, 14px);
+  font-family: var(--editor-font, var(--font-mono));
+  line-height: var(--editor-line-height, 1.75);
   color: var(--text);
   background: transparent;
   outline: none;

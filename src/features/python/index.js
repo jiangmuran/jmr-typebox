@@ -1,11 +1,11 @@
-// Python playground suite — run Python in the browser with Pyodide (self-hosted, no CDN).
-// Drop-in feature module: `components` overrides ToolStub for /python, the `py.*` i18n strings
-// are merged into useI18n, and register() wires a ⌘K command to jump to the playground.
+// Python IDE feature — a multi-file Python mini-IDE in the browser with Pyodide + CodeMirror
+// (self-hosted, no CDN). Drop-in feature module: `components` overrides ToolStub for /python,
+// the `py.*` i18n strings are merged into useI18n, and register() wires a ⌘K command to jump in.
 //
 // This file MUST stay light and side-effect-free at import time: no window/document/pyodide
-// access, and it MUST NOT import useI18n (circular). The heavy Pyodide runtime is lazy-loaded
-// inside PythonPlayground's run() via ./pythonRunner. Pure descriptors come from
-// ./pythonHelpers, which is also SSG/node-safe.
+// access, and it MUST NOT import useI18n (circular). The heavy Pyodide runtime + CodeMirror are
+// lazy-loaded inside PythonIDE (via ./pythonRunner and ./cmEditor). Pure descriptors come from
+// ./pythonHelpers and ./fileModel, which are also SSG/node-safe.
 import { registerCommand } from '../../composables/useCommands'
 
 const Page = () => import('./PythonPage.vue')
@@ -17,9 +17,19 @@ export default {
 
   i18n: {
     en: {
-      'py.title': 'Python Playground',
-      'py.hint': 'Run Python in your browser with Pyodide — no server, nothing uploaded.',
+      'py.title': 'Python IDE',
+      'py.hint': 'A multi-file Python IDE in your browser, powered by Pyodide — no server, nothing uploaded.',
       'py.placeholder': '# Write Python here, then press Run (Cmd/Ctrl+Enter)\nprint("Hello, world")',
+      'py.examples': 'Examples',
+      'py.files': 'Files',
+      'py.newFile': 'New file',
+      'py.deleteFile': 'Delete file',
+      'py.renameHint': 'Double-click to rename',
+      'py.fileError': 'Could not create file',
+      'py.fileDuplicate': 'A file with that name already exists',
+      'py.fileInvalid': 'Invalid name — use letters, digits, _ and a .py extension',
+      'py.cantDeleteLast': 'Keep at least one file',
+      'py.outputEmpty': 'Run your code to see output here.',
       'py.run': 'Run',
       'py.running': 'Running…',
       'py.loadingCore': 'Loading Python runtime…',
@@ -40,12 +50,22 @@ export default {
       'py.installed': 'Installed',
       'py.installFailed': 'Install failed',
       'py.networkBadge': 'Needs network (micropip)',
-      'py.command': 'Open Python Playground',
+      'py.command': 'Open Python IDE',
     },
     zh: {
-      'py.title': 'Python 运行场',
-      'py.hint': '用 Pyodide 在浏览器里运行 Python — 无需服务器,绝不上传。',
+      'py.title': 'Python IDE',
+      'py.hint': '浏览器里的多文件 Python IDE,由 Pyodide 驱动 — 无需服务器,绝不上传。',
       'py.placeholder': '# 在此编写 Python,然后点击运行(Cmd/Ctrl+Enter)\nprint("你好,世界")',
+      'py.examples': '示例',
+      'py.files': '文件',
+      'py.newFile': '新建文件',
+      'py.deleteFile': '删除文件',
+      'py.renameHint': '双击重命名',
+      'py.fileError': '无法创建文件',
+      'py.fileDuplicate': '已存在同名文件',
+      'py.fileInvalid': '名称无效 — 仅限字母、数字、下划线,且以 .py 结尾',
+      'py.cantDeleteLast': '至少保留一个文件',
+      'py.outputEmpty': '运行代码后,这里会显示输出。',
       'py.run': '运行',
       'py.running': '运行中…',
       'py.loadingCore': '正在加载 Python 运行时…',
@@ -66,7 +86,7 @@ export default {
       'py.installed': '已安装',
       'py.installFailed': '安装失败',
       'py.networkBadge': '需要联网(micropip)',
-      'py.command': '打开 Python 运行场',
+      'py.command': '打开 Python IDE',
     },
   },
 
@@ -76,9 +96,9 @@ export default {
     // keyword so search matches "python" in either language.
     registerCommand({
       id: 'open-python',
-      title: 'Python Playground',
+      title: 'Python IDE',
       group: 'Tools',
-      keywords: 'python pyodide run code repl 运行 代码',
+      keywords: 'python pyodide run code repl ide editor 运行 代码 编辑器',
       needsBackend: false,
       run: () => {
         if (typeof window !== 'undefined') window.location.assign('/python')

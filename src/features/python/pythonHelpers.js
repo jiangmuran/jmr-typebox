@@ -225,6 +225,120 @@ export function getExample(id) {
 // Default snippet shown on a fresh visit (no saved draft).
 export const DEFAULT_CODE = getExample('hello').code
 
+// ---- Example PROJECTS (multi-file file-sets) for the IDE ---------------------------------
+// Each project loads a whole set of `.py` files at once (entry = the file made active). Unlike
+// the legacy single-file EXAMPLES above (kept for back-compat), these can demonstrate
+// cross-file imports. Everything except `packages` runs fully offline on the Python stdlib +
+// bundled numpy/matplotlib. `id` is stable so it can be referenced from tests.
+export const EXAMPLE_PROJECTS = [
+  {
+    id: 'hello',
+    title: { en: 'Hello, world', zh: '你好,世界' },
+    needsNetwork: false,
+    entry: 'main.py',
+    files: {
+      'main.py': getExample('hello').code,
+    },
+  },
+  {
+    id: 'multifile',
+    title: { en: 'Multi-file (cross-import)', zh: '多文件(跨文件导入)' },
+    needsNetwork: false,
+    entry: 'main.py',
+    files: {
+      'main.py': [
+        '# main.py imports from the sibling files in this project. All files are written into',
+        '# Pyodide\'s virtual filesystem before running, so plain imports just work.',
+        'from geometry import circle_area, Rectangle',
+        'from greet import banner',
+        '',
+        'print(banner("Multi-file Python"))',
+        'print(f"Area of r=2 circle: {circle_area(2):.4f}")',
+        '',
+        'box = Rectangle(3, 4)',
+        'print(f"{box} -> area {box.area()}, perimeter {box.perimeter()}")',
+        '',
+        '# Last expression value is shown in the output panel too:',
+        'circle_area(1)',
+        '',
+      ].join('\n'),
+      'geometry.py': [
+        '"""A tiny geometry module imported by main.py."""',
+        'import math',
+        '',
+        '',
+        'def circle_area(r):',
+        '    return math.pi * r * r',
+        '',
+        '',
+        'class Rectangle:',
+        '    def __init__(self, w, h):',
+        '        self.w = w',
+        '        self.h = h',
+        '',
+        '    def area(self):',
+        '        return self.w * self.h',
+        '',
+        '    def perimeter(self):',
+        '        return 2 * (self.w + self.h)',
+        '',
+        '    def __repr__(self):',
+        '        return f"Rectangle({self.w}x{self.h})"',
+        '',
+      ].join('\n'),
+      'greet.py': [
+        '"""Formatting helpers imported by main.py."""',
+        '',
+        '',
+        'def banner(text):',
+        '    line = "=" * (len(text) + 4)',
+        '    return f"{line}\\n| {text} |\\n{line}"',
+        '',
+      ].join('\n'),
+    },
+  },
+  {
+    id: 'plot',
+    title: { en: 'Matplotlib plot', zh: 'Matplotlib 绘图' },
+    needsNetwork: false,
+    entry: 'main.py',
+    files: {
+      'main.py': getExample('plot').code,
+    },
+  },
+  {
+    id: 'numpy',
+    title: { en: 'NumPy arrays', zh: 'NumPy 数组' },
+    needsNetwork: false,
+    entry: 'main.py',
+    files: {
+      'main.py': getExample('numpy').code,
+    },
+  },
+  {
+    id: 'html',
+    title: { en: 'Render HTML output', zh: '渲染 HTML 输出' },
+    needsNetwork: false,
+    entry: 'main.py',
+    files: {
+      'main.py': getExample('html').code,
+    },
+  },
+  {
+    id: 'packages',
+    title: { en: 'Install a package (micropip · network)', zh: '安装一个包(micropip · 联网)' },
+    needsNetwork: true,
+    entry: 'main.py',
+    files: {
+      'main.py': getExample('requests-demo').code,
+    },
+  },
+]
+
+export function getExampleProject(id) {
+  return EXAMPLE_PROJECTS.find(e => e.id === id) || null
+}
+
 // ---- editor helpers ---------------------------------------------------------------------
 // Insert `unit` spaces at a caret position in textarea-like state, returning the new value
 // and the caret offset to restore. Pure string math so Tab-to-indent is testable.

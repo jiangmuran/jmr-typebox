@@ -10,10 +10,13 @@ import {
   parsePackages,
   packageName,
   EXAMPLES,
+  EXAMPLE_PROJECTS,
   getExample,
+  getExampleProject,
   DEFAULT_CODE,
   insertIndent,
 } from '../pythonHelpers'
+import { isValidFilename } from '../fileModel'
 import feature from '../index.js'
 import { _resetCommands, allCommands, searchCommands } from '../../../composables/useCommands'
 import { ALL_PATHS } from '../../../router/meta'
@@ -158,6 +161,55 @@ describe('examples registry', () => {
     expect(getExample('plot')?.id).toBe('plot')
     expect(getExample('nope')).toBe(null)
     expect(DEFAULT_CODE).toBe(getExample('hello').code)
+  })
+})
+
+describe('EXAMPLE_PROJECTS (multi-file file-sets for the IDE)', () => {
+  it('each project has a stable id, bilingual title, entry, and a non-empty file map', () => {
+    expect(EXAMPLE_PROJECTS.length).toBeGreaterThanOrEqual(4)
+    for (const ex of EXAMPLE_PROJECTS) {
+      expect(typeof ex.id).toBe('string')
+      expect(typeof ex.title.en).toBe('string')
+      expect(typeof ex.title.zh).toBe('string')
+      expect(typeof ex.needsNetwork).toBe('boolean')
+      const names = Object.keys(ex.files)
+      expect(names.length).toBeGreaterThan(0)
+      // The entry must be one of the files, and every file must be valid + have source.
+      expect(names).toContain(ex.entry)
+      for (const n of names) {
+        expect(isValidFilename(n)).toBe(true)
+        expect(ex.files[n].length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('ids are unique', () => {
+    const ids = EXAMPLE_PROJECTS.map(e => e.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('includes a genuine multi-file example whose entry imports its siblings', () => {
+    const multi = getExampleProject('multifile')
+    expect(multi).toBeTruthy()
+    const names = Object.keys(multi.files)
+    expect(names.length).toBeGreaterThanOrEqual(2)
+    const entrySrc = multi.files[multi.entry]
+    // The entry must import at least one sibling module by its bare module name.
+    const siblings = names.filter(n => n !== multi.entry).map(n => n.replace(/\.py$/, ''))
+    expect(siblings.some(mod => new RegExp(`\\b(import|from)\\s+${mod}\\b`).test(entrySrc))).toBe(true)
+  })
+
+  it('ships matplotlib and numpy demos that run offline', () => {
+    expect(getExampleProject('plot')?.needsNetwork).toBe(false)
+    expect(getExampleProject('numpy')?.needsNetwork).toBe(false)
+  })
+
+  it('only the micropip demo needs the network', () => {
+    expect(EXAMPLE_PROJECTS.filter(e => e.needsNetwork).map(e => e.id)).toEqual(['packages'])
+  })
+
+  it('getExampleProject returns null for unknown ids', () => {
+    expect(getExampleProject('nope')).toBe(null)
   })
 })
 

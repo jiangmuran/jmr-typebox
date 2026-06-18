@@ -4,7 +4,7 @@
 // window) renders only after client mount.
 import { useRouteHead } from '../../composables/useRouteHead'
 import ClientOnly from '../../components/ClientOnly.vue'
-import PythonPlayground from './PythonPlayground.vue'
+import PythonIDE from './PythonIDE.vue'
 
 const { meta: m } = useRouteHead()
 </script>
@@ -12,7 +12,7 @@ const { meta: m } = useRouteHead()
 <template>
   <div class="route-page">
     <h1 class="sr-only">{{ m.h1 }}</h1>
-    <ClientOnly><PythonPlayground /></ClientOnly>
+    <ClientOnly><PythonIDE /></ClientOnly>
   </div>
 </template>
 
