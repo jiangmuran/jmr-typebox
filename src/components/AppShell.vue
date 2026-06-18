@@ -12,16 +12,16 @@ import CommandPalette from './CommandPalette.vue'
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
 const { toastMessage, toastVisible } = useToast()
-const { locale, t, toggleLocale, setLocale } = useI18n()
+const { t, setLocale } = useI18n()
 
 // Top-level tabs → primary route for each group.
+// Editor-centric IA: only 4 top tabs. Convert/export, document import, and text tools
+// live INSIDE the editor (+ right-click + ⌘K). Their /convert and /tools routes still
+// exist for SEO + the command palette, just not as top-level tabs.
 const TABS = [
   { id: 'markdown', to: '/', icon: 'edit' },
-  { id: 'txt', to: '/txt', icon: 'file' },
   { id: 'image', to: '/image/compress', icon: 'image' },
-  { id: 'convert', to: '/convert/markdown-to-pdf', icon: 'convert' },
   { id: 'media', to: '/media/mp3-to-wav', icon: 'media' },
-  { id: 'tools', to: '/tools/base64', icon: 'tools' },
   { id: 'python', to: '/python', icon: 'python' },
 ]
 const activeTab = computed(() => route.meta?.tab || 'markdown')
@@ -31,12 +31,9 @@ function handleResize() { isMobile.value = window.innerWidth <= 768 }
 onMounted(() => { handleResize(); window.addEventListener('resize', handleResize) })
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 
-const menuOpen = ref(false)
 const settingsOpen = ref(false)
 const paletteOpen = ref(false)
-function closeMenu() { menuOpen.value = false }
-function openSettings() { closeMenu(); settingsOpen.value = true }
-function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.print() }
+function openSettings() { settingsOpen.value = true }
 </script>
 
 <template>
@@ -58,7 +55,7 @@ function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.prin
           <svg v-else-if="tb.icon==='convert'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h9l-2.5-2.5M14 11H5l2.5 2.5"/></svg>
           <svg v-else-if="tb.icon==='media'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11V3.5l8-1.5V9.5"/><circle cx="3.5" cy="11.5" r="1.8"/><circle cx="11.5" cy="9.5" r="1.8"/></svg>
           <svg v-else-if="tb.icon==='tools'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5a3 3 0 0 0-4 4l-4.5 4.5 2 2L8.5 8.5a3 3 0 0 0 4-4l-2 2-1.5-.5-.5-1.5z"/></svg>
-          <svg v-else-if="tb.icon==='python'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5c-2 0-3 1-3 2.5V7h3M5 4.5H3.5C2 4.5 1.5 6 1.5 8s.5 3.5 2 3.5H5"/><path d="M8 14.5c2 0 3-1 3-2.5V9H8m3 2.5h1.5c1.5 0 2-1.5 2-3.5s-.5-3.5-2-3.5H11"/></svg>
+          <svg v-else-if="tb.icon==='python'" class="tab-py" viewBox="0 0 24 24" fill="currentColor"><path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09zm13.09 3.95l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01z"/></svg>
           <span class="tab-text">{{ t('tab.' + tb.id) }}</span>
         </router-link>
       </nav>
@@ -67,10 +64,6 @@ function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.prin
 
       <button class="topbar-btn" @click="paletteOpen = true" :title="t('cmdk.open') + ' (⌘K)'">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke-linecap="round"/></svg>
-      </button>
-
-      <button class="topbar-btn lang-btn" @click="toggleLocale" :title="locale === 'zh' ? 'Switch to English' : '切换到中文'">
-        <span>{{ locale === 'zh' ? 'EN' : '中' }}</span>
       </button>
 
       <button class="topbar-btn" @click="toggleTheme" title="Toggle theme">
@@ -88,30 +81,7 @@ function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.prin
       <button class="topbar-btn" @click="openSettings" :title="t('settings.open')">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1.2v1.8M8 13v1.8M14.8 8H13M3 8H1.2M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3M12.7 12.7l-1.3-1.3M4.6 4.6L3.3 3.3"/></svg>
       </button>
-      <div class="dd-wrap">
-        <button class="topbar-btn" @click="menuOpen = !menuOpen" title="Menu">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-            <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
-          </svg>
-        </button>
-        <Transition name="dd">
-          <div v-if="menuOpen" class="dd-menu">
-            <button @click="doPrint()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="8.5" width="10" height="5" rx="1"/><path d="M4 8.5V3.5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/></svg>{{ t('menu.print') }}</button>
-            <div class="dd-sep"></div>
-            <div class="dd-about">
-              <strong>{{ t('menu.about.title') }}</strong> — {{ t('menu.about.desc') }}<br>
-              {{ t('menu.about.privacy') }}<br>
-              <a href="https://github.com/jiangmuran/jmr-typebox" target="_blank" rel="noopener">
-                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-                GitHub
-              </a>
-            </div>
-          </div>
-        </Transition>
-      </div>
     </header>
-
-    <div v-if="menuOpen" class="click-away" @click="closeMenu"></div>
 
     <main class="app-content">
       <router-view />

@@ -26,6 +26,9 @@ function toggleTool(id) {
 function onClear() {
   if (confirm(t('menu.clearAllConfirm'))) { clearAllData(); location.reload() }
 }
+
+function doPrint() { if (typeof window !== 'undefined') window.print() }
+const REPO = 'https://github.com/jiangmuran/jmr-typebox'
 </script>
 
 <template>
@@ -115,6 +118,16 @@ function onClear() {
             </div>
           </section>
 
+          <!-- About -->
+          <section>
+            <h3>{{ t('menu.about.title') }}</h3>
+            <p class="about-desc">{{ t('menu.about.desc') }} · {{ t('menu.about.privacy') }}</p>
+            <div class="about-row">
+              <button class="ghost" @click="doPrint">{{ t('menu.print') }}</button>
+              <a class="ghost about-link" :href="REPO" target="_blank" rel="noopener">GitHub →</a>
+            </div>
+          </section>
+
           <!-- Danger -->
           <section>
             <h3 class="danger">{{ t('settings.danger') }}</h3>
@@ -159,6 +172,9 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .chk { display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; }
 .ghost { width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
 .ghost:hover { background: var(--surface-hover); }
+.about-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px; }
+.about-row { display: flex; gap: 8px; }
+.about-link { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
 .danger-btn { width: 100%; padding: 8px; border: 1px solid rgba(255,69,58,0.3); border-radius: 8px; background: rgba(255,69,58,0.06); color: #ff453a; font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
 .danger-btn:hover { background: rgba(255,69,58,0.12); }
 

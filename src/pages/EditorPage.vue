@@ -6,6 +6,7 @@ import { useEditor } from '../composables/useEditor'
 import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import { useTheme } from '../composables/useTheme'
+import { convertersFor } from '../converters/registry'
 import { load, save } from '../utils/storage'
 import ClientOnly from '../components/ClientOnly.vue'
 import MdToolbar from '../components/MdToolbar.vue'
@@ -17,7 +18,7 @@ import EditorContextMenu from '../components/EditorContextMenu.vue'
 
 const { meta: m } = useRouteHead()
 const router = useRouter()
-const { content, filename, dirty, stats, updateContent, updateFilename, newDocument, loadFile } = useEditor()
+const { docs, activeId, content, filename, dirty, stats, updateContent, updateFilename, newDocument, loadFile, openDoc, closeDoc } = useEditor()
 const { showToast } = useToast()
 const { t } = useI18n()
 const { theme } = useTheme()
@@ -54,7 +55,7 @@ async function applyPlugin(plugin) {
   ctxShow.value = false
   const el = editorRef.value; if (!el) return
   let s = el.selectionStart, e = el.selectionEnd
-  if (e <= s) { s = 0; e = el.value.length } // no selection → whole document
+  if (e <= s) { s = 0; e = el.value.length }
   const target = el.value.substring(s, e)
   try {
     const result = plugin.asyncFn ? await plugin.asyncFn(target) : plugin.fn(target)
@@ -86,12 +87,28 @@ function insertLine(pre, ph) {
   insertMarkdown(p + pre, '', ph)
 }
 
-// ---- Export ----
+function downloadBlob(blob, name) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob); a.download = name
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
+// ---- Export (conversions live in the editor) ----
 async function doExport(fmt) {
   exportOpen.value = false
-  const { exportTXT, exportMD, exportHTML, exportPDF, exportPNG, copyHTML, copyMarkdown } = await import('../utils/export')
   const fn = filename.value || 'untitled'
   try {
+    if (fmt === 'docx') {
+      const conv = convertersFor('md').find(c => c.output === 'docx')
+      if (!conv) { showToast(t('toast.exportFailed')); return }
+      showToast(t('toast.genDocx'))
+      const blob = await conv.run(content.value, {})
+      downloadBlob(blob, `${fn}.docx`)
+      showToast(`${t('toast.downloaded')} ${fn}.docx`)
+      return
+    }
+    const { exportTXT, exportMD, exportHTML, exportPDF, exportPNG, copyHTML, copyMarkdown } = await import('../utils/export')
     let result
     switch (fmt) {
       case 'txt': result = exportTXT(content.value, fn); break
@@ -106,17 +123,27 @@ async function doExport(fmt) {
   } catch (e) { console.error(e); showToast(t('toast.exportFailed')) }
 }
 
-// ---- File open / import ----
+// ---- File open / import (PDF → Markdown happens IN the editor, as a new doc) ----
 function openFilePicker() {
   const input = document.createElement('input')
   input.type = 'file'; input.accept = '.txt,.md,.markdown,.html,.htm,.pdf'
   input.onchange = e => { if (e.target.files[0]) importFile(e.target.files[0]) }
   input.click()
 }
-function importFile(file) {
-  if (/\.pdf$/i.test(file.name)) { router.push('/convert/pdf-to-markdown'); return }
+async function importFile(file) {
+  if (/\.pdf$/i.test(file.name)) {
+    showToast(`${t('pdf.extracting')} ${file.name}...`)
+    try {
+      const { pdfToMarkdown } = await import('../utils/pdfToMarkdown')
+      const r = await pdfToMarkdown(file)
+      loadFile(r.markdown, file.name.replace(/\.pdf$/i, ''))
+      startDismissed.value = true
+      showToast(`${r.numPages} ${t('toast.pdfExtracted')}`)
+    } catch (e) { console.error(e); showToast(t('toast.pdfFailed')) }
+    return
+  }
   const reader = new FileReader()
-  reader.onload = () => { loadFile(reader.result, file.name.replace(/\.\w+$/, '')); showToast(`${t('toast.loaded')} ${file.name}`) }
+  reader.onload = () => { loadFile(reader.result, file.name.replace(/\.\w+$/, '')); startDismissed.value = true; showToast(`${t('toast.loaded')} ${file.name}`) }
   reader.readAsText(file)
 }
 
@@ -132,8 +159,9 @@ function onDrop(e) {
 }
 
 function handleNew() {
-  if (content.value && !confirm(t('toast.startFresh'))) return
-  newDocument(); startDismissed.value = false; showToast(t('toast.newDoc'))
+  newDocument()
+  startDismissed.value = false
+  nextTick(() => editorRef.value?.focus())
 }
 
 function onKeydown(e) {
@@ -145,6 +173,7 @@ function onKeydown(e) {
   else if (mod && e.key === 'e') { e.preventDefault(); insertMarkdown('`', '`', 'code') }
   else if (mod && e.key === 'f') { e.preventDefault(); searchOpen.value = !searchOpen.value }
   else if (mod && e.shiftKey && (e.key === 'N' || e.key === 'n')) { e.preventDefault(); handleNew() }
+  else if (mod && e.key === 'w') { e.preventDefault(); closeDoc(activeId.value) }
   else if (mod && e.key === 'p') {
     e.preventDefault()
     const modes = isMobile.value ? ['editor', 'preview'] : ['editor', 'split', 'preview']
@@ -177,6 +206,15 @@ onUnmounted(() => {
     <h1 class="sr-only">{{ m.h1 }}</h1>
 
     <ClientOnly>
+      <!-- Document tabs -->
+      <div v-show="!zenMode" class="doc-tabs">
+        <button v-for="d in docs" :key="d.id" class="doc-tab" :class="{ active: d.id === activeId }" @click="openDoc(d.id)">
+          <span class="doc-tab-name">{{ d.name || 'untitled' }}</span>
+          <span class="doc-tab-x" :title="t('doc.close')" @click.stop="closeDoc(d.id)">×</span>
+        </button>
+        <button class="doc-tab-new" :title="t('menu.new')" @click="handleNew">+</button>
+      </div>
+
       <!-- Editor control row -->
       <div v-show="!zenMode" class="editor-controls">
         <div class="ec-file">
@@ -195,9 +233,6 @@ onUnmounted(() => {
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
           </button>
         </div>
-        <button class="ec-btn" @click="handleNew" :title="t('menu.new')">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h5l4 4V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z"/><line x1="8" y1="7" x2="8" y2="12"/><line x1="5.5" y1="9.5" x2="10.5" y2="9.5"/></svg>
-        </button>
         <button class="ec-btn" @click="openFilePicker" :title="t('menu.open')">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 13.5V4a1 1 0 0 1 1-1h3.6l1.4 2H13a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>
         </button>
@@ -211,11 +246,10 @@ onUnmounted(() => {
           <Transition name="dd">
             <div v-if="exportOpen" class="dd-menu">
               <div class="dd-label">{{ t('export.download') }}</div>
-              <button @click="doExport('txt')">{{ t('export.txt') }}</button>
               <button @click="doExport('md')">{{ t('export.md') }}<kbd>{{ modLabel }}S</kbd></button>
+              <button @click="doExport('txt')">{{ t('export.txt') }}</button>
               <button @click="doExport('html')">{{ t('export.html') }}</button>
-              <div class="dd-sep"></div>
-              <div class="dd-label">{{ t('export.section') }}</div>
+              <button @click="doExport('docx')">{{ t('export.docx') }}</button>
               <button @click="doExport('pdf')">{{ t('export.pdf') }}</button>
               <button @click="doExport('png')">{{ t('export.png') }}</button>
               <div class="dd-sep"></div>
@@ -258,11 +292,22 @@ onUnmounted(() => {
 .start-overlay { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; overflow-y: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
+/* Document tabs */
+.doc-tabs { display: flex; align-items: stretch; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--border-light); overflow-x: auto; flex-shrink: 0; }
+.doc-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 6px 8px 6px 11px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-tertiary); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
+.doc-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
+.doc-tab.active { color: var(--text); background: var(--surface); border-color: var(--border-light); }
+.doc-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.doc-tab-x { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 4px; font-size: 14px; line-height: 1; color: var(--text-tertiary); }
+.doc-tab-x:hover { background: var(--surface-active); color: var(--text); }
+.doc-tab-new { width: 26px; flex-shrink: 0; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
+.doc-tab-new:hover { background: var(--surface-hover); color: var(--text); }
+
 .editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
 .ec-file { display: flex; align-items: center; }
-.ec-file input { border: none; background: transparent; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); outline: none; width: 100px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; }
+.ec-file input { border: none; background: transparent; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); outline: none; width: 120px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; }
 .ec-file input:hover { background: var(--surface-hover); }
-.ec-file input:focus { background: var(--surface-hover); color: var(--text); width: 140px; }
+.ec-file input:focus { background: var(--surface-hover); color: var(--text); width: 160px; }
 .file-ext { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
 .ec-spacer { flex: 1; }
 
@@ -295,7 +340,7 @@ onUnmounted(() => {
 .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.zen .editor-controls { display: none; }
-@media (max-width: 768px) { .ec-file input { width: 70px; } .ec-file input:focus { width: 100px; } }
-@media print { .editor-controls, .click-away { display: none !important; } }
+.zen .editor-controls, .zen .doc-tabs { display: none; }
+@media (max-width: 768px) { .ec-file input { width: 80px; } .ec-file input:focus { width: 110px; } }
+@media print { .editor-controls, .doc-tabs, .click-away { display: none !important; } }
 </style>
