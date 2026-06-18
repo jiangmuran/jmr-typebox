@@ -11,6 +11,19 @@
   <!-- Cloudflare Web Analytics -->
   <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "212b43858f8a4b9c8cf9f1f6c060f413"}'></script>
   <!-- End Cloudflare Web Analytics -->
+  <script>
+    // Apply persisted appearance before paint to avoid flash / hydration mismatch.
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem('tb-settings') || '{}')
+        var t = s.theme || 'system'
+        if (t === 'system') t = window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = t
+        if (s.density) document.documentElement.dataset.density = s.density
+        if (s.accent) document.documentElement.style.setProperty('--accent', s.accent)
+      } catch (e) {}
+    })()
+  </script>
 </head>
 <body>
   <div id="app"></div>

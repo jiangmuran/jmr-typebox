@@ -6,6 +6,7 @@ import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import ToastNotification from './ToastNotification.vue'
 import WelcomeDialog from './WelcomeDialog.vue'
+import SettingsPanel from './SettingsPanel.vue'
 
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
@@ -30,21 +31,10 @@ onMounted(() => { handleResize(); window.addEventListener('resize', handleResize
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 
 const menuOpen = ref(false)
+const settingsOpen = ref(false)
 function closeMenu() { menuOpen.value = false }
-
+function openSettings() { closeMenu(); settingsOpen.value = true }
 function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.print() }
-
-function clearAllData() {
-  closeMenu()
-  if (!confirm(t('menu.clearAllConfirm'))) return
-  const keys = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)
-    if (k && k.startsWith('tb-')) keys.push(k)
-  }
-  keys.forEach(k => localStorage.removeItem(k))
-  location.reload()
-}
 </script>
 
 <template>
@@ -89,6 +79,9 @@ function clearAllData() {
         </svg>
       </button>
 
+      <button class="topbar-btn" @click="openSettings" :title="t('settings.open')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1.2v1.8M8 13v1.8M14.8 8H13M3 8H1.2M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3M12.7 12.7l-1.3-1.3M4.6 4.6L3.3 3.3"/></svg>
+      </button>
       <div class="dd-wrap">
         <button class="topbar-btn" @click="menuOpen = !menuOpen" title="Menu">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
@@ -98,8 +91,6 @@ function clearAllData() {
         <Transition name="dd">
           <div v-if="menuOpen" class="dd-menu">
             <button @click="doPrint()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="8.5" width="10" height="5" rx="1"/><path d="M4 8.5V3.5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/></svg>{{ t('menu.print') }}</button>
-            <div class="dd-sep"></div>
-            <button class="dd-danger" @click="clearAllData()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><polyline points="3 4 4 4 13 4"/><path d="M5.5 4V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"/><path d="M12 4v9a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 13V4"/><line x1="7" y1="7" x2="7" y2="12"/><line x1="9" y1="7" x2="9" y2="12"/></svg>{{ t('menu.clearAll') }}</button>
             <div class="dd-sep"></div>
             <div class="dd-about">
               <strong>{{ t('menu.about.title') }}</strong> — {{ t('menu.about.desc') }}<br>
@@ -120,6 +111,7 @@ function clearAllData() {
       <router-view />
     </main>
 
+    <SettingsPanel v-model:open="settingsOpen" />
     <WelcomeDialog @set-locale="setLocale" />
     <ToastNotification :message="toastMessage" :visible="toastVisible" />
   </div>
