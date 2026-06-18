@@ -1,4 +1,6 @@
 import { health } from './api/health.js'
+import { proxyFetch } from './api/fetch.js'
+import { preview } from './api/preview.js'
 
 // Single Cloudflare Worker: serves the static SSG frontend via the ASSETS binding and
 // handles optional /api/* routes. All /api features are optional — the frontend degrades
@@ -8,7 +10,8 @@ export default {
     const url = new URL(request.url)
 
     if (url.pathname === '/api/health') return health()
-    // Future (Phase 1 E): /api/fetch (CORS proxy), /api/preview (OG)
+    if (url.pathname === '/api/fetch') return proxyFetch(request)
+    if (url.pathname === '/api/preview') return preview(request)
     if (url.pathname.startsWith('/api/')) {
       return new Response('Not found', { status: 404 })
     }
