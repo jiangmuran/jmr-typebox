@@ -118,10 +118,12 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 | `/image/compress` | 图片压缩 | 图片 |
 | `/image/convert` | 图片转格式(PNG/JPG/WebP/…) | 图片 |
 | `/image/watermark` | 图片加水印 | 图片 |
+| `/image/edit` | 图片编辑:涂鸦 / 加字 / 打码(马赛克·模糊) | 图片 |
 | `/convert/markdown-to-pdf` | MD→PDF(矢量 + 图片版) | 转换 |
 | `/convert/markdown-to-docx` | MD→DOCX | 转换 |
 | `/convert/markdown-to-html` | MD→HTML | 转换 |
 | `/convert/pdf-to-markdown` | PDF→MD(沿用现引擎) | 转换 |
+| `/convert/pdf-to-word` | PDF→Word(DOCX;pdf→md→docx 流水线,后端可升级高保真) | 转换 |
 | `/convert/pdf-to-epub` *(预留)* | PDF→EPUB(后端候选) | 转换 |
 | `/convert/docx-to-image` *(预留)* | DOCX→PNG/JPG(后端候选) | 转换 |
 | `/media/mp3-to-wav` | MP3→WAV(ffmpeg.wasm) | 媒体 |
@@ -193,7 +195,7 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 }
 ```
 
-- **客户端转换器**:md→html、md→pdf(矢量 + 图片版)、md→docx(`html-to-docx`)、pdf→md(现引擎本地化)、图片压缩/转格式/水印(Canvas)、音频(ffmpeg.wasm)。
+- **客户端转换器**:md→html、md→pdf(矢量 + 图片版)、md→docx(`html-to-docx`)、pdf→md(现引擎本地化)、**pdf→word(pdf→md→docx 流水线)**、图片压缩/转格式/水印/**编辑标注**(Canvas)、音频(ffmpeg.wasm)。
 - **后端候选(预留)**:pdf→epub、docx→png/jpg 等重任务,注册为 `where:'backend'`,加 `/api` 端点即生效;未实现时入口标注"即将推出/需后端"。
 - 这样新增转换 = 注册一个对象,UI/路由/SEO 由注册表自动驱动。
 
@@ -216,10 +218,12 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - **压缩** `/image/compress`:质量滑杆 + 最大宽/目标尺寸,显示前后大小对比,批量。
 - **转格式** `/image/convert`:PNG/JPG/WebP(AVIF 视浏览器支持),批量下载/打包。
 - **水印** `/image/watermark`:文字/图片水印,位置九宫格、透明度、旋转、平铺,Canvas 合成预览后下载。
+- **编辑/标注** `/image/edit`:Canvas 图像标注器——**涂鸦**(自由画笔,颜色/粗细)、**加字**(可拖拽文本框,字体/字号/颜色)、**打码**(框选区域马赛克或高斯模糊,遮挡敏感信息);支持撤销/重做,导出下载。
 - 全部 Canvas 本地完成,无后端。可选"从 URL 导入图片"= 后端功能(带「i」)。
 
 ### 9.4 转换(`/convert/*`)
-- MD→PDF(§9.6)、MD→DOCX、MD→HTML、PDF→MD;预留 pdf→epub、docx→png/jpg(后端候选)。
+- MD→PDF(§9.6)、MD→DOCX、MD→HTML、PDF→MD;**PDF→Word(DOCX)**;预留 pdf→epub、docx→png/jpg(后端候选)。
+- **PDF→Word**:客户端流水线复用「PDF→MD 布局引擎」+「MD→DOCX」,得到可编辑 .docx(文本/标题/列表/表格尽力还原);高保真版列为后端候选(LibreOffice/服务端)。
 - 导出主题选择(§10),与写作主题独立。
 
 ### 9.5 媒体(`/media/*`)
@@ -388,8 +392,8 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - 引入 Vitest;迁移现有 CDN 库为本地依赖(pdf.js/html2canvas/jspdf)。
 
 ### 阶段 1 — 并行(各开一个 Opus Agent;依赖阶段 0 契约)
-- **Agent A — 图片套件**:`/image/compress|convert|watermark` + 三方式载入 + SEO 页。
-- **Agent B — 转换套件 + 主题**:MD→PDF(矢量+图片版)、MD→DOCX、MD→HTML、PDF→MD 本地化;**双轨 Typora 主题系统**(本地打包 + 悬停预览 + 缓存)+ 导出对话框预览;SEO 页。
+- **Agent A — 图片套件**:`/image/compress|convert|watermark|edit`(编辑 = 涂鸦/加字/打码)+ 三方式载入 + SEO 页。
+- **Agent B — 转换套件 + 主题**:MD→PDF(矢量+图片版)、MD→DOCX、MD→HTML、PDF→MD、**PDF→Word** 本地化;**双轨 Typora 主题系统**(本地打包 + 悬停预览 + 缓存)+ 导出对话框预览;SEO 页。
 - **Agent C — 媒体套件**:ffmpeg.wasm 音频互转 + 懒加载/体积提示 + SEO 页。
 - **Agent D — 右键插件系统**:上下文菜单 + 首批插件 + 单测 + 编辑器写作主题接线。
 - **Agent E — 后端**:`/api/fetch`(CORS 代理)+ `/api/preview`(OG)+ 前端"从 URL 导入"接线 + 「i」提示 + 降级。
