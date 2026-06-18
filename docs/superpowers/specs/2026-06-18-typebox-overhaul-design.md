@@ -32,7 +32,8 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 | 后端可选性 | 所有后端功能**可选**:后端不可用/未部署/被用户在设置里关闭时,相关入口自动隐藏或置灰,主功能不受影响。 |
 | 后端提示 | 每个用到后端的 UI 元素旁有「i」图标 → 弹出说明"此功能需要后端(可选)、后端开源(链接)、可在设置关闭"。 |
 | 自定义深度 | **精选设置**(主题/强调色/字体/字号/行高/密度/工具显隐与排序/默认落地工具/导出默认主题/后端总开关)。本地持久化。 |
-| Tab 结构 | **5 个顶层 tab**:编辑器 / TXT / 图片 / 转换 / 媒体。TXT 独立保留(快速建 txt,尤其移动端)。 |
+| Tab 结构 | **6 个顶层 tab**:编辑器 / TXT / 图片 / 转换 / 媒体 / 工具箱。TXT 独立保留(快速建 txt,尤其移动端)。 |
+| 可发现性 | 页面克制但功能多 → **命令面板(Cmd/Ctrl+K)** 作为通用入口,可搜索所有工具/转换/插件/设置/主题;配合分组 tab + 子工具切换 + 右键插件 + 逐工具 SEO 页,确保"找得到"。 |
 | 主题系统 | **写作主题 与 导出主题相互独立**,均可动态切换 + 悬停实时预览 + 轻量缓存。直接搬运 Typora 社区主题(许可证允许),本地打包含字体。 |
 | MD→PDF | 默认「打印/存为 PDF」(矢量、文字可选、最高质量,走打印 CSS + `@page` + 选定导出主题);另保留「图片版 PDF」(html2canvas+jspdf 本地)一键栅格化。 |
 | 交付 | **分阶段**;实现阶段**并行多个 Agent**,**所有 Agent 必须使用 Opus 模型**。 |
@@ -109,7 +110,7 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 
 ## 4. 路由与 SEO
 
-### 4.1 路由表(顶层 5 tab + 子功能,每个独立 URL)
+### 4.1 路由表(顶层 6 tab + 子功能,每个独立 URL)
 
 | URL | 功能 | tab |
 |---|---|---|
@@ -129,6 +130,13 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 | `/media/mp3-to-wav` | MP3→WAV(ffmpeg.wasm) | 媒体 |
 | `/media/wav-to-mp3` | WAV→MP3 | 媒体 |
 | `/media/*` | 其他常见音频互转 | 媒体 |
+| `/tools/word-count` | 字数统计 | 工具箱 |
+| `/tools/base64` | Base64 / Hex / URL / HTML 实体 编解码 | 工具箱 |
+| `/tools/aes` | AES 加解密 + 常用加密 | 工具箱 |
+| `/tools/hash` | 哈希(MD5 / SHA / HMAC) | 工具箱 |
+| `/tools/json` | JSON 格式化 / 校验 | 工具箱 |
+| `/tools/jwt` | JWT 解码 | 工具箱 |
+| `/tools/python` | Python 解释器(Pyodide,懒加载) | 工具箱 |
 | `/settings` *(或抽屉)* | 设置/自定义 | — |
 
 - 落地默认:访问 `/` 渲染编辑器;若用户上次停留在其他工具,可选"恢复上次位置"(设置项,默认开,但 `/` 本身始终是干净编辑器以保证 SEO 落地页稳定)。移动端行为沿用现状。
@@ -150,6 +158,19 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - **空状态、加载态、错误态**都精心设计(拖拽区、进度、骨架/spinner、toast)。
 - **统一交互范式**:所有工具都支持 **拖拽 / 点击 / 复制粘贴** 三种载入方式。
 - 实现期使用 `frontend-design` skill 做视觉打磨,并用真实渲染 + 截图校验。
+
+### 5.1 可发现性:命令面板 + 信息架构(核心挑战)
+
+**挑战**:页面看起来要极简,但功能其实很多,且用户要能找得到。解法是分层:
+
+1. **命令面板 `CommandPalette`(Cmd/Ctrl+K,顶栏也有可见搜索入口)** — 通用入口。模糊搜索并跳转/执行:所有工具页、所有转换器、所有右键插件、设置项、主题切换、导入/导出动作。键盘优先,带最近使用 / 分组 / 高亮。这是"功能多但找得到"的主力。
+2. **6 个克制的分组 tab** — 顶层只暴露大类(编辑器/TXT/图片/转换/媒体/工具箱)。
+3. **tab 内子工具切换**(chips) — 每个大类下的具体功能,一眼可见、可切换,每个有独立 URL。
+4. **右键插件** — 编辑时的就地文本操作(选区)。
+5. **逐工具 SEO 页** — 用户也可从搜索引擎直接落到某个具体工具。
+6. **新手引导** 明确教用户 `Cmd/Ctrl+K`。
+
+**命令注册表 `commandRegistry`**:统一的可搜索条目源(id/标题/别名/分组/图标/动作/`needsBackend`)。路由、转换器、插件、设置在各自模块注册进来,命令面板与"工具箱首页网格"都从它渲染 → 新增功能即自动可被发现。
 
 ---
 
@@ -241,6 +262,18 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - 复制 HTML / 复制 Markdown(沿用)。
 - **导出对话框**:主题选择器 + **悬停预览**(动态渲染文档首页为该主题)。
 
+### 9.7 工具箱(`/tools/*`)
+
+小型文本/编码/加密/开发工具的家;每个子工具是简单的"输入 → 输出"面板,支持拖拽/粘贴/点击,均有独立 URL + SEO,并注册进命令面板。**工具箱首页是一个工具网格**(从 `commandRegistry` 渲染),让功能"看得见、找得到"。
+- **字数统计** `/tools/word-count`:字数/字符/行/段/阅读时长,实时。
+- **编解码** `/tools/base64`:Base64 / Hex / URL / HTML 实体 / Unicode 转义,互转。
+- **加密** `/tools/aes`:AES-GCM 口令加 / 解密(SubtleCrypto);可扩展常用算法。
+- **哈希** `/tools/hash`:MD5 / SHA-1/256/384/512 / HMAC(SHA 系列用 SubtleCrypto,MD5 用本地库)。
+- **JSON** `/tools/json`:格式化 / 压缩 / 校验。
+- **JWT** `/tools/jwt`:解码 header/payload(本地,不校验签名密钥)。
+- **Python 解释器** `/tools/python`:**Pyodide**(浏览器 WASM 沙箱,无后端),代码编辑 + 运行 + 输出控制台;懒加载 + 首次体积提示。
+- 与 §11 右键插件**共享同一套纯函数**,避免重复实现。
+
 ---
 
 ## 10. 主题系统(写作 + 导出双轨)
@@ -282,9 +315,12 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
   - 大小写:UPPER / lower / Title / Sentence
   - JSON:格式化 / 压缩
   - 行操作:排序 / 去重 / 反转
-  - 哈希:SHA-256(SubtleCrypto)
+  - 编码:Hex / Base32 / Unicode 转义
+  - 哈希:MD5 / SHA-1/256/384/512 / HMAC(SHA 系列用 SubtleCrypto,MD5 用本地库)
+  - 加密:AES 加 / 解密(口令,SubtleCrypto AES-GCM)
+  - JWT 解码
   - 字数/字符统计
-- 纯前端、纯函数实现,单测覆盖。
+- 纯前端、纯函数实现,单测覆盖;与 §9.7 工具箱页**共享同一套函数**。
 
 ---
 
@@ -308,7 +344,7 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 
 - **初始包最小化**:仅编辑器外壳进首屏 bundle。
 - **路由级 code-split**:每个工具页 `defineAsyncComponent` / 动态 import。
-- **重库一律按需 `import()`**:`ffmpeg.wasm`、`pdf.js`、`html-to-docx`、`lamejs`、`html2canvas`、`jspdf`、各大字体/主题 — 首次用到才加载,加载时给进度/体积提示,加载后缓存。
+- **重库一律按需 `import()`**:`ffmpeg.wasm`、**`pyodide`(Python,最重)**、`pdf.js`、`html-to-docx`、`lamejs`、`html2canvas`、`jspdf`、MD5 等加密库、各大字体/主题 — 首次用到才加载,加载时给进度/体积提示,加载后缓存。
 - **去 CDN**:上述库改为本地 npm 依赖打包(分析 beacon 除外)。
 - 字体走系统字体栈(沿用),不引 web 字体 CDN;主题自带字体本地化。
 - `modulepreload` 关键 chunk;SSG 静态首屏;图片懒加载;`URL.revokeObjectURL` 释放。
@@ -388,6 +424,7 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - `useSettings`(精选设置 + 持久化)+ 设置面板;`useBackend`(探测/总开关/降级)+ `<BackendInfo>`「i」组件。
 - 懒加载基础设施(路由 code-split + 重库按需加载器 + 加载/体积提示 UX)。
 - **转换器注册表** + 「i」提示接线。
+- **命令注册表 + 命令面板(Cmd/Ctrl+K)**:可发现性核心;索引工具/转换/插件/设置/主题,各阶段功能注册进来。
 - 扩展新手引导。
 - 引入 Vitest;迁移现有 CDN 库为本地依赖(pdf.js/html2canvas/jspdf)。
 
@@ -397,7 +434,8 @@ TypeBox 当前是一个 Vue 3 + Vite 的轻量纯前端工具(Markdown 编辑器
 - **Agent C — 媒体套件**:ffmpeg.wasm 音频互转 + 懒加载/体积提示 + SEO 页。
 - **Agent D — 右键插件系统**:上下文菜单 + 首批插件 + 单测 + 编辑器写作主题接线。
 - **Agent E — 后端**:`/api/fetch`(CORS 代理)+ `/api/preview`(OG)+ 前端"从 URL 导入"接线 + 「i」提示 + 降级。
-- **Agent F — 艺术级 UI 打磨**:在 A–E 落地后做整合性视觉/交互终审(frontend-design + 截图校验)。建议作为收尾串行步骤而非并行。
+- **Agent G — 工具箱**:`/tools/*`(字数统计、Base64/Hex/URL/HTML 编解码、AES/哈希/HMAC、JSON、JWT)+ **Python 解释器(Pyodide,懒加载)**;与右键插件共享纯函数;全部注册进命令面板;工具网格首页;SEO 页。
+- **Agent F — 艺术级 UI 打磨**:在 A–E、G 落地后做整合性视觉/交互终审(frontend-design + 截图校验)。建议作为收尾串行步骤而非并行。
 
 依赖说明:A–E 均依赖阶段 0 的 router / 注册表 / useSettings / useBackend / 懒加载基础设施;彼此基本独立可并行(注意 B 与导出对话框、D 与编辑器有少量交叉,用清晰接口隔离)。各 Agent 在隔离 worktree 工作以避免冲突。
 
