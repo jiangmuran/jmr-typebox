@@ -1,0 +1,9 @@
+name = "typebox"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+
+# Serve the built static frontend; the Worker runs first for /api/* then falls through.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
