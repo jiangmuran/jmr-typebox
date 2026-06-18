@@ -1,6 +1,7 @@
 <script setup>
 import { useSettings } from '../composables/useSettings'
 import { useI18n } from '../composables/useI18n'
+import BackendInfo from './BackendInfo.vue'
 
 const open = defineModel('open', { default: false })
 const { settings, setSetting, resetSettings, clearAllData } = useSettings()
@@ -100,7 +101,7 @@ function onClear() {
           <!-- Backend -->
           <section>
             <h3>{{ t('settings.backend') }}</h3>
-            <label class="row">{{ t('settings.backendEnabled') }}
+            <label class="row"><span class="lbl">{{ t('settings.backendEnabled') }} <BackendInfo /></span>
               <input type="checkbox" :checked="settings.backendEnabled" @change="setSetting('backendEnabled', $event.target.checked)">
             </label>
           </section>
@@ -143,6 +144,7 @@ h3.danger { color: #ff453a; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text); margin-bottom: 12px; }
 .row:last-child { margin-bottom: 0; }
 .row.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.lbl { display: inline-flex; align-items: center; gap: 6px; }
 .seg { display: flex; gap: 1px; background: var(--surface-hover); border-radius: 7px; padding: 2px; }
 .seg button { flex: 1; padding: 5px 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }

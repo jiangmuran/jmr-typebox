@@ -76,6 +76,8 @@ const dict = {
     'settings.language': 'Language',
     'settings.danger': 'Danger zone',
     'settings.reset': 'Reset settings',
+    'backend.notice': 'This feature needs the optional backend. It is open source and can be turned off in Settings.',
+    'backend.viewSource': 'View backend source',
 
     // Editor
     'editor.placeholder': 'Start writing Markdown here...',
@@ -225,6 +227,8 @@ const dict = {
     'settings.language': '语言',
     'settings.danger': '危险区',
     'settings.reset': '重置设置',
+    'backend.notice': '此功能需要可选的后端。后端开源，可在设置中随时关闭。',
+    'backend.viewSource': '查看后端源码',
 
     'editor.placeholder': '在此输入 Markdown...',
 
