@@ -336,13 +336,15 @@ git commit -m "feat: route table + per-route SEO metadata"
 
 ```js
 import { ViteSSG } from 'vite-ssg'
-import { createHead } from '@unhead/vue'
 import App from './App.vue'
 import { routes } from './router/routes'
 import './styles/global.css'
 
-export const createApp = ViteSSG(App, { routes }, ({ app }) => {
-  app.use(createHead())
+// NOTE: vite-ssg@28 auto-installs unhead (useHead:true) using @unhead/vue v2 (its bundled dep).
+// Pin the direct dep to @unhead/vue@^2 so pages' useHead() shares vite-ssg's head context.
+// Do NOT call createHead() manually here.
+export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
+  // route guards / plugin registration go here later
 })
 ```
 
