@@ -13,6 +13,7 @@ import SearchBar from '../components/SearchBar.vue'
 import Workspace from '../components/Workspace.vue'
 import StatusBar from '../components/StatusBar.vue'
 import StartPanel from '../components/StartPanel.vue'
+import EditorContextMenu from '../components/EditorContextMenu.vue'
 
 const { meta: m } = useRouteHead()
 const router = useRouter()
@@ -34,6 +35,34 @@ const showStart = computed(() => !content.value.trim() && !startDismissed.value 
 function startWriting() { startDismissed.value = true; nextTick(() => editorRef.value?.focus()) }
 
 function setViewMode(mode) { viewMode.value = mode; save('view', mode) }
+
+// ---- Right-click plugins ----
+const ctxShow = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+function onEditorMounted(el) {
+  editorRef.value = el
+  el.addEventListener('contextmenu', onCtx)
+}
+function onCtx(e) {
+  e.preventDefault()
+  ctxX.value = e.clientX
+  ctxY.value = e.clientY
+  ctxShow.value = true
+}
+async function applyPlugin(plugin) {
+  ctxShow.value = false
+  const el = editorRef.value; if (!el) return
+  let s = el.selectionStart, e = el.selectionEnd
+  if (e <= s) { s = 0; e = el.value.length } // no selection → whole document
+  const target = el.value.substring(s, e)
+  try {
+    const result = plugin.asyncFn ? await plugin.asyncFn(target) : plugin.fn(target)
+    el.focus()
+    el.setRangeText(result, s, e, 'select')
+    updateContent(el.value)
+  } catch { showToast(t('tool.invalid')) }
+}
 
 function toggleZen() {
   zenMode.value = !zenMode.value
@@ -121,7 +150,7 @@ function onKeydown(e) {
     const modes = isMobile.value ? ['editor', 'preview'] : ['editor', 'split', 'preview']
     setViewMode(modes[(modes.indexOf(viewMode.value) + 1) % modes.length])
   } else if (e.key === 'Escape') {
-    searchOpen.value = false; exportOpen.value = false
+    searchOpen.value = false; exportOpen.value = false; ctxShow.value = false
     if (zenMode.value) { zenMode.value = false; document.fullscreenElement && document.exitFullscreen?.() }
   } else if (e.key === 'F11') { e.preventDefault(); toggleZen() }
 }
@@ -206,7 +235,7 @@ onUnmounted(() => {
       <div class="editor-body">
         <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
         <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
-        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="el => editorRef = el" />
+        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="onEditorMounted" />
         <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
         <StartPanel v-if="showStart" class="start-overlay" @write="startWriting" />
       </div>
@@ -217,6 +246,8 @@ onUnmounted(() => {
           <span>{{ t('drag.hint') }}</span>
         </div>
       </Transition>
+
+      <EditorContextMenu :show="ctxShow" :x="ctxX" :y="ctxY" @apply="applyPlugin" @close="ctxShow = false" />
     </ClientOnly>
   </div>
 </template>
