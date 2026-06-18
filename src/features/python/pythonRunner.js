@@ -6,34 +6,149 @@
 import { loadLibrary } from '../../utils/loadLibrary'
 import { PYODIDE_SIZE_MB } from './pythonHelpers'
 
-// Self-hosted core (copied into public/pyodide/ from the `pyodide` package by
-// scripts/copy-assets.js). Loading from a same-origin folder means NO CDN and the browser
-// HTTP cache keeps the ~12MB runtime after first use, so re-loads are instant.
-const INDEX_URL = '/pyodide/'
+// Pyodide is loaded from the OFFICIAL jsDelivr CDN. The version MUST match the installed
+// `pyodide` npm package (node_modules/pyodide/package.json -> "version": "314.0.0", which ships
+// Python 3.14). Using the CDN indexURL is what makes loadPackage + micropip + the bundled
+// numpy/matplotlib wheels resolve (they live next to the runtime under /full/). The browser HTTP
+// cache keeps the ~12MB runtime after the first visit, so re-loads are effectively instant.
+export const PYODIDE_VERSION = '314.0.0'
+export const PYODIDE_CDN_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`
 
 let pyodideInstance = null   // the loaded Pyodide instance (singleton)
 let loadPromise = null       // dedupes concurrent load() calls
 let bootstrapped = false     // capture helpers defined in the interpreter once
 let matplotlibPatched = false // Agg backend + show() shim installed once matplotlib loads
 
-// Lazily import the `pyodide` ESM through loadLibrary so the shared spinner + size hint
-// ("downloading ~12MB") works exactly like the ffmpeg core and other heavy libs.
+// ---- stdin (interactive input) ----------------------------------------------------------
+// Pyodide's stdin callback is SYNCHRONOUS (it must return one line of text immediately), and we
+// have no SharedArrayBuffer (no COOP/COEP headers), so we can't truly block an async run waiting
+// on the DOM. Instead we keep a queue of lines the user pre-typed in the console box; when a
+// program calls input() we shift the next queued line. If the queue is empty we fall back to a
+// caller-provided synchronous prompt (window.prompt) so an interactive input()-loop never
+// deadlocks. The caller also gets an echo callback so typed input shows up in the transcript.
+let stdinQueue = []          // lines waiting to satisfy the next input() call(s)
+let stdinPrompt = null       // () => string|null  — synchronous fallback (window.prompt)
+let stdinEcho = null         // (line) => void     — echo a consumed line into the console
+
+// Push lines the user typed into the console input box (split on newlines). They satisfy the
+// next input() call(s) in order.
+export function feedStdin(text) {
+  if (text == null) return
+  const parts = String(text).split('\n')
+  for (const p of parts) stdinQueue.push(p)
+}
+
+export function clearStdin() {
+  stdinQueue = []
+}
+
+// Wire the synchronous prompt fallback + echo hook used while a program runs. Pass nulls to clear.
+export function setStdinHandlers({ prompt, echo } = {}) {
+  stdinPrompt = typeof prompt === 'function' ? prompt : null
+  stdinEcho = typeof echo === 'function' ? echo : null
+}
+
+// The synchronous stdin function handed to Pyodide. Returns a whole line WITHOUT the trailing
+// newline (Pyodide/Python appends line handling itself); returning null signals EOF.
+// Lines pulled from the pre-typed queue were already echoed by the UI when the user submitted
+// them, so we only echo lines obtained interactively via the prompt fallback.
+function readStdinLine() {
+  if (stdinQueue.length) {
+    return stdinQueue.shift()
+  }
+  if (stdinPrompt) {
+    const r = stdinPrompt()
+    if (r == null) return null // user cancelled -> EOF (raises EOFError in input())
+    const line = String(r)
+    try { stdinEcho?.(line) } catch { /* echo is best-effort */ }
+    return line
+  }
+  return null // no input available -> EOF
+}
+
+// ---- core download with real progress ---------------------------------------------------
+// loadPyodide has NO progress hook for its internal wasm/stdlib download, so we PREFETCH the two
+// big files ourselves with a streaming fetch (tracking Content-Length + received bytes) to warm
+// the HTTP cache. loadPyodide then reuses the cached responses, so the visible bar reflects the
+// real ~12MB transfer. Best-effort: if a prefetch fails (offline-after-cache, CORS quirk) we
+// silently skip it and let loadPyodide fetch normally.
+const PREFETCH_FILES = [
+  // [filename, approxBytes] — approx is only used before Content-Length is known.
+  ['pyodide.asm.wasm', 9_600_000],
+  ['python_stdlib.zip', 2_600_000],
+]
+
+async function prefetchCore(onProgress) {
+  if (typeof fetch !== 'function') return
+  // First, learn each file's real size (from cache or a HEAD-like ranged GET) so the bar total is
+  // accurate; fall back to the baked-in estimate.
+  const totals = PREFETCH_FILES.map(([, approx]) => approx)
+  let grandTotal = totals.reduce((a, b) => a + b, 0)
+  let loaded = 0
+  const report = () => onProgress?.({ loaded, total: grandTotal })
+  report()
+
+  for (let i = 0; i < PREFETCH_FILES.length; i++) {
+    const [file] = PREFETCH_FILES[i]
+    const url = PYODIDE_CDN_URL + file
+    let res
+    try {
+      res = await fetch(url, { cache: 'force-cache' })
+    } catch {
+      // Network blocked for this file — bump the bar by its estimate so it still completes.
+      loaded += totals[i]; report(); continue
+    }
+    if (!res.ok || !res.body) { loaded += totals[i]; report(); continue }
+
+    // Refine the total with the real Content-Length when present.
+    const len = Number(res.headers.get('content-length')) || 0
+    if (len > 0) { grandTotal += len - totals[i]; totals[i] = len }
+
+    try {
+      const reader = res.body.getReader()
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        loaded += value.byteLength
+        report()
+      }
+    } catch {
+      loaded += Math.max(0, totals[i] - 0); report()
+    }
+  }
+  // Snap to 100% so rounding never leaves the bar at 99%.
+  loaded = grandTotal
+  report()
+}
+
+// Lazily import the `pyodide` ESM through loadLibrary so the shared load-state flag works exactly
+// like the ffmpeg core and other heavy libs (the small ESM glue is the npm package; the heavy
+// wasm/stdlib come from the CDN at runtime).
 function importPyodide() {
   return loadLibrary('pyodide', () => import('pyodide'), { sizeMB: PYODIDE_SIZE_MB })
 }
 
 // Get a loaded, ready-to-use Pyodide instance. The runtime loads once and is reused for every
-// subsequent run (instant). Optional onStatus(msg) reports coarse load phases for the banner.
-export async function getPyodide({ onStatus } = {}) {
+// subsequent run (instant). Optional callbacks:
+//   onStatus(phase)            — 'download' | 'init'
+//   onProgress({loaded,total}) — byte progress of the core download (for a determinate bar)
+export async function getPyodide({ onStatus, onProgress } = {}) {
   if (pyodideInstance) return pyodideInstance
   if (loadPromise) return loadPromise
 
   loadPromise = (async () => {
     onStatus?.('download')
-    const mod = await importPyodide()
+    // Kick off the byte-tracked prefetch and the ESM glue import together.
+    const [mod] = await Promise.all([
+      importPyodide(),
+      prefetchCore(onProgress),
+    ])
     const { loadPyodide } = mod
     onStatus?.('init')
-    const py = await loadPyodide({ indexURL: INDEX_URL })
+    const py = await loadPyodide({ indexURL: PYODIDE_CDN_URL, stdin: readStdinLine })
+    // Install our synchronous stdin handler (queue + prompt fallback) for input().
+    try { py.setStdin({ stdin: readStdinLine, autoEOF: false }) } catch { /* older API */ }
     pyodideInstance = py
     return py
   })()
@@ -49,7 +164,8 @@ export async function getPyodide({ onStatus } = {}) {
 
 // Defines the capture helpers in the interpreter once (run by bootstrap()): a matplotlib
 // figure grabber (_tb_take_figures), the Agg/show() installer (_tb_install_matplotlib, called
-// lazily after matplotlib loads), and _tb_repr for the last expression's rich/text repr.
+// lazily after matplotlib loads), _tb_repr for the last expression's rich/text repr, and
+// _tb_wsgi_call for the experimental in-interpreter web-app preview.
 const BOOTSTRAP_PY = `
 import io, base64
 
@@ -90,6 +206,102 @@ def _tb_repr(value):
         return {"kind": "text", "data": repr(value)}
     except Exception:
         return {"kind": "text", "data": "<unreprable object>"}
+
+# ---- Experimental in-interpreter web-app preview ----------------------------------------
+# Pyodide can't bind real sockets, so we route a *synthetic* request straight to a user-defined
+# WSGI/ASGI callable. Looks for a likely app object in the user's globals (Flask's app, a generic
+# 'app'/'application', or anything with a .wsgi_app), builds a minimal WSGI environ for the given
+# path/method, invokes it, and returns the response body + status + content-type.
+def _tb_find_app(ns):
+    for name in ("app", "application", "wsgi_app", "server"):
+        obj = ns.get(name)
+        if obj is None:
+            continue
+        # Flask / many frameworks: the instance is itself a WSGI callable.
+        if callable(obj):
+            return obj, ("asgi" if _tb_is_asgi(obj) else "wsgi")
+        wsgi = getattr(obj, "wsgi_app", None)
+        if callable(wsgi):
+            return wsgi, "wsgi"
+    return None, None
+
+def _tb_is_asgi(obj):
+    # Heuristic: ASGI apps are typically 'async def app(scope, receive, send)' or expose 3-arg
+    # __call__ coroutines. We only *attempt* WSGI here; ASGI is detected so we can report it.
+    import inspect
+    target = obj
+    call = getattr(obj, "__call__", None)
+    if call is not None and not inspect.isfunction(obj):
+        target = call
+    try:
+        sig = inspect.signature(target)
+    except (TypeError, ValueError):
+        return False
+    params = [p for p in sig.parameters.values()
+              if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    is_coro = inspect.iscoroutinefunction(target)
+    return is_coro and len(params) == 3
+
+def _tb_wsgi_call(path, method, ns):
+    app, kind = _tb_find_app(ns)
+    if app is None:
+        return {"ok": False, "error": "no-app",
+                "detail": "No WSGI app found. Define a callable named 'app' "
+                          "(e.g. Flask's app) at module level."}
+    if kind == "asgi":
+        return {"ok": False, "error": "asgi",
+                "detail": "Detected an ASGI app. The preview only supports synchronous WSGI "
+                          "callables (e.g. Flask). ASGI isn't supported in this sandbox."}
+    if "?" in path:
+        raw_path, query = path.split("?", 1)
+    else:
+        raw_path, query = path, ""
+    if not raw_path.startswith("/"):
+        raw_path = "/" + raw_path
+    body_chunks = []
+    status_holder = {}
+    def start_response(status, headers, exc_info=None):
+        status_holder["status"] = status
+        status_holder["headers"] = headers
+        return body_chunks.append
+    environ = {
+        "REQUEST_METHOD": str(method or "GET").upper(),
+        "SCRIPT_NAME": "",
+        "PATH_INFO": raw_path,
+        "QUERY_STRING": query,
+        "SERVER_NAME": "preview.local",
+        "SERVER_PORT": "80",
+        "SERVER_PROTOCOL": "HTTP/1.1",
+        "HTTP_HOST": "preview.local",
+        "wsgi.version": (1, 0),
+        "wsgi.url_scheme": "http",
+        "wsgi.input": io.BytesIO(b""),
+        "wsgi.errors": io.StringIO(),
+        "wsgi.multithread": False,
+        "wsgi.multiprocess": False,
+        "wsgi.run_once": False,
+        "CONTENT_LENGTH": "0",
+    }
+    try:
+        result = app(environ, start_response)
+        for chunk in result:
+            body_chunks.append(chunk)
+        if hasattr(result, "close"):
+            result.close()
+    except Exception as exc:
+        import traceback
+        return {"ok": False, "error": "exception",
+                "detail": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))}
+    parts = []
+    for c in body_chunks:
+        if isinstance(c, (bytes, bytearray)):
+            parts.append(bytes(c).decode("utf-8", "replace"))
+        elif c is not None:
+            parts.append(str(c))
+    headers = dict(status_holder.get("headers", []) or [])
+    content_type = headers.get("Content-Type") or headers.get("content-type") or "text/html"
+    return {"ok": True, "status": status_holder.get("status", "200 OK"),
+            "contentType": content_type, "body": "".join(parts)}
 `
 
 async function bootstrap(py) {
@@ -164,10 +376,11 @@ function writeFiles(py, files) {
 // execute (defaults to 'main.py', or the first file). Writing every file first is what makes
 // cross-file `import utils` work. Streams stdout/stderr via the provided callbacks (already
 // batched by the caller) and returns a structured result:
-//   { ok, result: { kind, data }, figures: string[] (base64 png), error: string|null }
-// The last top-level expression's value is captured the way a REPL would show it.
-export async function runPython(codeOrProject, { onStdout, onStderr, onStatus } = {}) {
-  const py = await getPyodide({ onStatus })
+//   { ok, result: { kind, data }, figures: string[] (base64 png), error: string|null, hasApp }
+// The last top-level expression's value is captured the way a REPL would show it. `hasApp` is
+// true if the run left a WSGI-style app callable in globals (enables the preview pane).
+export async function runPython(codeOrProject, { onStdout, onStderr, onStatus, onProgress } = {}) {
+  const py = await getPyodide({ onStatus, onProgress })
   await bootstrap(py)
 
   // Normalize input into { files, entry, code }. A bare string runs as a one-file program.
@@ -189,21 +402,26 @@ export async function runPython(codeOrProject, { onStdout, onStderr, onStatus } 
     try { writeFiles(py, files) } catch { /* FS write failure surfaces as an import error below */ }
   }
 
-  // Route stdout/stderr to the UI. setStdout/setStderr accept a batched callback that gets
-  // whole strings; we forward them straight to the caller's batcher.
-  py.setStdout({ batched: (s) => onStdout?.(s) })
-  py.setStderr({ batched: (s) => onStderr?.(s) })
+  // Route stdout/stderr to the UI. IMPORTANT: Pyodide's `batched` writer is LINE-BUFFERED and
+  // strips the trailing newline before each call (its default handler is console.log, which
+  // re-adds one). If we forwarded the chunks as-is, every print() would be concatenated onto one
+  // line and all newlines from the program would vanish (the reported "换行没了" bug). So we
+  // re-append "\n" to each batched line to faithfully reconstruct the stream. (Re)assert our
+  // stdin handler each run in case anything reset the streams.
+  py.setStdout({ batched: (s) => onStdout?.(s + '\n') })
+  py.setStderr({ batched: (s) => onStderr?.(s + '\n') })
+  try { py.setStdin({ stdin: readStdinLine, autoEOF: false }) } catch {}
 
   const figures = []
   let result = { kind: 'none', data: '' }
   let error = null
+  let hasApp = false
 
   try {
     // Since Pyodide 0.18, runPythonAsync does NOT auto-install packages referenced by import
     // statements. loadPackagesFromImports inspects the code and loads any packages that are
-    // bundled with Pyodide (numpy, matplotlib, pandas, …) from the self-hosted lock — this is
-    // OFFLINE (no network); micropip is only needed for packages not in the lock. Scan EVERY
-    // file so a bundled dependency imported only by a sibling module is still preloaded.
+    // bundled with Pyodide (numpy, matplotlib, pandas, …) from the CDN lock. Scan EVERY file so a
+    // bundled dependency imported only by a sibling module is still preloaded.
     try {
       const scanSrc = files ? Object.values(files).join('\n') : code
       await py.loadPackagesFromImports(scanSrc)
@@ -239,6 +457,13 @@ export async function runPython(codeOrProject, { onStdout, onStderr, onStatus } 
       reprFn?.destroy?.()
     } catch { /* ignore repr failures */ }
 
+    // Detect a WSGI/ASGI app left in globals so the UI can offer the preview pane.
+    try {
+      hasApp = !!py.runPython(
+        'bool(_tb_find_app(dict(globals()))[0])'
+      )
+    } catch { hasApp = false }
+
     // Free the PyProxy of the returned value if one was created.
     if (value && typeof value.destroy === 'function') value.destroy()
   } catch (err) {
@@ -249,7 +474,28 @@ export async function runPython(codeOrProject, { onStdout, onStderr, onStatus } 
     try { py.setStderr({}) } catch {}
   }
 
-  return { ok: !error, result, figures, error }
+  return { ok: !error, result, figures, error, hasApp }
+}
+
+// Route a synthetic HTTP request to a user-defined WSGI app left in globals by the last run.
+// Returns { ok, status, contentType, body } on success, or { ok:false, error, detail } if no app
+// / an ASGI app / an exception. EXPERIMENTAL — see _tb_wsgi_call in BOOTSTRAP_PY.
+export async function callServer(path = '/', method = 'GET') {
+  const py = pyodideInstance
+  if (!py) return { ok: false, error: 'no-runtime', detail: 'Run your code first.' }
+  let out = null
+  try {
+    const fn = py.globals.get('_tb_wsgi_call')
+    // Pass the live global namespace so _tb_find_app sees the user's `app`. py.globals is a
+    // PyProxy of the module dict, which the Python side treats as the mapping it expects.
+    const proxy = fn(String(path || '/'), String(method || 'GET'), py.globals)
+    out = proxy?.toJs ? proxy.toJs({ dict_converter: Object.fromEntries }) : proxy
+    proxy?.destroy?.()
+    fn?.destroy?.()
+  } catch (err) {
+    return { ok: false, error: 'exception', detail: (err && err.message) || String(err) }
+  }
+  return out || { ok: false, error: 'unknown', detail: 'No response.' }
 }
 
 // Install packages with micropip. This FETCHES WHEELS OVER THE NETWORK (PyPI / jsDelivr) and
@@ -288,4 +534,7 @@ export function _resetRunner() {
   matplotlibPatched = false
   workDirReady = false
   writtenFiles.clear()
+  stdinQueue = []
+  stdinPrompt = null
+  stdinEcho = null
 }

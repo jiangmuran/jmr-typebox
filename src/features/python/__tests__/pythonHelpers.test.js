@@ -211,6 +211,21 @@ describe('EXAMPLE_PROJECTS (multi-file file-sets for the IDE)', () => {
   it('getExampleProject returns null for unknown ids', () => {
     expect(getExampleProject('nope')).toBe(null)
   })
+
+  it('ships an interactive input() demo that runs offline and actually calls input()', () => {
+    const ex = getExampleProject('input')
+    expect(ex).toBeTruthy()
+    expect(ex.needsNetwork).toBe(false)
+    expect(ex.files['main.py']).toMatch(/\binput\s*\(/)
+  })
+
+  it('ships an offline WSGI web-app demo defining a callable `app`', () => {
+    const ex = getExampleProject('webapp')
+    expect(ex).toBeTruthy()
+    expect(ex.needsNetwork).toBe(false)
+    // The preview detector looks for a module-level `def app(environ, start_response)`.
+    expect(ex.files['main.py']).toMatch(/def\s+app\s*\(\s*environ\s*,\s*start_response\s*\)/)
+  })
 })
 
 describe('insertIndent', () => {
@@ -244,6 +259,18 @@ describe('feature module contract', () => {
     expect(zh).toEqual(en)
     expect(en.length).toBeGreaterThan(0)
     expect(en.every(k => k.startsWith('py.'))).toBe(true)
+  })
+
+  it('includes i18n keys for the new stdin / progress / web-preview features (both locales)', () => {
+    const required = [
+      'py.downloadingCore', 'py.stdinPlaceholder', 'py.stdinSend', 'py.stdinHint',
+      'py.waitingInput', 'py.preview', 'py.previewExperimental', 'py.previewGo',
+      'py.previewNoApp', 'py.previewPath', 'py.previewStatus',
+    ]
+    for (const k of required) {
+      expect(feature.i18n.en[k], `en missing ${k}`).toBeTruthy()
+      expect(feature.i18n.zh[k], `zh missing ${k}`).toBeTruthy()
+    }
   })
 
   it('register() adds a searchable, no-backend command', () => {

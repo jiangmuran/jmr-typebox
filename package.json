@@ -17,6 +17,8 @@
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
     "@codemirror/lang-python": "^6.2.1",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@turbodocx/html-to-docx": "^1.22.0",
     "@unhead/vue": "^2.1.15",
     "codemirror": "^6.0.2",

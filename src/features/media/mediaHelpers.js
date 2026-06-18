@@ -1,33 +1,82 @@
-// Pure, SSG-safe helpers for the Media (audio) suite. NO window/document/Blob access here —
-// these operate on plain values so they can be unit-tested in node and imported anywhere
+// Pure, SSG-safe helpers for the Media toolkit. NO window/document/Blob/ffmpeg access here —
+// everything operates on plain values so it can be unit-tested in node and imported anywhere
 // (including index.js, which must stay side-effect-free).
 //
-// Engine note: conversions use the browser's native Web Audio decoder + a WAV writer +
-// lamejs (MP3 encoder). This keeps everything local (no CDN) and avoids the 31MB ffmpeg
-// core, which exceeds Cloudflare's 25MB static-asset limit. ffmpeg.wasm remains the future
-// path for video (needs large-asset hosting such as R2).
+// Engine note: the actual transcoding is done by ffmpeg.wasm (see ./ffmpegRunner.js). The big
+// ffmpeg-core wasm (~31MB) is loaded at runtime from the official CDN (it exceeds Cloudflare's
+// 25MB static-asset limit). This file only builds the *arguments* and metadata ffmpeg needs.
 
+// ---------------------------------------------------------------------------
+// Format catalogs
+// ---------------------------------------------------------------------------
+
+// Output audio formats the converter can produce. Each entry knows its container extension,
+// MIME type, whether it is lossy (so we can offer a bitrate/quality control) and the ffmpeg
+// codec + default arguments used to encode it with the single-threaded core.
 export const AUDIO_FORMATS = {
-  mp3: { ext: 'mp3', mime: 'audio/mpeg' },
-  wav: { ext: 'wav', mime: 'audio/wav' },
+  mp3:  { ext: 'mp3',  mime: 'audio/mpeg',  lossy: true,  codec: 'libmp3lame', label: 'MP3' },
+  wav:  { ext: 'wav',  mime: 'audio/wav',   lossy: false, codec: 'pcm_s16le',  label: 'WAV' },
+  flac: { ext: 'flac', mime: 'audio/flac',  lossy: false, codec: 'flac',       label: 'FLAC' },
+  ogg:  { ext: 'ogg',  mime: 'audio/ogg',   lossy: true,  codec: 'libvorbis',  label: 'OGG (Vorbis)' },
+  opus: { ext: 'opus', mime: 'audio/opus',  lossy: true,  codec: 'libopus',    label: 'Opus' },
+  aac:  { ext: 'aac',  mime: 'audio/aac',   lossy: true,  codec: 'aac',        label: 'AAC' },
+  m4a:  { ext: 'm4a',  mime: 'audio/mp4',   lossy: true,  codec: 'aac',        label: 'M4A (AAC)' },
 }
+
+export const AUDIO_OUTPUT_FORMATS = Object.keys(AUDIO_FORMATS)
+
+// Extensions we accept as *input*. ffmpeg decodes far more than this, but the picker/validator
+// uses this list (plus a generic audio/* or video/* MIME check) to give friendly feedback.
+export const AUDIO_INPUT_EXTS = [
+  'mp3', 'wav', 'flac', 'ogg', 'opus', 'aac', 'm4a', 'mp4', 'm4b',
+  'wma', 'aiff', 'aif', 'amr', 'mpga', 'wave', 'oga', 'weba', 'caf', '3gp',
+]
+
+export const VIDEO_INPUT_EXTS = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'mpg', 'mpeg', 'ts', 'flv', 'wmv', '3gp', 'ogv']
+
+export const SUBTITLE_EXTS = ['srt', 'ass', 'ssa', 'vtt', 'sub']
+
+// Quality presets for the lossy encoders, expressed as ffmpeg bitrate tokens.
+export const BITRATE_PRESETS = ['96k', '128k', '160k', '192k', '256k', '320k']
+export const DEFAULT_BITRATE = '192k'
+
+// ---------------------------------------------------------------------------
+// Small string/number utilities
+// ---------------------------------------------------------------------------
 
 export function normalizeFormat(format) {
   return String(format || '').trim().toLowerCase().replace(/^\./, '')
 }
 
+// The bare extension of a filename, lowercased and without the dot. '' if none.
+export function extOf(name) {
+  const m = String(name || '').toLowerCase().match(/\.([^./\\]+)$/)
+  return m ? m[1] : ''
+}
+
+export function audioFormatDef(format) {
+  return AUDIO_FORMATS[normalizeFormat(format)] || null
+}
+
 export function mimeForFormat(format) {
-  const def = AUDIO_FORMATS[normalizeFormat(format)]
-  return def ? def.mime : 'application/octet-stream'
+  return audioFormatDef(format)?.mime || 'application/octet-stream'
 }
 
 export function extForFormat(format) {
-  const def = AUDIO_FORMATS[normalizeFormat(format)]
+  const def = audioFormatDef(format)
   return def ? def.ext : normalizeFormat(format) || 'bin'
 }
 
+export function isLossyFormat(format) {
+  return !!audioFormatDef(format)?.lossy
+}
+
+export function codecForFormat(format) {
+  return audioFormatDef(format)?.codec || null
+}
+
 export function baseName(name) {
-  return String(name || 'audio').replace(/\.[^./\\]+$/, '') || 'audio'
+  return String(name || 'output').replace(/\.[^./\\]+$/, '') || 'output'
 }
 
 // buildOutputName('song.mp3', 'wav') -> 'song.wav'
@@ -35,74 +84,192 @@ export function buildOutputName(inputName, outputFormat) {
   return `${baseName(inputName)}.${extForFormat(outputFormat)}`
 }
 
+// Append a suffix before the (swapped) extension: ('clip.mp4','mp3','-audio') -> 'clip-audio.mp3'
+export function buildOutputNameWithSuffix(inputName, outputFormat, suffix = '') {
+  return `${baseName(inputName)}${suffix}.${extForFormat(outputFormat)}`
+}
+
 export function formatSize(bytes) {
   const b = Number(bytes) || 0
   if (b < 1024) return b + ' B'
   if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB'
-  return (b / (1024 * 1024)).toFixed(2) + ' MB'
+  if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + ' MB'
+  return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
 }
 
 export function formatDuration(seconds) {
   const s = Math.max(0, Math.round(Number(seconds) || 0))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  const pad = (n) => String(n).padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`
 }
 
-export const BITRATE_PRESETS = ['96k', '128k', '192k', '256k', '320k']
-
-export function isLossyFormat(format) {
-  return normalizeFormat(format) === 'mp3'
+// Parse a bitrate token ('192k' / '192') into a normalized ffmpeg token, defaulting sensibly.
+export function normalizeBitrate(b, fallback = DEFAULT_BITRATE) {
+  const s = String(b ?? '').trim().toLowerCase()
+  if (!s) return fallback
+  const n = parseInt(s, 10)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  // Heuristic: bare numbers below 1000 are kbps, otherwise raw bps.
+  return n < 1000 ? `${n}k` : `${n}`
 }
 
-// Parse a bitrate token ('192k' / '192') to a kbps number, defaulting to 192.
-export function parseBitrate(b) {
-  const n = parseInt(String(b ?? ''), 10)
-  return Number.isFinite(n) && n > 0 ? n : 192
+// ---------------------------------------------------------------------------
+// Input classification
+// ---------------------------------------------------------------------------
+
+export function isVideoInput(name, mime = '') {
+  if (String(mime).startsWith('video/')) return true
+  return VIDEO_INPUT_EXTS.includes(extOf(name))
 }
 
-// Encode interleaved 16-bit PCM WAV from Float32 channel data. Pure (DataView + typed
-// arrays only) so it is unit-testable in node. `channels` is an array of Float32Array.
-export function encodeWav(channels, sampleRate) {
-  const numCh = channels.length || 1
-  const len = channels[0]?.length || 0
-  const bytesPerSample = 2
-  const blockAlign = numCh * bytesPerSample
-  const dataSize = len * blockAlign
-  const buffer = new ArrayBuffer(44 + dataSize)
-  const view = new DataView(buffer)
-  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)) }
+export function isAudioInput(name, mime = '') {
+  if (String(mime).startsWith('audio/')) return true
+  return AUDIO_INPUT_EXTS.includes(extOf(name))
+}
 
-  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE')
-  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true)
-  view.setUint16(22, numCh, true); view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * blockAlign, true); view.setUint16(32, blockAlign, true)
-  view.setUint16(34, 8 * bytesPerSample, true)
-  writeStr(36, 'data'); view.setUint32(40, dataSize, true)
+export function isSubtitleInput(name, mime = '') {
+  if (String(mime) === 'text/vtt') return true
+  return SUBTITLE_EXTS.includes(extOf(name))
+}
 
-  let off = 44
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < numCh; c++) {
-      const s = Math.max(-1, Math.min(1, channels[c][i] || 0))
-      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true)
-      off += 2
-    }
+// Accept any media file the converter knows how to read.
+export function isMediaInput(name, mime = '') {
+  return isAudioInput(name, mime) || isVideoInput(name, mime)
+}
+
+// A safe, ffmpeg-friendly virtual filename for the in-memory FS (avoids spaces/unicode issues
+// in arg parsing). Keeps the real extension so ffmpeg can sniff the container.
+export function safeInputName(name, fallbackExt = 'bin') {
+  const ext = extOf(name) || fallbackExt
+  return `input.${ext}`
+}
+
+// ---------------------------------------------------------------------------
+// ffmpeg argument builders (the unit-tested core)
+// ---------------------------------------------------------------------------
+
+// Build args for a pure audio transcode / audio-extraction-from-video.
+//   buildConvertArgs({ input, output, format, bitrate, quality, sampleRate, channels, stripVideo })
+// Returns a string[] suitable for ffmpeg.exec(). `stripVideo` adds -vn (used when the source is
+// a video and we only want the audio track).
+export function buildConvertArgs({
+  input = 'input.bin',
+  output = 'output.mp3',
+  format,
+  bitrate,
+  quality,
+  sampleRate,
+  channels,
+  stripVideo = false,
+} = {}) {
+  const def = audioFormatDef(format)
+  if (!def) throw new Error(`Unsupported output format: ${format}`)
+
+  const args = ['-i', input]
+  if (stripVideo) args.push('-vn') // drop any video stream → audio only
+
+  args.push('-c:a', def.codec)
+
+  // Lossy formats take a bitrate; lossless ignore it. WAV/FLAC are governed by sample format.
+  if (def.lossy) {
+    args.push('-b:a', normalizeBitrate(bitrate))
+  } else if (format && normalizeFormat(format) === 'flac' && Number.isFinite(Number(quality))) {
+    // FLAC compression level 0–12 (higher = smaller/slower). Optional.
+    const lvl = Math.max(0, Math.min(12, Math.round(Number(quality))))
+    args.push('-compression_level', String(lvl))
   }
-  return buffer
-}
 
-// Float32 → Int16 PCM (for the MP3 encoder).
-export function floatToInt16(f32) {
-  const out = new Int16Array(f32.length)
-  for (let i = 0; i < f32.length; i++) {
-    const s = Math.max(-1, Math.min(1, f32[i]))
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+  if (Number.isFinite(Number(sampleRate)) && Number(sampleRate) > 0) {
+    args.push('-ar', String(Math.round(Number(sampleRate))))
   }
-  return out
+  if (Number.isFinite(Number(channels)) && Number(channels) > 0) {
+    args.push('-ac', String(Math.round(Number(channels))))
+  }
+
+  args.push(output)
+  return args
 }
 
-// Converters this suite registers — single source of truth shared by index.js + the page.
+// Escape a path for use inside ffmpeg's -vf subtitles= filter. Within an in-memory FS we use a
+// plain ascii filename, but colons/backslashes/quotes still need escaping for the filtergraph.
+export function escapeSubtitlePath(path) {
+  return String(path)
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+}
+
+// Build args to HARD-burn subtitles into a video (re-encodes the video stream).
+//   buildHardSubArgs({ video, subtitle, output, crf, preset, audioCopy, fontName, fontSize })
+export function buildHardSubArgs({
+  video = 'input.mp4',
+  subtitle = 'subs.srt',
+  output = 'output.mp4',
+  crf = 23,
+  preset = 'veryfast',
+  audioCopy = true,
+  fontName,
+  fontSize,
+} = {}) {
+  // force_style lets us override font/size for SRT (ASS carries its own styling).
+  const styleParts = []
+  if (fontName) styleParts.push(`FontName=${fontName}`)
+  if (Number.isFinite(Number(fontSize)) && Number(fontSize) > 0) styleParts.push(`FontSize=${Math.round(Number(fontSize))}`)
+  let filter = `subtitles=${escapeSubtitlePath(subtitle)}`
+  if (styleParts.length) filter += `:force_style='${styleParts.join(',')}'`
+
+  const args = ['-i', video, '-vf', filter, '-c:v', 'libx264']
+  const c = Math.max(0, Math.min(51, Math.round(Number(crf))))
+  args.push('-crf', String(Number.isFinite(c) ? c : 23))
+  args.push('-preset', String(preset || 'veryfast'))
+  args.push('-c:a', audioCopy ? 'copy' : 'aac')
+  args.push(output)
+  return args
+}
+
+// Build args to SOFT-mux subtitles as a selectable track (no re-encode of A/V).
+// mov_text for mp4/mov; for mkv we copy as-is (srt/ass embed natively).
+//   buildSoftSubArgs({ video, subtitle, output, container })
+export function buildSoftSubArgs({
+  video = 'input.mp4',
+  subtitle = 'subs.srt',
+  output = 'output.mp4',
+  container = 'mp4',
+  language,
+} = {}) {
+  const args = ['-i', video, '-i', subtitle, '-map', '0', '-map', '1', '-c', 'copy']
+  const cont = normalizeFormat(container)
+  // mp4/mov require the timed-text codec mov_text; mkv/webm accept srt/ass directly via copy.
+  if (cont === 'mp4' || cont === 'mov' || cont === 'm4v') {
+    args.push('-c:s', 'mov_text')
+  } else {
+    args.push('-c:s', 'srt')
+  }
+  if (language) args.push('-metadata:s:s:0', `language=${language}`)
+  args.push(output)
+  return args
+}
+
+// ---------------------------------------------------------------------------
+// Converter route registry (single source of truth shared by index.js + pages)
+// ---------------------------------------------------------------------------
+
+// The named, SEO-friendly converter routes. The generic /media/convert page also exists; these
+// give specific landing pages (and command-palette entries) for popular conversions. Each maps
+// to a default input/output pairing used to prefill the universal converter.
 export const MEDIA_CONVERTERS = [
   { id: 'mp3-to-wav', route: '/media/mp3-to-wav', input: 'mp3', output: 'wav' },
   { id: 'wav-to-mp3', route: '/media/wav-to-mp3', input: 'wav', output: 'mp3' },
+  { id: 'mp4-to-mp3', route: '/media/mp4-to-mp3', input: 'mp4', output: 'mp3' },
+  { id: 'm4a-to-mp3', route: '/media/m4a-to-mp3', input: 'm4a', output: 'mp3' },
+  { id: 'flac-to-mp3', route: '/media/flac-to-mp3', input: 'flac', output: 'mp3' },
+  { id: 'wav-to-flac', route: '/media/wav-to-flac', input: 'wav', output: 'flac' },
+  { id: 'ogg-to-mp3', route: '/media/ogg-to-mp3', input: 'ogg', output: 'mp3' },
 ]
 
 export function converterForRoute(path) {

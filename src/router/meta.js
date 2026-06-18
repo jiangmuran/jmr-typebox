@@ -75,17 +75,61 @@ export const ROUTE_META = {
   },
 
   // ---- Media ----
+  // Powered by ffmpeg.wasm (the ~31MB core loads from the official CDN on first use). All routes
+  // render the universal converter / subtitle tool; the converter prefills its format from the path.
+  '/media/convert': {
+    title: 'Audio & Video Converter — MP3, WAV, FLAC, OGG — TypeBox',
+    description: 'Convert audio between MP3, WAV, FLAC, OGG, Opus, AAC, and M4A — or extract audio from MP4/MOV/WebM/MKV video. Runs in your browser with ffmpeg, private and no upload.',
+    h1: 'Media Converter',
+    keywords: 'audio converter, video to audio, extract audio, mp3, wav, flac, ogg, opus, aac, m4a, 音频转换, 视频提取音频',
+  },
+  '/media/subtitles': {
+    title: 'Add Subtitles to Video — Burn or Mux SRT/ASS — TypeBox',
+    description: 'Hardcode (burn) subtitles into a video or add a soft, selectable subtitle track from an SRT/ASS file. In-browser with ffmpeg — private, nothing uploaded.',
+    h1: 'Subtitle Tool',
+    keywords: 'burn subtitles, hardsub, softsub, mux subtitles, srt, ass, add subtitles to video, 字幕, 烧录字幕',
+  },
   '/media/mp3-to-wav': {
     title: 'MP3 to WAV Converter — TypeBox',
-    description: 'Convert MP3 audio to WAV in your browser — private, no upload, runs entirely on your device.',
+    description: 'Convert MP3 audio to WAV in your browser — private, no upload, runs entirely on your device with ffmpeg.',
     h1: 'MP3 to WAV',
-    keywords: 'mp3 to wav, audio converter, convert mp3 online',
+    keywords: 'mp3 to wav, audio converter, convert mp3 online, 音频转换',
   },
   '/media/wav-to-mp3': {
     title: 'WAV to MP3 Converter — TypeBox',
-    description: 'Convert WAV audio to MP3 in your browser. Adjustable bitrate, private and offline-capable.',
+    description: 'Convert WAV audio to MP3 in your browser. Adjustable bitrate, private and runs on your device with ffmpeg.',
     h1: 'WAV to MP3',
-    keywords: 'wav to mp3, audio converter, convert wav online',
+    keywords: 'wav to mp3, audio converter, convert wav online, 音频转换',
+  },
+  '/media/mp4-to-mp3': {
+    title: 'MP4 to MP3 — Extract Audio from Video — TypeBox',
+    description: 'Extract the audio track from an MP4 (or MOV/WebM/MKV) video and save it as MP3, in your browser with ffmpeg. Private, no upload.',
+    h1: 'MP4 to MP3',
+    keywords: 'mp4 to mp3, extract audio from video, video to mp3, 视频提取音频, 视频转mp3',
+  },
+  '/media/m4a-to-mp3': {
+    title: 'M4A to MP3 Converter — TypeBox',
+    description: 'Convert M4A (AAC) audio to MP3 in your browser with ffmpeg. Adjustable bitrate, private and instant.',
+    h1: 'M4A to MP3',
+    keywords: 'm4a to mp3, aac to mp3, audio converter, 音频转换',
+  },
+  '/media/flac-to-mp3': {
+    title: 'FLAC to MP3 Converter — TypeBox',
+    description: 'Convert lossless FLAC audio to MP3 in your browser with ffmpeg. Choose your bitrate, fully private.',
+    h1: 'FLAC to MP3',
+    keywords: 'flac to mp3, lossless to mp3, audio converter, 音频转换',
+  },
+  '/media/wav-to-flac': {
+    title: 'WAV to FLAC Converter — Lossless — TypeBox',
+    description: 'Convert WAV audio to lossless FLAC in your browser with ffmpeg. Smaller files, no quality loss, private.',
+    h1: 'WAV to FLAC',
+    keywords: 'wav to flac, lossless audio, compress wav, audio converter, 无损音频',
+  },
+  '/media/ogg-to-mp3': {
+    title: 'OGG to MP3 Converter — TypeBox',
+    description: 'Convert OGG (Vorbis) audio to MP3 in your browser with ffmpeg. Adjustable bitrate, private and instant.',
+    h1: 'OGG to MP3',
+    keywords: 'ogg to mp3, vorbis to mp3, audio converter, 音频转换',
   },
 
   // ---- Toolbox ----
