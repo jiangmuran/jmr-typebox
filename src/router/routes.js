@@ -14,14 +14,12 @@ export function tabOf(p) {
 // Existing, already-working tools keep their real component so the routing refactor
 // does not regress functionality; not-yet-built routes use ToolStub (Phase 1 fills them in).
 function componentFor(p) {
-  switch (p) {
-    case '/': return () => import('../pages/EditorPage.vue')
-    case '/txt': return () => import('../pages/TxtPage.vue')
-    case '/convert/pdf-to-markdown': return () => import('../pages/PdfToMarkdownPage.vue')
-    case '/image/compress':
-    case '/image/convert': return () => import('../pages/ImageLegacyPage.vue')
-    default: return () => import('../pages/ToolStub.vue')
-  }
+  if (p === '/') return () => import('../pages/EditorPage.vue')
+  if (p === '/txt') return () => import('../pages/TxtPage.vue')
+  if (p === '/convert/pdf-to-markdown') return () => import('../pages/PdfToMarkdownPage.vue')
+  if (p === '/image/compress' || p === '/image/convert') return () => import('../pages/ImageLegacyPage.vue')
+  if (p.startsWith('/tools/')) return () => import('../pages/ToolboxPage.vue')
+  return () => import('../pages/ToolStub.vue')
 }
 
 export const routes = ALL_PATHS.map(path => ({
