@@ -1,4 +1,5 @@
 import { ALL_PATHS } from './meta'
+import { featureComponents } from '../features/index.js'
 
 // Owning top-level tab for a path (drives AppShell tab highlight + grouping).
 export function tabOf(p) {
@@ -14,6 +15,7 @@ export function tabOf(p) {
 // Existing, already-working tools keep their real component so the routing refactor
 // does not regress functionality; not-yet-built routes use ToolStub (Phase 1 fills them in).
 function componentFor(p) {
+  if (featureComponents[p]) return featureComponents[p] // Phase 1 feature pages override stubs/legacy
   if (p === '/') return () => import('../pages/EditorPage.vue')
   if (p === '/txt') return () => import('../pages/TxtPage.vue')
   if (p === '/convert/pdf-to-markdown') return () => import('../pages/PdfToMarkdownPage.vue')

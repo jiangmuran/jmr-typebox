@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { load, save } from '../utils/storage'
+import { featureI18n } from '../features/index.js'
 
 const browserZh = typeof navigator !== 'undefined' && navigator.language?.startsWith('zh')
 const locale = ref(load('lang', browserZh ? 'zh' : 'en'))
@@ -350,6 +351,10 @@ const dict = {
     'pdf.pages': '页',
   },
 }
+
+// Merge feature i18n fragments (Phase 1 suites register their strings via the feature registry).
+Object.assign(dict.en, featureI18n.en)
+Object.assign(dict.zh, featureI18n.zh)
 
 export function useI18n() {
   function t(key) {
