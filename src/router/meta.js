@@ -182,5 +182,4 @@ export const ROUTE_META = {
 export const ALL_PATHS = Object.keys(ROUTE_META)
 
 // Production origin for canonical URLs + sitemap. Override at build via SITE_ORIGIN env.
-// TODO(launch): confirm the final production domain.
-export const SITE_ORIGIN = 'https://typebox.jiangmuran.com'
+export const SITE_ORIGIN = 'https://box.muran.tech'
