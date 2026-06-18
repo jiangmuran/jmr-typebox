@@ -78,6 +78,9 @@ const dict = {
     'settings.reset': 'Reset settings',
     'backend.notice': 'This feature needs the optional backend. It is open source and can be turned off in Settings.',
     'backend.viewSource': 'View backend source',
+    'cmdk.placeholder': 'Search tools, actions, settings…',
+    'cmdk.empty': 'No results',
+    'cmdk.open': 'Search',
 
     // Editor
     'editor.placeholder': 'Start writing Markdown here...',
@@ -229,6 +232,9 @@ const dict = {
     'settings.reset': '重置设置',
     'backend.notice': '此功能需要可选的后端。后端开源，可在设置中随时关闭。',
     'backend.viewSource': '查看后端源码',
+    'cmdk.placeholder': '搜索工具、操作、设置…',
+    'cmdk.empty': '无结果',
+    'cmdk.open': '搜索',
 
     'editor.placeholder': '在此输入 Markdown...',
 

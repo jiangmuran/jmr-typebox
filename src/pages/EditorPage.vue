@@ -108,7 +108,7 @@ function onKeydown(e) {
   if (mod && e.key === 's') { e.preventDefault(); doExport('md') }
   else if (mod && e.key === 'b') { e.preventDefault(); insertMarkdown('**', '**', 'bold') }
   else if (mod && e.key === 'i') { e.preventDefault(); insertMarkdown('*', '*', 'italic') }
-  else if (mod && e.key === 'k') { e.preventDefault(); insertMarkdown('[', '](url)', 'text') }
+  else if (mod && e.shiftKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); insertMarkdown('[', '](url)', 'text') }
   else if (mod && e.key === 'e') { e.preventDefault(); insertMarkdown('`', '`', 'code') }
   else if (mod && e.key === 'f') { e.preventDefault(); searchOpen.value = !searchOpen.value }
   else if (mod && e.shiftKey && (e.key === 'N' || e.key === 'n')) { e.preventDefault(); handleNew() }

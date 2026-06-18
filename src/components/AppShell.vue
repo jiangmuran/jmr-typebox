@@ -7,6 +7,7 @@ import { useI18n } from '../composables/useI18n'
 import ToastNotification from './ToastNotification.vue'
 import WelcomeDialog from './WelcomeDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
+import CommandPalette from './CommandPalette.vue'
 
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
@@ -32,6 +33,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
 
 const menuOpen = ref(false)
 const settingsOpen = ref(false)
+const paletteOpen = ref(false)
 function closeMenu() { menuOpen.value = false }
 function openSettings() { closeMenu(); settingsOpen.value = true }
 function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.print() }
@@ -62,6 +64,10 @@ function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.prin
       </nav>
 
       <div class="topbar-spacer"></div>
+
+      <button class="topbar-btn" @click="paletteOpen = true" :title="t('cmdk.open') + ' (⌘K)'">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke-linecap="round"/></svg>
+      </button>
 
       <button class="topbar-btn lang-btn" @click="toggleLocale" :title="locale === 'zh' ? 'Switch to English' : '切换到中文'">
         <span>{{ locale === 'zh' ? 'EN' : '中' }}</span>
@@ -112,6 +118,7 @@ function doPrint() { closeMenu(); if (typeof window !== 'undefined') window.prin
     </main>
 
     <SettingsPanel v-model:open="settingsOpen" />
+    <CommandPalette v-model:open="paletteOpen" />
     <WelcomeDialog @set-locale="setLocale" />
     <ToastNotification :message="toastMessage" :visible="toastVisible" />
   </div>
