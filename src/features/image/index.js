@@ -1,0 +1,147 @@
+// Image suite feature module. Light + side-effect-free at import: only the export object and
+// lazy component thunks. Route paths + SEO meta live in src/router/meta.js; this only overrides
+// the page components and contributes its i18n strings (namespaced under `img2.*` to avoid
+// colliding with the legacy `img.*` keys). No register() needed — the command palette already
+// auto-registers every route from ROUTE_META, and these tools run fully client-side (no
+// converters to register).
+
+export default {
+  components: {
+    '/image/compress': () => import('./CompressPage.vue'),
+    '/image/convert': () => import('./ConvertPage.vue'),
+    '/image/watermark': () => import('./WatermarkPage.vue'),
+    '/image/edit': () => import('./EditPage.vue'),
+  },
+  i18n: {
+    en: {
+      // Shared
+      'img2.drop': 'Drop an image here',
+      'img2.browse': 'Click, drop, or paste · PNG, JPG, WebP, GIF',
+      'img2.dropBatch': 'Drop images here',
+      'img2.browseBatch': 'Click, drop, or paste · multiple files supported',
+      'img2.change': 'Change',
+      'img2.remove': 'Remove',
+      'img2.clear': 'Clear',
+      'img2.addMore': 'Add more',
+      'img2.format': 'Format',
+      'img2.quality': 'Quality',
+      'img2.maxWidth': 'Max width (0 = original)',
+      'img2.download': 'Download',
+      'img2.downloadAll': 'Download all',
+      'img2.unsupported': 'This format is not supported by your browser',
+      'img2.color': 'Color',
+      'img2.size': 'Size',
+      'img2.fontSize': 'Font size',
+
+      // Compress
+      'img2.compress.title': 'Compress Image',
+      'img2.compress.sub': 'Shrink file size with adjustable quality — fully private.',
+      'img2.before': 'Before',
+      'img2.after': 'After',
+      'img2.pngNote': 'PNG is lossless — quality has no effect. Try JPG or WebP to reduce size.',
+
+      // Convert
+      'img2.convert.title': 'Convert Image Format',
+      'img2.convert.sub': 'Convert between PNG, JPG, WebP (and AVIF where supported). Batch ready.',
+
+      // Watermark
+      'img2.watermark.title': 'Watermark Image',
+      'img2.watermark.sub': 'Add a text or image watermark with live preview.',
+      'img2.wmType': 'Watermark type',
+      'img2.wmText': 'Text',
+      'img2.wmImage': 'Image',
+      'img2.wmTextLabel': 'Watermark text',
+      'img2.wmColor': 'Color',
+      'img2.wmFontSize': 'Font size',
+      'img2.wmImageLabel': 'Watermark image',
+      'img2.wmPick': 'Choose image…',
+      'img2.wmScale': 'Scale',
+      'img2.wmPosition': 'Position',
+      'img2.wmTile': 'Tile across image',
+      'img2.wmMargin': 'Margin',
+      'img2.wmOpacity': 'Opacity',
+      'img2.wmRotation': 'Rotation',
+
+      // Edit / annotate
+      'img2.edit.title': 'Edit & Annotate',
+      'img2.edit.sub': 'Doodle, add text, and redact with mosaic or blur. Undo/redo supported.',
+      'img2.toolPen': 'Doodle',
+      'img2.toolText': 'Add text',
+      'img2.toolRedact': 'Redact',
+      'img2.mosaic': 'Mosaic',
+      'img2.blur': 'Blur',
+      'img2.strength': 'Strength',
+      'img2.undo': 'Undo',
+      'img2.redo': 'Redo',
+      'img2.typeHere': 'Type…',
+      'img2.penHint': 'Drag on the image to draw freehand.',
+      'img2.textHint': 'Click to place text · Enter to confirm · Esc to cancel.',
+      'img2.redactHint': 'Drag a rectangle to hide that area.',
+    },
+    zh: {
+      // Shared
+      'img2.drop': '拖入图片',
+      'img2.browse': '点击、拖入或粘贴 · PNG、JPG、WebP、GIF',
+      'img2.dropBatch': '拖入图片',
+      'img2.browseBatch': '点击、拖入或粘贴 · 支持多文件',
+      'img2.change': '更换',
+      'img2.remove': '移除',
+      'img2.clear': '清空',
+      'img2.addMore': '继续添加',
+      'img2.format': '输出格式',
+      'img2.quality': '质量',
+      'img2.maxWidth': '最大宽度（0 = 原始）',
+      'img2.download': '下载',
+      'img2.downloadAll': '全部下载',
+      'img2.unsupported': '当前浏览器不支持该格式',
+      'img2.color': '颜色',
+      'img2.size': '粗细',
+      'img2.fontSize': '字号',
+
+      // Compress
+      'img2.compress.title': '压缩图片',
+      'img2.compress.sub': '调节质量以减小文件体积 — 全程本地处理。',
+      'img2.before': '压缩前',
+      'img2.after': '压缩后',
+      'img2.pngNote': 'PNG 为无损格式，质量无效。改用 JPG 或 WebP 可减小体积。',
+
+      // Convert
+      'img2.convert.title': '转换图片格式',
+      'img2.convert.sub': '在 PNG、JPG、WebP（及支持时的 AVIF）之间转换，支持批量。',
+
+      // Watermark
+      'img2.watermark.title': '添加水印',
+      'img2.watermark.sub': '添加文字或图片水印，实时预览。',
+      'img2.wmType': '水印类型',
+      'img2.wmText': '文字',
+      'img2.wmImage': '图片',
+      'img2.wmTextLabel': '水印文字',
+      'img2.wmColor': '颜色',
+      'img2.wmFontSize': '字号',
+      'img2.wmImageLabel': '水印图片',
+      'img2.wmPick': '选择图片…',
+      'img2.wmScale': '缩放',
+      'img2.wmPosition': '位置',
+      'img2.wmTile': '平铺整图',
+      'img2.wmMargin': '边距',
+      'img2.wmOpacity': '不透明度',
+      'img2.wmRotation': '旋转',
+
+      // Edit / annotate
+      'img2.edit.title': '编辑与标注',
+      'img2.edit.sub': '涂鸦、添加文字、用马赛克或模糊打码。支持撤销/重做。',
+      'img2.toolPen': '涂鸦',
+      'img2.toolText': '添加文字',
+      'img2.toolRedact': '打码',
+      'img2.mosaic': '马赛克',
+      'img2.blur': '模糊',
+      'img2.strength': '强度',
+      'img2.undo': '撤销',
+      'img2.redo': '重做',
+      'img2.typeHere': '输入…',
+      'img2.penHint': '在图片上拖动即可自由绘制。',
+      'img2.textHint': '点击放置文字 · 回车确认 · Esc 取消。',
+      'img2.redactHint': '拖出一个矩形以遮盖该区域。',
+    },
+  },
+}
