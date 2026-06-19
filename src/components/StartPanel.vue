@@ -27,6 +27,7 @@ const CARDS = [
       </button>
     </div>
 
+    <div class="start-or">{{ t('start.or') }}</div>
     <div class="start-grid">
       <router-link v-for="c in CARDS" :key="c.id" :to="c.to" class="start-card" data-card>
         <span class="card-ic">
@@ -60,7 +61,8 @@ const CARDS = [
 .write-btn { display: inline-flex; align-items: center; gap: 7px; margin-top: 18px; padding: 9px 20px; border: none; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.2s; }
 .write-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 .write-btn svg { width: 14px; height: 14px; }
-.start-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-items: start; }
+.start-or { text-align: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 14px; }
+.start-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: start; }
 .start-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); text-decoration: none; color: var(--text); transition: all 0.22s var(--ease-out); }
 .start-card:hover { border-color: var(--text-tertiary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .card-ic { display: flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 8px; background: var(--surface-hover); color: var(--text); }

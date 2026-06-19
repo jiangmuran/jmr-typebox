@@ -304,7 +304,11 @@ onUnmounted(() => {
         <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
         <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="onEditorMounted" />
         <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
-        <StartPanel v-if="showStart" class="start-overlay" @write="startWriting" />
+      </div>
+
+      <!-- Welcome guide: covers the whole editor area (incl. tabs/toolbar) so it reads as a clean start screen -->
+      <div v-if="showStart" class="start-overlay">
+        <StartPanel @write="startWriting" />
       </div>
 
       <Transition name="fade">
@@ -320,9 +324,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.editor-page { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.editor-page { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .editor-body { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.start-overlay { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; }
+.start-overlay { position: absolute; inset: 0; z-index: 30; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 /* Document tabs */

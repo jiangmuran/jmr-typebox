@@ -1,6 +1,5 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { load, save } from '../utils/storage'
-import { defaultContent } from '../utils/defaultContent'
 
 // Multi-document editor model. The editor is a workspace: multiple open documents with
 // tabs, like an IDE. State is a single reactive object persisted under `tb-docs`.
@@ -14,7 +13,9 @@ function hydrate() {
   } catch { /* fall through to migration */ }
   // Migrate the old single-document storage (tb-content / tb-filename) into one doc.
   const oldContent = load('content')
-  const first = { id: 1, name: load('filename', 'untitled') || 'untitled', content: oldContent ?? defaultContent }
+  // New users start with an empty document so the StartPanel welcome guide is visible
+  // (an auto-loaded sample would hide it). Existing content is preserved.
+  const first = { id: 1, name: load('filename', 'untitled') || 'untitled', content: oldContent ?? '' }
   return { docs: [first], activeId: 1 }
 }
 
