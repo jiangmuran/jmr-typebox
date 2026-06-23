@@ -917,7 +917,7 @@ onBeforeUnmount(() => {
 .m-run-lbl { display: inline-flex; align-items: center; gap: 7px; }
 .m-run-lbl svg { width: 13px; height: 13px; }
 .run-kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.18); color: inherit; border: none; }
-.run-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+.run-spin { width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Examples dropdown */

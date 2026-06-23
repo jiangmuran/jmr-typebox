@@ -131,7 +131,7 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
 
       <!-- action buttons -->
       <template v-else>
-        <svg class="ai-spark" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.6l1.5 4.3 4.3 1.5-4.3 1.5L8 13.2l-1.5-4.3-4.3-1.5 4.3-1.5z"/></svg>
+        <svg class="ai-spark" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/></svg>
         <button v-for="a in ACTIONS" :key="a.id" class="ai-act" :title="t('ai.act.' + a.id)" @click="trigger(a)">
           <span class="ai-act-ic" v-html="ico(a.svg)"></span>
           <span class="ai-act-lbl">{{ t('ai.act.' + a.id) }}</span>
@@ -172,7 +172,7 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
 
 .ai-prompt-in { width: 240px; max-width: 60vw; padding: 5px 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font-sans); outline: none; }
 .ai-prompt-in:focus { border-color: var(--accent); }
-.ai-go, .ai-stop { padding: 5px 10px; border: none; border-radius: 7px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+.ai-go, .ai-stop { padding: 5px 10px; border: none; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
 .ai-go:disabled { opacity: 0.5; cursor: default; }
 .ai-stop { background: var(--surface-hover); color: var(--text); }
 .ai-busy-lbl { font-size: 12px; color: var(--text-secondary); padding: 0 4px; }

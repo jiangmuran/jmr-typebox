@@ -11,7 +11,8 @@ const { t, locale, setLocale } = useI18n()
 
 const THEMES = ['light', 'dark', 'system']
 const DENSITIES = ['comfortable', 'compact']
-const ACCENTS = ['', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+// Curated, understated palette (the empty default = the dark-gold theme accent).
+const ACCENTS = ['', '#9c6b3a', '#2d7d7d', '#3f5b9e', '#8c3b4a', '#5a7d45', '#5a6478']
 const TOOLS = [
   { id: 'markdown', path: '/' },
   { id: 'image', path: '/image/compress' },

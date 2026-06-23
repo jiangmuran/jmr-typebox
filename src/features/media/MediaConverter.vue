@@ -618,7 +618,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .result-size { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 .player { width: 100%; height: 40px; }
 .player.video { height: auto; max-height: 300px; border-radius: 8px; background: #000; }
-.download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
+.download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
 .download-btn:hover { opacity: 0.9; }
 
 /* ----- MOBILE: stack to a single column, bigger targets, convert flow first ----- */

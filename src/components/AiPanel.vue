@@ -249,7 +249,7 @@ function useSuggestion(id) {
 
         <!-- not configured -->
         <div v-if="!ready" class="aip-empty">
-          <div class="aip-empty-ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l1.7 5.3 5.3 1.7-5.3 1.7L12 16.5l-1.7-5.3L5 9.5l5.3-1.7z"/><path d="M19 14.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg></div>
+          <div class="aip-empty-ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg></div>
           <p class="aip-empty-title">{{ t('ai.empty.title') }}</p>
           <p class="aip-empty-sub">{{ t('ai.empty.sub') }}</p>
           <button class="aip-cta" @click="$emit('open-settings')">{{ t('ai.empty.cta') }}</button>
@@ -258,7 +258,7 @@ function useSuggestion(id) {
         <template v-else>
           <div ref="scrollEl" class="aip-body">
             <div v-if="!messages.length" class="aip-intro">
-              <div class="aip-intro-ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l1.7 5.3 5.3 1.7-5.3 1.7L12 16.5l-1.7-5.3L5 9.5l5.3-1.7z"/><path d="M19 14.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg></div>
+              <div class="aip-intro-ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg></div>
               <p class="aip-intro-title">{{ t('ai.intro.title') }}</p>
               <p class="aip-intro-sub">{{ t('ai.intro.sub') }}</p>
               <div class="aip-suggest">
@@ -327,7 +327,7 @@ function useSuggestion(id) {
 .aip-empty-ic { font-size: 30px; margin-bottom: 6px; }
 .aip-empty-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .aip-empty-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 260px; }
-.aip-cta { margin-top: 12px; padding: 8px 18px; border: none; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+.aip-cta { margin-top: 12px; padding: 8px 18px; border: none; border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
 
 .aip-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .aip-intro { margin: auto; text-align: center; padding: 20px; }
@@ -341,7 +341,7 @@ function useSuggestion(id) {
 .aip-msg { display: flex; flex-direction: column; }
 .aip-user { align-items: flex-end; }
 .aip-bubble { max-width: 88%; padding: 9px 12px; border-radius: 13px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-.aip-user-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.aip-user-bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
 .aip-assist { align-self: stretch; display: flex; flex-direction: column; gap: 7px; }
 .aip-assist-bubble { background: var(--surface-hover); color: var(--text); border-bottom-left-radius: 4px; align-self: flex-start; max-width: 100%; }
 
@@ -366,7 +366,7 @@ function useSuggestion(id) {
 .aip-input { display: flex; align-items: flex-end; gap: 7px; padding: 10px 12px 4px; border-top: 1px solid var(--border-light); flex-shrink: 0; }
 .aip-textarea { flex: 1; resize: none; border: 1px solid var(--border-light); border-radius: 11px; padding: 9px 12px; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; color: var(--text); background: var(--surface); outline: none; max-height: 140px; transition: border-color 0.15s; }
 .aip-textarea:focus { border-color: var(--accent); }
-.aip-send { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; transition: opacity 0.15s; }
+.aip-send { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer; transition: opacity 0.15s; }
 .aip-send:disabled { opacity: 0.4; cursor: default; }
 .aip-send svg { width: 16px; height: 16px; }
 .aip-stop-btn { background: var(--text); }

@@ -473,7 +473,7 @@ onUnmounted(() => {
         <!-- AI: whole-document actions menu -->
         <div class="dd-wrap">
           <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.4 3.5 3.5 1.4-3.5 1.4L8 11.4 6.6 7.9 3.1 6.5l3.5-1.4L8 1.6z"/><path d="M12.8 10.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6.6-1.5z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg>
           </button>
           <Transition name="dd">
             <div v-if="aiMenuOpen" class="dd-menu ai-menu">
