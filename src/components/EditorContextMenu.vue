@@ -31,7 +31,7 @@ const AI_ACTIONS = [
     <div class="ctx-away" @click="emit('close')" @contextmenu.prevent="emit('close')" @wheel="emit('close')"></div>
     <div class="ctx" :style="{ left: x + 'px', top: y + 'px' }">
       <template v-if="aiEnabled">
-        <div class="ctx-label ctx-ai-label">✨ {{ t('ai.menu') }}</div>
+        <div class="ctx-label ctx-ai-label"><svg style="width:11px;height:11px;margin-right:5px;vertical-align:-1px" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.6l1.4 4 4 1.4-4 1.4L8 12.4l-1.4-4-4-1.4 4-1.4z"/></svg>{{ t('ai.menu') }}</div>
         <button v-for="a in AI_ACTIONS" :key="a.id" class="ctx-item ctx-ai-item" @click="emit('apply-ai', a)">{{ t('ai.act.' + a.id) }}</button>
         <div class="ctx-divider"></div>
       </template>

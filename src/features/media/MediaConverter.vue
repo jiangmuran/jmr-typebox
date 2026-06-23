@@ -590,7 +590,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .adv-inline { border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface-hover); padding: 0 12px; }
 .adv-inline summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 10px 0; list-style: none; user-select: none; }
 .adv-inline summary::-webkit-details-marker { display: none; }
-.adv-inline summary::before { content: '⌄'; display: inline-block; margin-right: 6px; transition: transform 0.2s; }
+.adv-inline summary::before { content: ''; display: inline-block; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; margin-right: 7px; transition: transform 0.2s; }
 .adv-inline[open] summary::before { transform: rotate(180deg); }
 .adv-body { display: flex; flex-direction: column; gap: 11px; padding-bottom: 12px; }
 

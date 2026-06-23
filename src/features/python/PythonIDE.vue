@@ -537,7 +537,7 @@ onBeforeUnmount(() => {
     <!-- Top toolbar -->
     <header class="toolbar">
       <div class="tb-left">
-        <span class="tb-logo" aria-hidden="true">▷</span>
+        <span class="tb-logo" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M5 3.5l7 4.5-7 4.5z"/></svg></span>
         <span class="tb-title">{{ t('py.title') }}</span>
       </div>
 
@@ -545,7 +545,7 @@ onBeforeUnmount(() => {
         <!-- Examples dropdown -->
         <div ref="exWrapEl" class="ex-wrap">
           <button class="tb-btn ghost" type="button" :aria-expanded="examplesOpen" @click="toggleExamples">
-            {{ t('py.examples') }} <span class="caret">▾</span>
+            {{ t('py.examples') }} <span class="caret"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6.5 8 10.5 12 6.5"/></svg></span>
           </button>
           <Transition name="pop">
             <div v-if="examplesOpen" class="ex-menu">
@@ -557,7 +557,7 @@ onBeforeUnmount(() => {
                 @click="loadExample(ex.id)"
               >
                 <span class="ex-name">{{ ex.title }}</span>
-                <span v-if="ex.needsNetwork" class="net-dot" :title="t('py.networkBadge')">●</span>
+                <span v-if="ex.needsNetwork" class="net-dot" :title="t('py.networkBadge')"></span>
               </button>
             </div>
           </Transition>
@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
         <button class="tb-btn ghost" type="button" @click="copyActive">{{ t('tool.copy') }}</button>
 
         <button class="tb-btn run" :disabled="busy" @click="run">
-          <span v-if="!busy" class="run-ico" aria-hidden="true">▶</span>
+          <span v-if="!busy" class="run-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3v10l8-5z"/></svg></span>
           <span v-if="!busy">{{ t('py.run') }}</span>
           <span v-else class="run-spin" aria-hidden="true"></span>
           <span v-if="busy">{{ phase || t('py.running') }}</span>
@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <button class="fileitem-name" type="button" @click="switchTo(name)" @dblclick="beginRename(name)" :title="t('py.renameHint')">
-                <span class="file-ico" aria-hidden="true">🐍</span>{{ name }}
+                <span class="file-ico" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5l3.5 3.5V14a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5z"/><path d="M9 1.5V5h3.5"/></svg></span>{{ name }}
               </button>
               <button
                 v-if="names.length > 1"
@@ -718,7 +718,7 @@ onBeforeUnmount(() => {
             <div class="panel-spacer"></div>
             <button v-if="panelTab === 'output' && hasOutput" class="mini-btn" type="button" @click="clearOutput">{{ t('py.clearOutput') }}</button>
             <button class="mini-btn icon" type="button" :title="panelCollapsed ? t('py.expand') : t('py.collapse')" @click="togglePanel">
-              {{ panelCollapsed ? '▴' : '▾' }}
+              <svg class="pc-caret" :class="{ up: panelCollapsed }" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6.5 8 10.5 12 6.5"/></svg>
             </button>
           </div>
 
@@ -813,7 +813,7 @@ onBeforeUnmount(() => {
 
       <!-- Big Run button -->
       <button class="m-run" :disabled="busy" @click="run">
-        <span v-if="!busy">▶ {{ t('py.run') }}</span>
+        <span v-if="!busy" class="m-run-lbl"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 3v10l8-5z"/></svg>{{ t('py.run') }}</span>
         <span v-else>{{ phase || t('py.running') }}</span>
       </button>
       <div v-if="busy" class="m-progress">
@@ -897,18 +897,25 @@ onBeforeUnmount(() => {
 /* ---------- Top toolbar ---------- */
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px 10px; }
 .tb-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.tb-logo { color: var(--accent); font-size: 15px; }
+.tb-logo { color: var(--accent); display: inline-flex; }
+.tb-logo svg { width: 15px; height: 15px; }
 .tb-title { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
 .tb-actions { display: flex; align-items: center; gap: 8px; }
 .tb-btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-sans); cursor: pointer; border-radius: 9px; font-size: 12.5px; transition: all 0.15s; }
 .tb-btn.ghost { padding: 7px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
 .tb-btn.ghost:hover { color: var(--text); background: var(--surface-hover); border-color: var(--text-tertiary); }
-.caret { font-size: 9px; opacity: 0.7; }
+.caret { opacity: 0.7; display: inline-flex; }
+.caret svg { width: 9px; height: 9px; }
+.pc-caret { width: 13px; height: 13px; transition: transform 0.15s; }
+.pc-caret.up { transform: rotate(180deg); }
 .tb-btn.run { padding: 8px 15px; border: none; background: var(--accent); color: var(--accent-text); font-weight: 650; }
 .tb-btn.run:hover:not(:disabled) { background: var(--accent-hover); }
 .tb-btn.run:active:not(:disabled) { transform: scale(0.98); }
 .tb-btn.run:disabled { opacity: 0.7; cursor: default; }
-.run-ico { font-size: 10px; }
+.run-ico { display: inline-flex; }
+.run-ico svg { width: 10px; height: 10px; }
+.m-run-lbl { display: inline-flex; align-items: center; gap: 7px; }
+.m-run-lbl svg { width: 13px; height: 13px; }
 .run-kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.18); color: inherit; border: none; }
 .run-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -919,7 +926,7 @@ onBeforeUnmount(() => {
 .ex-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border: none; background: transparent; color: var(--text); font-size: 12.5px; font-family: var(--font-sans); border-radius: 8px; cursor: pointer; }
 .ex-item:hover { background: var(--surface-hover); }
 .ex-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.net-dot { color: var(--accent); font-size: 7px; line-height: 1; flex: 0 0 auto; }
+.net-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
 .pop-enter-active, .pop-leave-active { transition: opacity 0.14s, transform 0.14s; }
 .pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
 
@@ -1082,7 +1089,7 @@ onBeforeUnmount(() => {
 .m-pkg { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 12px 14px; }
 .m-pkg > summary { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text); list-style: none; }
 .m-pkg > summary::-webkit-details-marker { display: none; }
-.m-pkg > summary::before { content: '▸'; color: var(--text-tertiary); transition: transform 0.15s; }
+.m-pkg > summary::before { content: ''; display: inline-block; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--text-tertiary); transition: transform 0.15s; }
 .m-pkg[open] > summary::before { transform: rotate(90deg); }
 .m-pkg .pkg-row { margin-top: 12px; }
 .m-pkg .pkg-input { padding: 11px 12px; font-size: 14px; min-height: 44px; }

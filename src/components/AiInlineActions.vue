@@ -36,15 +36,19 @@ const style = computed(() => {
   return { left: x + 'px', top: Math.max(8, s.y - 8) + 'px' }
 })
 
+// Icons are inline SVG (never emoji/glyphs). `ico()` wraps path markup in a standard 16-box svg.
+function ico(inner) {
+  return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>'
+}
 const ACTIONS = [
-  { id: 'improve', icon: '✦' },
-  { id: 'polish', icon: '◇' },
-  { id: 'grammar', icon: '✓' },
-  { id: 'shorter', icon: '▾' },
-  { id: 'longer', icon: '▴' },
-  { id: 'translate', icon: '⇄', needsInput: true },
-  { id: 'rewrite', icon: '↻', needsInput: true },
-  { id: 'explain', icon: '?' },
+  { id: 'improve', svg: '<path d="M8 1.6l1.5 4.3 4.3 1.5-4.3 1.5L8 13.2l-1.5-4.3-4.3-1.5 4.3-1.5z"/>' },
+  { id: 'polish', svg: '<path d="M2.6 13.4l6.2-6.2"/><path d="M11 2.2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>' },
+  { id: 'grammar', svg: '<polyline points="2.5 8.5 6.4 12.4 13.5 4"/>' },
+  { id: 'shorter', svg: '<path d="M8 2.8v8.4"/><path d="M4.8 8l3.2 3.2L11.2 8"/>' },
+  { id: 'longer', svg: '<path d="M8 13.2V4.8"/><path d="M4.8 8L8 4.8 11.2 8"/>' },
+  { id: 'translate', svg: '<path d="M2.4 5.8h9.2L8.8 3"/><path d="M13.6 10.2H4.4L7.2 13"/>', needsInput: true },
+  { id: 'rewrite', svg: '<path d="M13 8a5 5 0 1 1-1.4-3.5"/><path d="M13 2.8v2.7h-2.7"/>', needsInput: true },
+  { id: 'explain', svg: '<circle cx="8" cy="8" r="6.2"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.5 1.7c-.6.3-.8.7-.8 1.2"/><circle cx="8" cy="11.4" r="0.55" fill="currentColor" stroke="none"/>' },
 ]
 
 // Reset transient UI whenever the selection changes/clears.
@@ -127,9 +131,9 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
 
       <!-- action buttons -->
       <template v-else>
-        <span class="ai-spark" aria-hidden="true">✨</span>
+        <svg class="ai-spark" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.6l1.5 4.3 4.3 1.5-4.3 1.5L8 13.2l-1.5-4.3-4.3-1.5 4.3-1.5z"/></svg>
         <button v-for="a in ACTIONS" :key="a.id" class="ai-act" :title="t('ai.act.' + a.id)" @click="trigger(a)">
-          <span class="ai-act-ic">{{ a.icon }}</span>
+          <span class="ai-act-ic" v-html="ico(a.svg)"></span>
           <span class="ai-act-lbl">{{ t('ai.act.' + a.id) }}</span>
         </button>
       </template>
@@ -158,10 +162,11 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
   box-shadow: var(--shadow-lg); padding: 4px; animation: aiIn 0.14s var(--ease-out);
 }
 @keyframes aiIn { from { opacity: 0; transform: translate(-50%, -100%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -100%) scale(1); } }
-.ai-spark { font-size: 12px; padding: 0 4px 0 2px; opacity: 0.8; }
+.ai-spark { width: 13px; height: 13px; margin: 0 4px 0 2px; opacity: 0.85; color: var(--accent); flex-shrink: 0; }
 .ai-act { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border: none; border-radius: 7px; background: transparent; color: var(--text); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
 .ai-act:hover { background: var(--surface-hover); }
-.ai-act-ic { font-size: 12px; color: var(--accent); width: 13px; text-align: center; }
+.ai-act-ic { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); width: 14px; height: 14px; }
+.ai-act-ic :deep(svg) { width: 14px; height: 14px; display: block; }
 .ai-act-lbl { font-size: 12px; }
 @media (max-width: 640px) { .ai-act-lbl { display: none; } .ai-act { padding: 6px; } }
 

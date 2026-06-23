@@ -478,17 +478,17 @@ onUnmounted(() => {
           <Transition name="dd">
             <div v-if="aiMenuOpen" class="dd-menu ai-menu">
               <div class="dd-label">{{ t('ai.menu') }}</div>
-              <button @click="aiPanelOpen = true; aiMenuOpen = false"><span class="ai-mi">💬</span>{{ t('ai.openChat') }}<kbd>{{ modLabel }}⇧A</kbd></button>
+              <button @click="aiPanelOpen = true; aiMenuOpen = false"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.3A1.5 1.5 0 0 1 4 2.8h8a1.5 1.5 0 0 1 1.5 1.5v4.4A1.5 1.5 0 0 1 12 10.2H6.5l-3 2.4v-2.4H4a1.5 1.5 0 0 1-1.5-1.5z"/></svg></span>{{ t('ai.openChat') }}<kbd>{{ modLabel }}⇧A</kbd></button>
               <div class="dd-sep"></div>
               <div class="dd-label">{{ t('ai.wholeDoc') }}</div>
-              <button @click="runDocAi('polishDoc')"><span class="ai-mi">◇</span>{{ t('ai.doc.polish') }}</button>
-              <button @click="runDocAi('summarize')"><span class="ai-mi">≡</span>{{ t('ai.doc.summarize') }}</button>
-              <button @click="runDocAi('outline')"><span class="ai-mi">⋮</span>{{ t('ai.doc.outline') }}</button>
-              <button @click="runDocAi('title')"><span class="ai-mi">T</span>{{ t('ai.doc.title') }}</button>
-              <button @click="runDocAi('generate')"><span class="ai-mi">✎</span>{{ t('ai.doc.generate') }}</button>
+              <button @click="runDocAi('polishDoc')"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 13.4l6.2-6.2"/><path d="M11 2.2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg></span>{{ t('ai.doc.polish') }}</button>
+              <button @click="runDocAi('summarize')"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="2.5" y1="5" x2="13.5" y2="5"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="11" x2="9.5" y2="11"/></svg></span>{{ t('ai.doc.summarize') }}</button>
+              <button @click="runDocAi('outline')"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="3.3" cy="4.5" r="0.8" fill="currentColor" stroke="none"/><line x1="6" y1="4.5" x2="13.5" y2="4.5"/><circle cx="3.3" cy="8" r="0.8" fill="currentColor" stroke="none"/><line x1="6" y1="8" x2="13.5" y2="8"/><circle cx="3.3" cy="11.5" r="0.8" fill="currentColor" stroke="none"/><line x1="6" y1="11.5" x2="13.5" y2="11.5"/></svg></span>{{ t('ai.doc.outline') }}</button>
+              <button @click="runDocAi('title')"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3.5 4h9M8 4v9"/></svg></span>{{ t('ai.doc.title') }}</button>
+              <button @click="runDocAi('generate')"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M11.4 2.6l2 2L6 12l-3 1 1-3z"/></svg></span>{{ t('ai.doc.generate') }}</button>
               <template v-if="settings.aiEnabled && settings.aiInlineComplete">
                 <div class="dd-sep"></div>
-                <button @click="aiMenuOpen = false; continueWriting()"><span class="ai-mi">→</span>{{ t('ai.continue') }}<kbd>Ctrl Space</kbd></button>
+                <button @click="aiMenuOpen = false; continueWriting()"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><line x1="2.5" y1="8" x2="12" y2="8"/><polyline points="8.5 4.5 12.5 8 8.5 11.5"/></svg></span>{{ t('ai.continue') }}<kbd>Ctrl Space</kbd></button>
               </template>
             </div>
           </Transition>
@@ -627,7 +627,8 @@ onUnmounted(() => {
 .ec-ai.on { background: var(--surface-hover); color: var(--accent); }
 .ec-ai:hover { color: var(--accent); }
 .ai-menu { min-width: 220px; }
-.ai-menu .ai-mi { width: 17px; display: inline-flex; justify-content: center; margin-right: 8px; color: var(--accent); font-size: 12px; }
+.ai-menu .ai-mi { width: 17px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px; color: var(--accent); }
+.ai-menu .ai-mi svg { width: 14px; height: 14px; }
 .ai-progress { position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; align-items: center; gap: 9px; padding: 8px 12px 8px 14px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 11px; box-shadow: var(--shadow-lg); font-size: 12px; color: var(--text-secondary); }
 .ai-progress-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: aiSpin 0.7s linear infinite; }
 .ai-progress button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }

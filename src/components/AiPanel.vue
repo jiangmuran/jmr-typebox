@@ -211,7 +211,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 function toolLabel(name) { return t('ai.tool.' + name) !== 'ai.tool.' + name ? t('ai.tool.' + name) : name }
 function toolResultSummary(tc) {
   const r = tc.result || {}
-  if (r.error) return '⚠ ' + r.error
+  if (r.error) return r.error
   if (r.ok && r.format) return t('ai.tool.exported') + ' ' + r.format
   if (r.ok === true) return t('ai.tool.ok')
   if (r.content !== undefined) return t('ai.tool.read') + ' (' + (r.content?.length || 0) + ')'
@@ -249,7 +249,7 @@ function useSuggestion(id) {
 
         <!-- not configured -->
         <div v-if="!ready" class="aip-empty">
-          <div class="aip-empty-ic">✨</div>
+          <div class="aip-empty-ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l1.7 5.3 5.3 1.7-5.3 1.7L12 16.5l-1.7-5.3L5 9.5l5.3-1.7z"/><path d="M19 14.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg></div>
           <p class="aip-empty-title">{{ t('ai.empty.title') }}</p>
           <p class="aip-empty-sub">{{ t('ai.empty.sub') }}</p>
           <button class="aip-cta" @click="$emit('open-settings')">{{ t('ai.empty.cta') }}</button>
@@ -258,7 +258,7 @@ function useSuggestion(id) {
         <template v-else>
           <div ref="scrollEl" class="aip-body">
             <div v-if="!messages.length" class="aip-intro">
-              <div class="aip-intro-ic">✨</div>
+              <div class="aip-intro-ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l1.7 5.3 5.3 1.7-5.3 1.7L12 16.5l-1.7-5.3L5 9.5l5.3-1.7z"/><path d="M19 14.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg></div>
               <p class="aip-intro-title">{{ t('ai.intro.title') }}</p>
               <p class="aip-intro-sub">{{ t('ai.intro.sub') }}</p>
               <div class="aip-suggest">
