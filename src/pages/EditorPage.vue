@@ -40,7 +40,9 @@ const isMac = ref(false)
 const modLabel = ref('Ctrl+')
 const zenMode = ref(false)
 const startDismissed = ref(false)
-const showStart = computed(() => !content.value.trim() && !startDismissed.value && !zenMode.value)
+// Only the fresh/single empty document shows the welcome guide. Switching to an empty tab
+// while other documents are open must NOT bounce back to the start screen.
+const showStart = computed(() => docs.length <= 1 && !content.value.trim() && !startDismissed.value && !zenMode.value)
 function startWriting() { startDismissed.value = true; nextTick(() => editorRef.value?.focus()) }
 
 function setViewMode(mode) { viewMode.value = mode; save('view', mode) }
@@ -133,12 +135,29 @@ async function doExport(fmt) {
     }
     if (fmt === 'pdf') { await printThemed(); return }
 
-    const { exportTXT, exportMD, exportPNG, copyHTML, copyMarkdown } = await import('../utils/export')
+    // Image export/clipboard uses the chosen EXPORT THEME (rendered in an isolated iframe), with a
+    // box.muran.tech credit footer. Falls back to the plain renderer if the themed/clipboard path fails.
+    if (fmt === 'png' || fmt === 'copyImage') {
+      showToast(t('toast.genImg'))
+      const footer = '<hr style="margin-top:2.4em;border:none;border-top:1px solid currentColor;opacity:.18"><p style="opacity:.5;font-size:.82em;margin-top:.8em">Made with TypeBox · box.muran.tech</p>'
+      const themedHtml = await buildThemedHtml(renderMarkdown(content.value) + footer, exportThemeId())
+      const ex = await import('../utils/export')
+      try {
+        if (fmt === 'copyImage') { await ex.copyThemedPNG(themedHtml); showToast(t('toast.imgCopied')) }
+        else { await ex.exportThemedPNG(fn, themedHtml); showToast(t('toast.pngDone')) }
+      } catch (err) {
+        console.error(err)
+        await ex.exportPNG(content.value, fn, theme.value === 'dark')
+        showToast(t('toast.pngDone'))
+      }
+      return
+    }
+
+    const { exportTXT, exportMD, copyHTML, copyMarkdown } = await import('../utils/export')
     let result
     switch (fmt) {
       case 'txt': result = exportTXT(content.value, fn); break
       case 'md': result = exportMD(content.value, fn); break
-      case 'png': showToast(t('toast.genImg')); result = await exportPNG(content.value, fn, theme.value === 'dark'); break
       case 'copyHtml': result = await copyHTML(content.value); break
       case 'copyMd': result = await copyMarkdown(content.value); break
     }
@@ -289,6 +308,7 @@ onUnmounted(() => {
               <div class="dd-label">{{ t('export.clipboard') }}</div>
               <button @click="doExport('copyHtml')">{{ t('export.copyHtml') }}</button>
               <button @click="doExport('copyMd')">{{ t('export.copyMd') }}</button>
+              <button @click="doExport('copyImage')">{{ t('export.copyImage') }}</button>
             </div>
           </Transition>
         </div>

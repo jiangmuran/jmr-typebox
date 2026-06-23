@@ -38,6 +38,7 @@ const dict = {
     'export.clipboard': 'Clipboard',
     'export.copyHtml': 'Copy as HTML',
     'export.copyMd': 'Copy Markdown',
+    'export.copyImage': 'Copy as image',
 
     // Menu
     'menu.new': 'New Document',
@@ -169,6 +170,7 @@ const dict = {
     'toast.pngDone': 'Image exported',
     'toast.htmlCopied': 'HTML copied',
     'toast.mdCopied': 'Markdown copied',
+    'toast.imgCopied': 'Image copied to clipboard',
     'toast.copied': 'Copied to clipboard',
     'toast.zenHint': 'Zen mode — Esc to exit',
     'toast.startFresh': 'Start fresh? Current content will be cleared.',
@@ -224,6 +226,7 @@ const dict = {
     'export.clipboard': '剪贴板',
     'export.copyHtml': '复制为 HTML',
     'export.copyMd': '复制 Markdown',
+    'export.copyImage': '复制为图片',
 
     'menu.new': '新建文档',
     'menu.open': '打开文件...',
@@ -347,6 +350,7 @@ const dict = {
     'toast.pngDone': '图片已导出',
     'toast.htmlCopied': 'HTML 已复制',
     'toast.mdCopied': 'Markdown 已复制',
+    'toast.imgCopied': '图片已复制到剪贴板',
     'toast.copied': '已复制到剪贴板',
     'toast.zenHint': '专注模式 — 按 Esc 退出',
     'toast.startFresh': '新建文档？当前内容将被清除。',

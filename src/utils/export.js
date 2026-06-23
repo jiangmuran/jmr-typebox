@@ -77,7 +77,7 @@ export async function exportPNG(content, filename, isDark) {
   const borderColor = isDark ? '#38383a' : '#e5e5ea'
   const textColor = isDark ? '#636366' : '#aeaeb2'
   footer.style.cssText = `margin-top:32px;padding-top:16px;border-top:1px solid ${borderColor};font-size:12px;color:${textColor};display:flex;align-items:center;gap:8px;`
-  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="${isDark ? '#f5f5f7' : '#1c1c1e'}"/><path d="M5 5.5h6M8 5.5v6" stroke="${isDark ? '#1c1c1e' : '#fff'}" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · github.com/jiangmuran/jmr-typebox</span>`
+  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="${isDark ? '#f5f5f7' : '#1c1c1e'}"/><path d="M5 5.5h6M8 5.5v6" stroke="${isDark ? '#1c1c1e' : '#fff'}" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · box.muran.tech</span>`
   el.appendChild(footer)
 
   const bg = isDark ? '#1c1c1e' : '#fff'
@@ -85,6 +85,44 @@ export async function exportPNG(content, filename, isDark) {
   document.body.removeChild(el)
   const link = document.createElement('a'); link.download = `${filename}.png`; link.href = canvas.toDataURL('image/png'); link.click()
   return { key: 'toast.pngDone' }
+}
+
+// Render themed HTML (a full <html> doc string from buildThemedHtml) to a canvas, isolated in
+// an iframe so the export theme's CSS applies faithfully without leaking into the app.
+async function renderThemedCanvas(themedHtml) {
+  const { default: html2canvas } = await import('html2canvas')
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:840px;height:1200px;border:0;'
+  document.body.appendChild(iframe)
+  try {
+    await new Promise((res) => { iframe.onload = () => res(); iframe.srcdoc = themedHtml })
+    await new Promise((r) => setTimeout(r, 320)) // let fonts + layout settle
+    const doc = iframe.contentDocument
+    const target = doc.getElementById('write') || doc.body
+    const bg = getComputedStyle(doc.body).backgroundColor || '#ffffff'
+    return await html2canvas(target, {
+      scale: 2, useCORS: true, backgroundColor: bg, logging: false,
+      windowWidth: 840, windowHeight: Math.max(target.scrollHeight + 80, 600),
+    })
+  } finally {
+    document.body.removeChild(iframe)
+  }
+}
+
+export async function exportThemedPNG(filename, themedHtml) {
+  const canvas = await renderThemedCanvas(themedHtml)
+  const link = document.createElement('a')
+  link.download = `${filename}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
+
+export async function copyThemedPNG(themedHtml) {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) throw new Error('clipboard-image-unsupported')
+  const canvas = await renderThemedCanvas(themedHtml)
+  const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'))
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
 }
 
 export async function copyHTML(content) {

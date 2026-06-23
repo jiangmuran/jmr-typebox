@@ -1,8 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <style>
-    .bgc { fill: #111111; } .fgc { stroke: #ffffff; }
-    @media (prefers-color-scheme: dark) { .bgc { fill: #f5f5f7; } .fgc { stroke: #111111; } }
-  </style>
-  <rect class="bgc" width="100" height="100" rx="22"/>
-  <path class="fgc" d="M30 33h40M50 33v38" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <rect width="100" height="100" rx="22" fill="#111111"/>
+  <path d="M30 33h40M50 33v38" stroke="#ffffff" stroke-width="8" stroke-linecap="round" fill="none"/>
 </svg>
