@@ -24,6 +24,7 @@ const busy = ref(false)
 const phase = ref('')   // '' | 'loading' | 'converting'
 const progress = ref(0)
 const dl = ref(null)
+const runtimeCached = ref(false) // is the ~31MB core already in the Cache API? (drives the hint)
 const result = ref(null) // { url, name, size }
 
 const video = useMediaFile({
@@ -66,10 +67,11 @@ const outputName = computed(() => {
 
 let unsubEngine = null
 onMounted(async () => {
-  const { onEngineEvent } = await import('./ffmpegRunner')
+  const { onEngineEvent, isRuntimeCached } = await import('./ffmpegRunner')
   unsubEngine = onEngineEvent((e) => {
-    if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio }
+    if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio, fromCache: e.fromCache }
   })
+  try { runtimeCached.value = await isRuntimeCached() } catch { runtimeCached.value = false }
 })
 onBeforeUnmount(() => { unsubEngine?.(); revokeResult() })
 
@@ -205,11 +207,18 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
             {{ busy ? (phase === 'loading' ? t('media.loadingRuntime') : t('media.converting')) : t('media.sub.run') }}
           </button>
 
+          <!-- Pre-run runtime hint: cached (instant) vs first-run download (~31MB). -->
+          <p v-if="!busy && video.file.value && subFile" class="note small runtime-hint">
+            <svg v-if="runtimeCached" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+            {{ runtimeCached ? t('media.runtimeCached') : t('media.runtimeWillDownload') }}
+          </p>
+
           <div v-if="busy && phase === 'loading'" class="progress">
             <div class="bar"><div class="bar-fill indet" :style="dlPct != null ? { width: dlPct + '%' } : {}"></div></div>
             <span class="progress-pct"><template v-if="dlPct != null">{{ dlPct }}%</template><template v-else>…</template></span>
           </div>
-          <p v-if="busy && phase === 'loading'" class="note small">{{ t('media.runtimeHint') }}</p>
+          <p v-if="busy && phase === 'loading'" class="note small">{{ dl?.fromCache ? t('media.runtimeFromCache') : t('media.runtimeHint') }}</p>
 
           <div v-if="busy && phase === 'converting'" class="progress">
             <div class="bar"><div class="bar-fill" :style="{ width: (progress > 0 ? progressPct : 6) + '%' }"></div></div>
@@ -251,6 +260,8 @@ input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 
 .note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-top: -4px; }
 .note.small { font-size: 11px; }
+.runtime-hint { display: flex; align-items: center; gap: 6px; }
+.runtime-hint svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-tertiary); }
 
 .file-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

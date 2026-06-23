@@ -2,7 +2,9 @@
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
 import { useSettings } from '../composables/useSettings'
+import { useI18n } from '../composables/useI18n'
 import { buildThemedHtml } from '../themes/registry'
+import GhostOverlay from './GhostOverlay.vue'
 import '../styles/markdown.css'
 
 const props = defineProps({
@@ -10,9 +12,11 @@ const props = defineProps({
   viewMode: String,
   isMobile: Boolean,
   placeholder: { type: String, default: 'Start writing Markdown here...' },
+  // Active inline AI suggestion to render as ghost text: { pos, text } or null.
+  ghost: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:content', 'editor-mounted'])
+const emit = defineEmits(['update:content', 'editor-mounted', 'accept-ghost'])
 
 const editorEl = ref(null)
 const previewHTML = ref('')
@@ -21,6 +25,8 @@ let renderTimer = null
 // On mobile, split view would squish two panes into a narrow screen — collapse to a single
 // pane (editor) reactively so the layout is never broken regardless of the stored view.
 const effectiveView = computed(() => (props.isMobile && props.viewMode === 'split') ? 'editor' : props.viewMode)
+
+const { t } = useI18n()
 
 // Writing theme: when a real Typora theme is chosen, render the preview in an isolated
 // iframe so the theme CSS applies faithfully. 'default' keeps the fast app preview.
@@ -52,6 +58,12 @@ function onInput(e) {
 
 function onTab(e) {
   if (e.key === 'Tab') {
+    // When an inline AI ghost is showing, Tab accepts it instead of indenting.
+    if (props.ghost?.text) {
+      e.preventDefault()
+      emit('accept-ghost')
+      return
+    }
     e.preventDefault()
     const el = e.target
     const start = el.selectionStart
@@ -125,6 +137,13 @@ onMounted(async () => {
         @keydown="onTab"
         @scroll="onEditorScroll"
       ></textarea>
+      <GhostOverlay :editor="editorEl" :suggestion="ghost" />
+      <Transition name="ghost-hint">
+        <div v-if="ghost && ghost.text" class="ghost-hint-chip">
+          <kbd>Tab</kbd>
+          <span>{{ t('ai.ghostHint') }}</span>
+        </div>
+      </Transition>
     </div>
 
     <div
@@ -168,7 +187,7 @@ onMounted(async () => {
 
 .workspace.dragging .pane { transition: none; }
 
-.editor-pane { flex: 1; min-width: 0; background: var(--surface); }
+.editor-pane { flex: 1; min-width: 0; background: var(--surface); position: relative; }
 .preview-pane { flex: 1; min-width: 0; overflow-y: auto; background: var(--surface); }
 .preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 
@@ -209,6 +228,39 @@ textarea {
 }
 
 textarea::placeholder { color: var(--text-tertiary); }
+
+/* "Tab to accept" affordance for inline ghost completion */
+.ghost-hint-chip {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  user-select: none;
+}
+.ghost-hint-chip kbd {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.ghost-hint-enter-active { transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out); }
+.ghost-hint-leave-active { transition: opacity 0.12s ease; }
+.ghost-hint-enter-from, .ghost-hint-leave-to { opacity: 0; transform: translateY(4px); }
 
 /* Divider */
 .divider {

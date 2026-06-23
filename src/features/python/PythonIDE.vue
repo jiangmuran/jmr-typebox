@@ -28,6 +28,7 @@ import {
   STORAGE_KEYS,
 } from './pythonHelpers'
 import { prettyJson } from './pythonNet'
+import { resolveNav, resolveForm, injectPreviewBridge } from './workerProtocol'
 import {
   FILES_STORAGE_KEY,
   deserializeProject,
@@ -70,10 +71,17 @@ const hadError = ref(false)
 
 const coreProgress = ref(null)
 const coreDownloading = ref(false)
+const restarting = ref(false)        // worker was terminated by Stop; a fresh one is booting
+const runtimeCached = ref(false)     // the Pyodide runtime is in the durable cache (instant start)
 
 // ---- interactive stdin (input()) --------------------------------------------------------
+// input() reads from the IN-PAGE terminal line — NEVER a browser alert/prompt. When a program
+// calls input() with nothing queued, the worker notifies us (awaitingInput) and we focus the
+// terminal input + show an inline "waiting for input" affordance. The user types a line, Enter
+// queues it for the worker's stdin and echoes it into the transcript.
 const stdinText = ref('')
 const stdinInput = ref(null)
+const mStdinInput = ref(null)
 const awaitingInput = ref(false)
 
 // ---- web preview ------------------------------------------------------------------------
@@ -109,6 +117,55 @@ function clampPanel(px) {
 // Pyodide load state for the first-run banner.
 const coreLoading = computed(() => libLoadState.pyodide === 'loading')
 const coreReady = computed(() => libLoadState.pyodide === 'ready')
+const runtimeReadyFlag = ref(false)  // mirrors the worker's "Pyodide loaded" (reset by Stop)
+
+// ---- package manager + cache status -----------------------------------------------------
+const pkgManagerOpen = ref(false)
+const installedPkgs = ref([])        // [{ name, version, source, installer }]
+const pkgLoading = ref(false)
+
+// Pull the installed-package list + cache state from the runner (post-run / on open). Cheap and
+// best-effort; only meaningful once the runtime exists.
+async function refreshRuntimeMeta() {
+  try {
+    const { listPackages, isReady } = await import('./pythonRunner')
+    if (!isReady()) return
+    runtimeReadyFlag.value = true
+    pkgLoading.value = true
+    installedPkgs.value = await listPackages()
+  } catch { /* best-effort */ } finally {
+    pkgLoading.value = false
+  }
+}
+
+async function togglePkgManager() {
+  pkgManagerOpen.value = !pkgManagerOpen.value
+  if (pkgManagerOpen.value) { refreshRuntimeMeta(); probeRuntimeCache() }
+}
+
+// Read the durable Cache directly (same origin, same bucket the worker writes) to learn whether the
+// big runtime asset is already cached — drives the "cached / will download" banner + pill WITHOUT
+// spawning the worker or fetching anything.
+async function probeRuntimeCache() {
+  try {
+    if (typeof caches === 'undefined') return
+    const { PYODIDE_VERSION, PYODIDE_CDN_URL } = await import('./pythonRunner')
+    const cache = await caches.open(`typebox-pyodide-v${PYODIDE_VERSION}`)
+    const hit = await cache.match(PYODIDE_CDN_URL + 'pyodide.asm.wasm')
+    runtimeCached.value = !!hit
+  } catch { /* best-effort */ }
+}
+
+async function uninstallPkg(name) {
+  try {
+    const { uninstallPackage } = await import('./pythonRunner')
+    await uninstallPackage(name)
+    showToast(t('py.uninstalled'))
+    await refreshRuntimeMeta()
+  } catch (err) {
+    showToast(t('py.uninstallFailed'))
+  }
+}
 
 const progressLabel = computed(() => {
   const p = coreProgress.value
@@ -245,11 +302,17 @@ function commitRename() {
 function cancelRename() { renaming.value = null }
 
 // ---- run --------------------------------------------------------------------------------
+// One batcher pair lives for the whole component so streamed chunks coalesce smoothly; a 60ms
+// timer flushes them to the reactive `lines` array while a run is in flight (live streaming).
+let outBatcher = null
+let errBatcher = null
+let flushTimer = null
+
 async function run() {
   if (busy.value) return
   busy.value = true
-  awaitingInput.value = true
   hadError.value = false
+  awaitingInput.value = false
   lines.length = 0
   result.value = { kind: 'none', data: '' }
   figures.value = []
@@ -265,25 +328,18 @@ async function run() {
   previewError.value = ''
   phase.value = coreReady.value ? t('py.running') : t('py.loadingCore')
   // On mobile, jump the view focus to output; on desktop default the panel to Output.
-  if (!isNarrow.value) { panelCollapsed.value = false }
+  if (!isNarrow.value) { panelCollapsed.value = false; panelTab.value = 'output' }
 
-  const outBatcher = createBatcher(s => appendChunk(lines, 'out', s))
-  const errBatcher = createBatcher(s => appendChunk(lines, 'err', s))
-  const flushTimer = setInterval(() => { outBatcher.flush(); errBatcher.flush() }, 60)
+  outBatcher = createBatcher(s => appendChunk(lines, 'out', s))
+  errBatcher = createBatcher(s => appendChunk(lines, 'err', s))
+  clearInterval(flushTimer)
+  flushTimer = setInterval(() => { outBatcher?.flush(); errBatcher?.flush() }, 60)
 
   try {
     const runner = await import('./pythonRunner')
-    const { runPython, setStdinHandlers, clearStdin, setProxyApiBase } = runner
+    const { runPython, setProxyApiBase } = runner
     // Point the in-interpreter network patch at the same-origin CORS proxy.
     setProxyApiBase(apiBase || '')
-    setStdinHandlers({
-      prompt: () => {
-        outBatcher.flush(); errBatcher.flush()
-        if (typeof window === 'undefined') return null
-        return window.prompt(t('py.waitingInput'))
-      },
-      echo: (line) => { appendChunk(lines, 'in', String(line) + '\n') },
-    })
 
     const res = await runPython(
       { files: { ...project.value.files }, entry: activeName.value },
@@ -295,11 +351,16 @@ async function run() {
           phase.value = st === 'download' ? t('py.loadingCore') : t('py.initRuntime')
         },
         onProgress: ({ loaded, total }) => { coreProgress.value = { loaded, total } },
+        // The program called input() with nothing queued: surface an inline prompt + focus the
+        // terminal input (NO browser dialog). The user types a line and presses Enter.
+        onInput: () => {
+          outBatcher.flush(); errBatcher.flush()
+          awaitingInput.value = true
+          focusStdin()
+        },
       }
     )
     outBatcher.flush(); errBatcher.flush()
-    setStdinHandlers({})
-    clearStdin()
 
     figures.value = res.figures || []
     hasApp.value = !!res.hasApp
@@ -327,13 +388,21 @@ async function run() {
       previewVisible.value = false
       if (panelTab.value === 'preview') panelTab.value = 'output'
     }
+    // Refresh the package list/cache state opportunistically (cheap; reflects micropip installs).
+    refreshRuntimeMeta()
   } catch (err) {
-    hadError.value = true
-    appendChunk(lines, 'err', formatError(err))
-    showToast(t('py.failed'))
+    if (err && err.stopped) {
+      // The user pressed Stop: the worker was terminated. Show a clear, non-error notice.
+      appendChunk(lines, 'info', t('py.stopped'))
+    } else {
+      hadError.value = true
+      appendChunk(lines, 'err', formatError(err))
+      showToast(t('py.failed'))
+    }
   } finally {
     clearInterval(flushTimer)
-    outBatcher.flush(); errBatcher.flush()
+    flushTimer = null
+    outBatcher?.flush(); errBatcher?.flush()
     busy.value = false
     awaitingInput.value = false
     coreDownloading.value = false
@@ -342,38 +411,73 @@ async function run() {
   }
 }
 
+// Hard-stop a running program: terminate the worker (kills even `while True:`), then show a brief
+// "restarting runtime" state — the next run lazily spawns a fresh worker and re-loads Pyodide.
+async function stop() {
+  const { stopRun } = await import('./pythonRunner')
+  const killed = stopRun()
+  if (!killed) return
+  // The in-flight run() promise rejects with {stopped:true}; its finally clears busy. We also flag
+  // a short restarting state so the user understands the runtime must re-init on the next run.
+  restarting.value = true
+  awaitingInput.value = false
+  runtimeReadyFlag.value = false
+  setTimeout(() => { restarting.value = false }, 1500)
+}
+
 // ---- interactive stdin ------------------------------------------------------------------
+function focusStdin() {
+  nextTick(() => {
+    const el = isNarrow.value ? mStdinInput.value : stdinInput.value
+    el?.focus?.()
+  })
+}
+
 async function submitStdin() {
   const text = stdinText.value
   const { feedStdin } = await import('./pythonRunner')
   feedStdin(text)
   appendChunk(lines, 'in', text + '\n')
   stdinText.value = ''
+  awaitingInput.value = false
 }
 
 // ---- web preview ------------------------------------------------------------------------
-async function loadPreview() {
+// previewRawHtml holds the body for "open in new window" (without our injected bridge, so the
+// detached page is clean); previewHtml is what the sandboxed iframe renders (bridge injected so
+// link/form navigation re-routes back to the in-interpreter app).
+const previewRawHtml = ref('')
+const previewMethod = ref('GET')
+const previewFs = ref(false)
+const previewPaneEl = ref(null)
+const mPreviewPaneEl = ref(null)
+
+async function loadPreview(path, method = 'GET', body = '') {
   if (previewBusy.value) return
+  const reqPath = path != null ? path : (previewPath.value || '/')
   previewBusy.value = true
   previewError.value = ''
   try {
     const { callServer } = await import('./pythonRunner')
-    const res = await callServer(previewPath.value || '/', 'GET')
+    const res = await callServer(reqPath, method, body)
     if (res && res.ok) {
+      previewPath.value = reqPath
+      previewMethod.value = method
       previewStatus.value = res.status || '200 OK'
       previewStatusCode.value = res.statusCode || 200
       previewCtype.value = res.contentType || 'text/html'
-      if (res.isHtml) {
-        previewHtml.value = res.body || ''
-      } else if (res.isJson) {
-        previewHtml.value = renderTextDoc(prettyJson(res.body || ''))
-      } else {
-        previewHtml.value = renderTextDoc(res.body || '')
-      }
+      let html
+      if (res.isHtml) html = res.body || ''
+      else if (res.isJson) html = renderTextDoc(prettyJson(res.body || ''))
+      else html = renderTextDoc(res.body || '')
+      previewRawHtml.value = html
+      // Inject the navigation bridge so links/buttons/forms inside the preview re-route here.
+      previewHtml.value = injectPreviewBridge(html)
     } else {
       previewStatus.value = ''
       previewStatusCode.value = 0
       previewHtml.value = ''
+      previewRawHtml.value = ''
       previewError.value = res && res.error === 'no-app'
         ? t('py.previewNoApp')
         : (res?.detail || t('py.previewNoApp'))
@@ -383,6 +487,51 @@ async function loadPreview() {
   } finally {
     previewBusy.value = false
   }
+}
+
+// Handle a navigation intent posted by the preview iframe's bridge script. Link clicks and form
+// submits are resolved (purely) into the next in-interpreter request and re-rendered, so the
+// previewed app is actually navigable ("链接和按钮都无法点击" fixed). Only messages tagged by our
+// bridge are honoured; cross-origin junk is ignored.
+function onPreviewMessage(e) {
+  const d = e && e.data
+  if (!d || d.__tbPreview !== true) return
+  if (d.kind === 'navigate') {
+    const { follow, path } = resolveNav(previewPath.value || '/', d.href)
+    if (follow) loadPreview(path, 'GET')
+  } else if (d.kind === 'submit') {
+    const { path, method, body } = resolveForm(previewPath.value || '/', d.action, d.method, d.fields || [])
+    loadPreview(path, method, body)
+  }
+}
+
+// Open the CURRENT rendered preview response in a real new browser tab/window. We write the raw
+// body (no bridge) into the new document so it stands alone.
+function openPreviewWindow() {
+  if (typeof window === 'undefined') return
+  const w = window.open('', '_blank')
+  if (!w) { showToast(t('py.popupBlocked')); return }
+  try {
+    w.document.open()
+    w.document.write(previewRawHtml.value || '<!doctype html><meta charset=utf-8><p>(empty response)</p>')
+    w.document.close()
+  } catch { /* cross-origin write guard — ignore */ }
+}
+
+// Fullscreen the preview pane via the Fullscreen API (the whole pane, so the address bar + frame
+// are included). Toggles off if already fullscreen.
+function togglePreviewFullscreen() {
+  if (typeof document === 'undefined') return
+  const el = isNarrow.value ? mPreviewPaneEl.value : previewPaneEl.value
+  if (!el) return
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.()
+  } else {
+    el.requestFullscreen?.().catch(() => showToast(t('py.fsFailed')))
+  }
+}
+function onFsChange() {
+  previewFs.value = !!(typeof document !== 'undefined' && document.fullscreenElement)
 }
 
 function renderTextDoc(s) {
@@ -423,6 +572,8 @@ async function installPkgs() {
     appendChunk(lines, 'info', t('py.installed') + ' ' + specs.join(', '))
     showToast(t('py.installed'))
     persistNow()
+    // Reflect the new package(s) in the manager list + cache pill.
+    refreshRuntimeMeta()
   } catch (err) {
     hadError.value = true
     appendChunk(lines, 'err', formatError(err))
@@ -499,22 +650,41 @@ function endPanelDrag() {
   save('python-panel-h', String(Math.round(panelHeight.value)))
 }
 
-// Responsive: switch to the simple single-column mobile layout under 900px.
+// Responsive: switch to the simple single-column flow at/under 1024px. The previous 900px cutoff
+// left a broken hybrid at tablet/narrow-desktop widths (~700–1000px) where the explorer rail + the
+// bottom panel fought for room and a panel bled off the right edge (horizontal overflow). Below
+// 1024 we use the clean single-column layout (no rail, full-width panel) so there is NO overflow at
+// 768/820/900. The desktop workbench only appears with comfortable room (>1024).
+const NARROW_MAX = 1024
 let mq = null
 function syncNarrow() {
   if (typeof window === 'undefined') return
-  isNarrow.value = window.innerWidth <= 900
+  isNarrow.value = window.innerWidth <= NARROW_MAX
   panelHeight.value = clampPanel(panelHeight.value)
 }
 
+let offRuntimeStatus = null
 onMounted(() => {
   initEditor()
   syncNarrow()
   if (typeof window !== 'undefined') {
-    mq = window.matchMedia('(max-width: 900px)')
+    mq = window.matchMedia(`(max-width: ${NARROW_MAX}px)`)
     mq.addEventListener?.('change', syncNarrow)
     window.addEventListener('resize', syncNarrow)
+    // Re-route navigation intents the preview iframe posts (link clicks / form submits).
+    window.addEventListener('message', onPreviewMessage)
+    document.addEventListener('fullscreenchange', onFsChange)
   }
+  // Subscribe to runtime status so the banner reflects download/init/ready/restarting.
+  import('./pythonRunner').then(({ onRuntimeStatus }) => {
+    offRuntimeStatus = onRuntimeStatus(({ phase }) => {
+      if (phase === 'ready') { runtimeReadyFlag.value = true; restarting.value = false }
+      else if (phase === 'stopped') { runtimeReadyFlag.value = false }
+    })
+  }).catch(() => {})
+  // Probe whether the Pyodide runtime is already in the durable cache (so the banner/pill can show
+  // "cached — instant" without spawning the worker or downloading anything). Same-origin Cache API.
+  probeRuntimeCache()
   // Probe the optional backend so the proxy/Network note reflects availability.
   probeBackend().catch(() => {})
 })
@@ -522,12 +692,15 @@ onBeforeUnmount(() => {
   clearTimeout(saveTimer)
   persistNow()
   cm.value?.destroy()
+  offRuntimeStatus?.()
   if (typeof window !== 'undefined') {
     mq?.removeEventListener?.('change', syncNarrow)
     window.removeEventListener('resize', syncNarrow)
     window.removeEventListener('pointermove', onPanelDrag)
     window.removeEventListener('pointerup', endPanelDrag)
+    window.removeEventListener('message', onPreviewMessage)
     document.removeEventListener('pointerdown', onOutsideExamples, true)
+    document.removeEventListener('fullscreenchange', onFsChange)
   }
 })
 </script>
@@ -563,20 +736,74 @@ onBeforeUnmount(() => {
           </Transition>
         </div>
 
+        <button class="tb-btn ghost" type="button" :aria-expanded="pkgManagerOpen" @click="togglePkgManager">{{ t('py.packagesManage') }}</button>
+
         <button class="tb-btn ghost" type="button" @click="copyActive">{{ t('tool.copy') }}</button>
 
-        <button class="tb-btn run" :disabled="busy" @click="run">
-          <span v-if="!busy" class="run-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3v10l8-5z"/></svg></span>
-          <span v-if="!busy">{{ t('py.run') }}</span>
-          <span v-else class="run-spin" aria-hidden="true"></span>
-          <span v-if="busy">{{ phase || t('py.running') }}</span>
-          <kbd v-if="!busy" class="run-kbd">{{ cmdLabel }}</kbd>
+        <!-- Run when idle; while running, a real Stop button that terminates the worker. -->
+        <button v-if="!busy" class="tb-btn run" @click="run">
+          <span class="run-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3v10l8-5z"/></svg></span>
+          <span>{{ t('py.run') }}</span>
+          <kbd class="run-kbd">{{ cmdLabel }}</kbd>
+        </button>
+        <button v-else class="tb-btn stop" type="button" :title="t('py.stopHint')" @click="stop">
+          <span class="stop-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg></span>
+          <span>{{ t('py.stop') }}</span>
         </button>
       </div>
     </header>
 
+    <!-- Package & version manager (micropip) -->
+    <Transition name="pop">
+      <section v-if="pkgManagerOpen" class="pkgmgr">
+        <div class="pkgmgr-head">
+          <span class="pkgmgr-title">{{ t('py.packagesManage') }}</span>
+          <span class="cache-pill" :class="{ on: runtimeCached }">
+            <span class="cache-dot" aria-hidden="true"></span>{{ runtimeCached ? t('py.cacheReady') : t('py.cacheWill') }}
+          </span>
+          <div class="panel-spacer"></div>
+          <button class="mini-btn" type="button" :disabled="pkgLoading" @click="refreshRuntimeMeta">{{ t('py.refresh') }}</button>
+          <button class="mini-btn icon" type="button" :aria-label="t('py.collapse')" @click="pkgManagerOpen = false">×</button>
+        </div>
+        <div class="pkgmgr-row">
+          <input
+            v-model="pkgText" class="pkg-input" type="text" spellcheck="false"
+            :placeholder="t('py.packagesPlaceholder')"
+            @keydown.enter.prevent="installPkgs"
+          />
+          <button class="pkg-btn primary" :disabled="installing || !pkgText.trim()" @click="installPkgs">
+            {{ installing ? t('py.installing') : t('py.install') }}
+          </button>
+        </div>
+        <p class="pkgmgr-hint">{{ t('py.versionHint') }}</p>
+        <div v-if="!runtimeReadyFlag" class="pkgmgr-empty">{{ t('py.pkgRunFirst') }}</div>
+        <div v-else-if="pkgLoading && !installedPkgs.length" class="pkgmgr-empty">{{ t('py.loadingPkgs') }}</div>
+        <ul v-else-if="installedPkgs.length" class="pkglist">
+          <li v-for="p in installedPkgs" :key="p.name" class="pkgrow">
+            <span class="pkg-name">{{ p.name }}</span>
+            <span class="pkg-ver">{{ p.version }}</span>
+            <span v-if="p.source === 'pypi' || p.installer === 'micropip'" class="pkg-src">micropip</span>
+            <span class="panel-spacer"></span>
+            <button
+              v-if="p.installer === 'micropip'"
+              class="pkg-x" type="button"
+              :aria-label="t('py.uninstall') + ' ' + p.name" :title="t('py.uninstall')"
+              @click="uninstallPkg(p.name)"
+            >×</button>
+          </li>
+        </ul>
+        <div v-else class="pkgmgr-empty">{{ t('py.noPkgs') }}</div>
+      </section>
+    </Transition>
+
+    <!-- Restarting-runtime notice (after Stop terminates the worker) -->
+    <div v-if="restarting" class="banner restarting">
+      <span class="run-spin small" aria-hidden="true"></span>
+      <span>{{ t('py.restarting') }}</span>
+    </div>
+
     <!-- First-run runtime download banner -->
-    <div v-if="!coreReady" class="banner" :class="{ 'banner-progress': coreDownloading }">
+    <div v-else-if="!coreReady" class="banner" :class="{ 'banner-progress': coreDownloading }">
       <template v-if="coreDownloading">
         <div class="dl">
           <div class="dl-top">
@@ -589,7 +816,7 @@ onBeforeUnmount(() => {
       </template>
       <template v-else>
         <span class="banner-icon" aria-hidden="true">⤓</span>
-        <span>{{ coreLoading ? t('py.loadingCore') : t('py.coreNotice') }}</span>
+        <span>{{ coreLoading ? t('py.loadingCore') : (runtimeCached ? t('py.coreNoticeCached') : t('py.coreNotice')) }}</span>
       </template>
     </div>
 
@@ -742,12 +969,18 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- WEB PREVIEW TAB -->
-            <div v-show="panelTab === 'preview'" class="preview-scroll">
+            <div v-show="panelTab === 'preview'" ref="previewPaneEl" class="preview-scroll">
               <div class="preview-bar">
-                <span class="addr-method">GET</span>
-                <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview" />
-                <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview">{{ t('py.previewGo') }}</button>
+                <span class="addr-method" :class="{ post: previewMethod !== 'GET' }">{{ previewMethod }}</span>
+                <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview(previewPath, 'GET')" />
+                <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview(previewPath, 'GET')">{{ t('py.previewGo') }}</button>
                 <span v-if="previewStatus" class="preview-status" :class="{ ok: previewStatusCode < 400, bad: previewStatusCode >= 400 }">{{ previewStatus }}</span>
+                <button class="preview-icon-btn" type="button" :disabled="!previewRawHtml" :title="t('py.openInWindow')" :aria-label="t('py.openInWindow')" @click="openPreviewWindow">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5H3.5v9h9v-3"/><path d="M9.5 3.5h3v3"/><path d="M12.5 3.5l-5 5"/></svg>
+                </button>
+                <button class="preview-icon-btn" type="button" :disabled="!previewHtml" :title="previewFs ? t('py.exitFullscreen') : t('py.fullscreen')" :aria-label="previewFs ? t('py.exitFullscreen') : t('py.fullscreen')" @click="togglePreviewFullscreen">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg>
+                </button>
                 <button class="preview-close" type="button" :title="t('py.dismissPreview')" :aria-label="t('py.dismissPreview')" @click="dismissPreview">×</button>
               </div>
               <p class="preview-hint">{{ t('py.previewHint') }}</p>
@@ -755,7 +988,7 @@ onBeforeUnmount(() => {
               <iframe
                 v-else-if="previewHtml"
                 class="preview-frame"
-                sandbox="allow-scripts allow-forms"
+                sandbox="allow-scripts allow-forms allow-popups"
                 :srcdoc="previewHtml"
                 :title="t('py.preview')"
               ></iframe>
@@ -764,9 +997,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- stdin console box (always available) -->
-        <div class="stdin">
-          <span class="stdin-caret" aria-hidden="true">›</span>
+        <!-- stdin console box (always available). Highlights when a program is awaiting input(). -->
+        <div class="stdin" :class="{ awaiting: awaitingInput }">
+          <span class="stdin-caret" aria-hidden="true">{{ awaitingInput ? '⌶' : '›' }}</span>
           <input
             ref="stdinInput" v-model="stdinText" class="stdin-input" type="text"
             spellcheck="false" autocomplete="off"
@@ -811,11 +1044,15 @@ onBeforeUnmount(() => {
         <div ref="editorEl" class="cm-host"></div>
       </div>
 
-      <!-- Big Run button -->
-      <button class="m-run" :disabled="busy" @click="run">
-        <span v-if="!busy" class="m-run-lbl"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 3v10l8-5z"/></svg>{{ t('py.run') }}</span>
-        <span v-else>{{ phase || t('py.running') }}</span>
-      </button>
+      <!-- Big Run button; while running it becomes a Stop button (terminates the worker). -->
+      <div class="m-runrow">
+        <button v-if="!busy" class="m-run" @click="run">
+          <span class="m-run-lbl"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 3v10l8-5z"/></svg>{{ t('py.run') }}</span>
+        </button>
+        <button v-else class="m-run stop" type="button" @click="stop">
+          <span class="m-run-lbl"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>{{ t('py.stop') }} · {{ phase || t('py.running') }}</span>
+        </button>
+      </div>
       <div v-if="busy" class="m-progress">
         <div class="bar"><div v-if="coreDownloading" class="bar-fill" :style="{ width: progressPct + '%' }"></div><div v-else class="bar-fill indet"></div></div>
         <span class="m-progress-label">{{ coreDownloading ? progressLabel : (phase || t('py.running')) }}</span>
@@ -857,29 +1094,36 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <!-- stdin -->
-        <div class="stdin">
-          <span class="stdin-caret" aria-hidden="true">›</span>
-          <input v-model="stdinText" class="stdin-input" type="text" spellcheck="false" autocomplete="off"
+        <div class="stdin" :class="{ awaiting: awaitingInput }">
+          <span class="stdin-caret" aria-hidden="true">{{ awaitingInput ? '⌶' : '›' }}</span>
+          <input ref="mStdinInput" v-model="stdinText" class="stdin-input" type="text" spellcheck="false" autocomplete="off"
             :placeholder="awaitingInput ? t('py.waitingInput') : t('py.stdinPlaceholder')" @keydown.enter.prevent="submitStdin" />
           <button class="stdin-send" type="button" @click="submitStdin">{{ t('py.stdinSend') }}</button>
         </div>
       </section>
 
       <!-- Web preview (collapsible) -->
-      <section v-if="previewVisible" class="m-preview">
+      <section v-if="previewVisible" ref="mPreviewPaneEl" class="m-preview">
         <div class="m-preview-head">
           <span class="m-output-title">{{ t('py.preview') }}</span>
           <span class="ptab-badge">{{ appKind === 'asgi' ? 'ASGI' : 'WSGI' }}</span>
           <span v-if="previewStatus" class="preview-status" :class="{ ok: previewStatusCode < 400, bad: previewStatusCode >= 400 }">{{ previewStatus }}</span>
+          <span class="panel-spacer"></span>
+          <button class="preview-icon-btn" type="button" :disabled="!previewRawHtml" :title="t('py.openInWindow')" :aria-label="t('py.openInWindow')" @click="openPreviewWindow">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5H3.5v9h9v-3"/><path d="M9.5 3.5h3v3"/><path d="M12.5 3.5l-5 5"/></svg>
+          </button>
+          <button class="preview-icon-btn" type="button" :disabled="!previewHtml" :title="previewFs ? t('py.exitFullscreen') : t('py.fullscreen')" :aria-label="previewFs ? t('py.exitFullscreen') : t('py.fullscreen')" @click="togglePreviewFullscreen">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg>
+          </button>
           <button class="preview-close" type="button" :aria-label="t('py.dismissPreview')" @click="dismissPreview">×</button>
         </div>
         <div class="preview-bar">
-          <span class="addr-method">GET</span>
-          <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview" />
-          <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview">{{ t('py.previewGo') }}</button>
+          <span class="addr-method" :class="{ post: previewMethod !== 'GET' }">{{ previewMethod }}</span>
+          <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview(previewPath, 'GET')" />
+          <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview(previewPath, 'GET')">{{ t('py.previewGo') }}</button>
         </div>
         <p v-if="previewError" class="preview-error">{{ previewError }}</p>
-        <iframe v-else-if="previewHtml" class="preview-frame" sandbox="allow-scripts allow-forms" :srcdoc="previewHtml" :title="t('py.preview')"></iframe>
+        <iframe v-else-if="previewHtml" class="preview-frame" sandbox="allow-scripts allow-forms allow-popups" :srcdoc="previewHtml" :title="t('py.preview')"></iframe>
       </section>
       <button v-else-if="hasApp" class="m-open-preview" type="button" @click="openPreview">{{ t('py.openPreview') }}</button>
     </div>
@@ -891,6 +1135,7 @@ onBeforeUnmount(() => {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
   width: 100%; max-width: 1320px; margin: 0 auto; padding: 12px 14px 14px;
   animation: tbIn 0.3s var(--ease-out);
+  min-width: 0; overflow-x: hidden;   /* never let an inner panel cause horizontal overflow */
 }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -918,7 +1163,14 @@ onBeforeUnmount(() => {
 .m-run-lbl svg { width: 13px; height: 13px; }
 .run-kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.18); color: inherit; border: none; }
 .run-spin { width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); border-radius: 50%; animation: spin 0.7s linear infinite; }
+.run-spin.small { width: 13px; height: 13px; border-color: color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Stop button — danger-tinted, replaces Run while a program is executing. */
+.tb-btn.stop { padding: 8px 15px; border: none; background: var(--danger, #e5484d); color: #fff; font-weight: 650; }
+.tb-btn.stop:hover { filter: brightness(1.06); }
+.tb-btn.stop:active { transform: scale(0.98); }
+.stop-ico { display: inline-flex; }
+.stop-ico svg { width: 11px; height: 11px; }
 
 /* Examples dropdown */
 .ex-wrap { position: relative; }
@@ -940,6 +1192,29 @@ onBeforeUnmount(() => {
 .dl-pct { font-size: 12px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
 .dl-track { height: 7px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
 .dl-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.18s var(--ease-out); }
+.banner.restarting { color: var(--text); }
+
+/* ---------- Package & version manager ---------- */
+.pkgmgr { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 12px 14px; margin-bottom: 10px; }
+.pkgmgr-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.pkgmgr-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.cache-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; color: var(--text-tertiary); background: var(--surface-active); border-radius: 99px; padding: 3px 8px; }
+.cache-pill.on { color: var(--status-ok, #34c759); background: var(--status-ok-bg, rgba(52,199,89,0.1)); }
+.cache-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pkgmgr-row { display: flex; gap: 8px; }
+.pkgmgr-row .pkg-input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12.5px; font-family: var(--font-mono); outline: none; }
+.pkgmgr-row .pkg-input:focus { border-color: var(--accent); }
+.pkg-btn.primary { flex-shrink: 0; padding: 8px 14px; border: none; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-size: 12px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; }
+.pkg-btn.primary:disabled { opacity: 0.55; cursor: default; }
+.pkgmgr-hint { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin: 8px 0 0; }
+.pkgmgr-empty { font-size: 11.5px; color: var(--text-tertiary); font-style: italic; padding: 10px 2px 2px; }
+.pkglist { list-style: none; margin: 10px 0 0; padding: 0; max-height: 240px; overflow: auto; border-top: 1px solid var(--border-light); }
+.pkgrow { display: flex; align-items: center; gap: 9px; padding: 7px 2px; border-bottom: 1px solid var(--border-light); }
+.pkg-name { font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+.pkg-ver { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.pkg-src { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; color: var(--accent-text); background: var(--accent); border-radius: 99px; padding: 1px 6px; }
+.pkg-x { flex: 0 0 auto; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; line-height: 1; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
+.pkg-x:hover { background: rgba(229,72,77,0.1); color: var(--danger, #e5484d); }
 
 /* ======================= DESKTOP WORKBENCH ======================= */
 .wb { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
@@ -1041,6 +1316,11 @@ onBeforeUnmount(() => {
 .preview-scroll { display: flex; flex-direction: column; background: var(--bg); }
 .preview-bar { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
 .addr-method { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--accent); background: var(--accent-bg); border-radius: 6px; padding: 4px 7px; flex: 0 0 auto; }
+.addr-method.post { color: var(--accent-text); background: var(--accent); }
+.preview-icon-btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.preview-icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-tertiary); }
+.preview-icon-btn:disabled { opacity: 0.4; cursor: default; }
+.preview-icon-btn svg { width: 14px; height: 14px; }
 .preview-path { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; }
 .preview-path:focus { border-color: var(--accent); }
 .preview-go { flex-shrink: 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
@@ -1057,7 +1337,9 @@ onBeforeUnmount(() => {
 .preview-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 18px 14px; }
 
 /* stdin */
-.stdin { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border-light); background: var(--surface-hover); padding: 8px 12px; }
+.stdin { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border-light); background: var(--surface-hover); padding: 8px 12px; transition: background 0.18s; }
+.stdin.awaiting { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+.stdin.awaiting .stdin-input { border-color: var(--accent); }
 .stdin-caret { color: var(--accent); font-family: var(--font-mono); font-weight: 700; font-size: 13px; flex: 0 0 auto; }
 .stdin-input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12.5px; font-family: var(--font-mono); outline: none; }
 .stdin-input:focus { border-color: var(--accent); }
@@ -1077,9 +1359,11 @@ onBeforeUnmount(() => {
 .m-editor { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; height: 46vh; min-height: 280px; }
 .m-editor .cm-host { position: relative; height: 100%; }
 
+.m-runrow { display: flex; }
 .m-run { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; min-height: 52px; }
 .m-run:disabled { opacity: 0.7; cursor: default; }
 .m-run:active:not(:disabled) { transform: scale(0.99); }
+.m-run.stop { background: var(--danger, #e5484d); color: #fff; }
 .m-progress { display: flex; flex-direction: column; gap: 6px; }
 .m-progress .bar { height: 6px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
 .m-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 99px; }

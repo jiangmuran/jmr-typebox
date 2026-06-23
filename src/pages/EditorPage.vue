@@ -22,6 +22,7 @@ import EditorContextMenu from '../components/EditorContextMenu.vue'
 import AiPanel from '../components/AiPanel.vue'
 import AiInlineActions from '../components/AiInlineActions.vue'
 import { useAiActions } from '../composables/useAiActions'
+import { useAiComplete } from '../composables/useAiComplete'
 
 const { meta: m } = useRouteHead()
 const router = useRouter()
@@ -59,11 +60,20 @@ function onEditorMounted(el) {
   el.addEventListener('contextmenu', onCtx)
   // Drive the floating AI toolbar from selection changes.
   el.addEventListener('mouseup', scheduleAiSelection)
-  el.addEventListener('keyup', e => { if (e.shiftKey || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)) scheduleAiSelection() })
+  el.addEventListener('mouseup', () => aiComplete.clear())
+  el.addEventListener('keyup', e => {
+    if (e.shiftKey || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)) scheduleAiSelection()
+    // Cursor moves dismiss the inline ghost.
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key)) aiComplete.clear()
+  })
   el.addEventListener('select', scheduleAiSelection)
-  el.addEventListener('blur', () => { clearTimeout(aiSelTimer); aiSelTimer = setTimeout(() => { aiSelection.value = null }, 150) })
+  el.addEventListener('blur', () => {
+    clearTimeout(aiSelTimer); aiSelTimer = setTimeout(() => { aiSelection.value = null }, 150)
+    aiComplete.clear()
+  })
   el.addEventListener('scroll', () => { if (aiSelection.value) refreshAiSelection() })
-  el.addEventListener('input', () => { aiSelection.value = null; ghost.value = null })
+  // On input: drop the old surfaces and (re)schedule an inline ghost after the idle debounce.
+  el.addEventListener('input', () => { aiSelection.value = null; ghost.value = null; aiComplete.schedule() })
 }
 function onCtx(e) {
   e.preventDefault()
@@ -163,6 +173,18 @@ function caretCoordinates(el, position) {
   const left = span.offsetLeft + parseInt(style.borderLeftWidth || '0', 10)
   document.body.removeChild(div)
   return { top, left }
+}
+
+// Copilot-style inline ghost-text autocomplete (automatic, on idle). Distinct from the manual
+// ⌃Space "continue writing" below: this NEVER edits the doc until the user presses Tab.
+const aiComplete = useAiComplete({ getEditor: () => editorRef.value })
+const inlineGhost = computed(() => aiComplete.suggestion.value)
+function acceptInlineGhost() {
+  if (aiComplete.accept()) {
+    // Reflect the accepted text into the editor/doc state.
+    const el = editorRef.value
+    if (el) updateContent(el.value)
+  }
 }
 
 // Inline "continue writing" (⌃Space): stream a continuation at the cursor.
@@ -394,6 +416,8 @@ function onKeydown(e) {
     setViewMode(modes[(modes.indexOf(viewMode.value) + 1) % modes.length])
   } else if (e.key === 'Escape') {
     searchOpen.value = false; exportOpen.value = false; ctxShow.value = false; aiMenuOpen.value = false
+    // Esc dismisses the inline ghost-text suggestion (it was never inserted).
+    aiComplete.clear()
     // Esc reverts a just-streamed ghost completion (remove the inserted text).
     if (ghost.value?.text && editorRef.value) {
       const el = editorRef.value
@@ -470,8 +494,8 @@ onUnmounted(() => {
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg>
         </button>
 
-        <!-- AI: whole-document actions menu -->
-        <div class="dd-wrap">
+        <!-- AI: whole-document actions menu (hidden entirely until AI is configured) -->
+        <div v-if="ai.ready.value" class="dd-wrap">
           <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg>
           </button>
@@ -532,7 +556,7 @@ onUnmounted(() => {
       <div class="editor-body">
         <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
         <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
-        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" @update:content="updateContent" @editor-mounted="onEditorMounted" />
+        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" :ghost="inlineGhost" @update:content="updateContent" @editor-mounted="onEditorMounted" @accept-ghost="acceptInlineGhost" />
         <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
       </div>
 

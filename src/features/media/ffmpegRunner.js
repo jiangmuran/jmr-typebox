@@ -27,8 +27,10 @@
 // mainScriptUrlOrBlob, which the core decodes via locateFile — identical for ESM and UMD, so our
 // CDN wasm blob is found. No worker-type hacking, no COOP/COEP, no self-hosting the 31MB core.
 //
-// Note: this requires network the FIRST time (to fetch the core). After that the browser cache
-// usually serves it. There is no offline fallback for the core itself.
+// Note: this requires network the FIRST time (to fetch the core). After that we store the core in
+// a durable named Cache API bucket (`tb-ffmpeg-v1`) and serve it from there on every subsequent
+// load — so the 31MB is fetched from the network exactly once and survives reloads/restarts (see
+// cachedBlobURL / isRuntimeCached below). There is no offline fallback for the very first fetch.
 
 import { libLoadState, libMeta } from '../../utils/loadLibrary'
 
@@ -47,6 +49,125 @@ export const CORE_CDN_FALLBACK = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CO
 
 const LIB_KEY = 'ffmpeg'
 const CORE_SIZE_MB = 31 // approximate, for the "downloading N MB" hint
+
+// ---------------------------------------------------------------------------
+// DURABLE caching of the big core via the Cache API (Bug 2: "ffmpeg 也没有缓存")
+// ---------------------------------------------------------------------------
+// The ~31MB core re-downloaded on every page load because we built blob URLs with a plain
+// toBlobURL (no persistence). We now store the fetched core `.js` + `.wasm` Responses in a NAMED
+// Cache (`tb-ffmpeg-v1`), keyed by their CDN URL, and serve from it on subsequent loads — so the
+// core hits the network only ONCE and survives reloads/restarts (the Cache API is disk-backed and
+// origin-scoped). Blob URLs themselves are per-session and cannot be cached; we cache the bytes and
+// mint a fresh object URL from them each load. Requires a secure context (https, or localhost),
+// which production (box.muran.tech) and dev both satisfy; if `caches` is missing we degrade to a
+// plain network fetch so the engine still loads.
+export const FFMPEG_CACHE = 'tb-ffmpeg-v1'
+
+// The exact asset URLs (primary CDN) that make up the runtime — used by isRuntimeCached() for the
+// "runtime cached / will download ~31MB" UI hint.
+function coreAssetUrls(base = CORE_CDN_BASE) {
+  return [`${base}/ffmpeg-core.js`, `${base}/ffmpeg-core.wasm`]
+}
+
+function cacheStorage() {
+  // `caches` is only defined in a secure context with the Cache API available.
+  return (typeof caches !== 'undefined' && caches) ? caches : null
+}
+
+// Have we already cached the core assets (from a previous visit)? Used purely for the UI hint, so
+// it must never throw — any failure (no Cache API, private mode, etc.) resolves to false.
+export async function isRuntimeCached() {
+  if (_ffmpeg?.loaded) return true
+  const cs = cacheStorage()
+  if (!cs) return false
+  try {
+    const cache = await cs.open(FFMPEG_CACHE)
+    // Consider it cached only if BOTH the js and wasm are present (either CDN base counts).
+    for (const base of [CORE_CDN_BASE, CORE_CDN_FALLBACK]) {
+      const hits = await Promise.all(coreAssetUrls(base).map((u) => cache.match(u)))
+      if (hits.every(Boolean)) return true
+    }
+    return false
+  } catch { return false }
+}
+
+// Stream a response body to a Uint8Array, reporting progress via `onChunk({ url, received, total })`.
+// Tolerates a Content-Length that doesn't match the streamed byte count (compressed transfer) — we
+// never throw on a mismatch (that quirk previously bricked toBlobURL on some CDNs). Returns the
+// assembled bytes so the caller can both cache them AND build a blob URL.
+async function streamToBytes(resp, url, onChunk) {
+  const total = parseInt(resp.headers.get('Content-Length') || '-1', 10)
+  const reader = resp.body?.getReader?.()
+  if (!reader) {
+    // No streaming reader (or opaque response): fall back to a single buffered read.
+    const buf = new Uint8Array(await resp.arrayBuffer())
+    onChunk?.({ url, received: buf.length, total: buf.length })
+    return buf
+  }
+  const chunks = []
+  let received = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.length
+    onChunk?.({ url, received, total: total > 0 ? total : received })
+  }
+  const out = new Uint8Array(received)
+  let pos = 0
+  for (const c of chunks) { out.set(c, pos); pos += c.length }
+  onChunk?.({ url, received, total: total > 0 ? total : received })
+  return out
+}
+
+// cachedBlobURL(url, mime, onChunk) — the durable replacement for toBlobURL:
+//   1. cache.match(url) → if HIT, read the stored bytes (no network), report it as fully received,
+//      and return a fresh object URL.
+//   2. on MISS, fetch+stream (reporting download progress), cache.put a fresh typed Response under
+//      the URL, then return an object URL.
+// Always resolves to a usable blob URL even if the Cache API is unavailable (degrades to a plain
+// streamed fetch with no persistence).
+export async function cachedBlobURL(url, mime, onChunk) {
+  const cs = cacheStorage()
+  let cache = null
+  if (cs) { try { cache = await cs.open(FFMPEG_CACHE) } catch { cache = null } }
+
+  // 1) Cache hit → serve instantly from disk.
+  if (cache) {
+    try {
+      const hit = await cache.match(url)
+      if (hit) {
+        const blob = await hit.blob()
+        const typed = blob.type === mime ? blob : new Blob([blob], { type: mime })
+        // Report as a completed download so the progress bar fills (and we know it was free).
+        onChunk?.({ url, received: typed.size, total: typed.size, cached: true })
+        return URL.createObjectURL(typed)
+      }
+    } catch { /* fall through to network */ }
+  }
+
+  // 2) Cache miss → stream from the network, persist, and return a blob URL.
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`fetch ${url} → HTTP ${resp.status}`)
+  const bytes = await streamToBytes(resp, url, onChunk)
+  const blob = new Blob([bytes], { type: mime })
+  if (cache) {
+    try {
+      // Store a fresh Response with a correct content-type + length (independent of the stream).
+      await cache.put(url, new Response(blob, {
+        headers: { 'Content-Type': mime, 'Content-Length': String(blob.size) },
+      }))
+    } catch { /* cache write is best-effort; the engine still loads from the blob URL */ }
+  }
+  return URL.createObjectURL(blob)
+}
+
+// Test/diagnostic helper: drop the cached runtime so the next load re-fetches.
+export async function clearRuntimeCache() {
+  const cs = cacheStorage()
+  if (!cs) return false
+  try { return await cs.delete(FFMPEG_CACHE) } catch { return false }
+}
 
 let _ffmpeg = null          // singleton FFmpeg instance
 let _loadPromise = null     // dedupes concurrent load() calls
@@ -132,10 +253,7 @@ export async function loadFFmpeg() {
     libLoadState[LIB_KEY] = 'loading'
     libMeta[LIB_KEY] = { sizeMB: CORE_SIZE_MB }
     try {
-      const [{ FFmpeg }, { toBlobURL }] = await Promise.all([
-        import('@ffmpeg/ffmpeg'),
-        import('@ffmpeg/util'),
-      ])
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg')
 
       const ffmpeg = new FFmpeg()
       ffmpeg.on('log', ({ message }) => {
@@ -162,29 +280,21 @@ export async function loadFFmpeg() {
       // via the unit-tested accumulator. The wasm (~30MB) dominates; the JS shim is tiny.
       const dlProgress = makeDownloadProgress()
       const resetTallies = () => dlProgress.reset()
-      const reportDownload = ({ url, received, total }) => {
-        emit({ type: 'download', ...dlProgress.update({ url, received, total }) })
+      let anyFromNetwork = false
+      const reportDownload = ({ url, received, total, cached }) => {
+        if (!cached) anyFromNetwork = true
+        // `fromCache` is true only while every asset reported so far came from the Cache API — lets
+        // the UI label an instant (no-network) load. Flips false the moment any asset streams.
+        emit({ type: 'download', fromCache: !anyFromNetwork, ...dlProgress.update({ url, received, total }) })
       }
 
-      // Robust single-asset fetch: try @ffmpeg/util's toBlobURL (which streams w/ progress), and if
-      // it throws (e.g. jsDelivr's Content-Length mismatch → ERROR_INCOMPLETED_DOWNLOAD → "body
-      // stream already read"), fall back to a plain fetch→blob URL so a CDN quirk can't brick us.
-      const fetchAsset = async (url, mime) => {
-        try {
-          return await toBlobURL(url, mime, true, reportDownload)
-        } catch (e) {
-          console.warn('[media] streamed download failed, retrying as a plain fetch:', url, e)
-          const resp = await fetch(url)
-          if (!resp.ok) throw new Error(`fetch ${url} → HTTP ${resp.status}`)
-          const blob = await resp.blob()
-          // Re-type the blob to the expected MIME (some CDNs send octet-stream for .wasm).
-          const typed = blob.type === mime ? blob : new Blob([blob], { type: mime })
-          return URL.createObjectURL(typed)
-        }
-      }
+      // Durable single-asset fetch: cachedBlobURL serves the bytes from the `tb-ffmpeg-v1` Cache on
+      // repeat loads (network ONCE), streaming with progress on a cache miss. It tolerates a
+      // Content-Length mismatch (the jsDelivr quirk that used to brick toBlobURL) and degrades to a
+      // plain fetch when the Cache API is unavailable, so a CDN/cache quirk can't brick the engine.
       const fetchCore = (base) => Promise.all([
-        fetchAsset(`${base}/ffmpeg-core.js`, 'text/javascript'),
-        fetchAsset(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+        cachedBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript', reportDownload),
+        cachedBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm', reportDownload),
       ])
       let coreURL, wasmURL
       try {
@@ -246,7 +356,12 @@ export async function runFFmpeg({ files = [], args, outName, outMime = 'applicat
   const written = []
   try {
     for (const f of files) {
-      const data = f.data instanceof Uint8Array ? f.data : await fetchFile(f.data)
+      const raw = f.data instanceof Uint8Array ? f.data : await fetchFile(f.data)
+      // ffmpeg.writeFile() TRANSFERS the Uint8Array's ArrayBuffer to the worker, DETACHING it here.
+      // If the caller reuses that buffer (e.g. converts the same picked file twice, or passes a
+      // shared Uint8Array), the next writeFile throws "ArrayBuffer ... is already detached". Always
+      // hand the worker a fresh copy so each write is self-contained and the caller's bytes survive.
+      const data = raw.slice()
       await ffmpeg.writeFile(f.name, data)
       written.push(f.name)
     }

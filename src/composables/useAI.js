@@ -43,6 +43,7 @@ export function useAI() {
       if (opts.tool_choice) body.tool_choice = opts.tool_choice
     }
     if (opts.max_tokens) body.max_tokens = opts.max_tokens
+    if (opts.stop && opts.stop.length) body.stop = opts.stop
     return body
   }
 
@@ -162,5 +163,20 @@ export function useAI() {
     return msg.content || ''
   }
 
-  return { ready, chat, complete, buildBody, AIError }
+  // Inline "ghost text" autocomplete: a SHORT one-shot continuation tuned for low latency.
+  // Non-streaming, low max_tokens, a low temperature, and stop sequences so it can't ramble.
+  // `messages` is a prepared chat array (see useAiComplete.buildCompletionMessages). Returns the
+  // raw continuation string (callers sanitize). Throws on failure — the inline-complete composable
+  // swallows it (shows no ghost).
+  async function completeInline(messages, { signal } = {}) {
+    return complete(messages, {
+      stream: false,
+      signal,
+      temperature: 0.3,
+      max_tokens: 64,
+      stop: ['\n\n'],
+    })
+  }
+
+  return { ready, chat, complete, completeInline, buildBody, AIError }
 }

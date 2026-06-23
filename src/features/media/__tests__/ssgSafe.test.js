@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // SSG-safety: importing the engine + runner modules must NOT touch window/Blob/Worker/ffmpeg at
 // module-eval time (that would crash during vite-ssg prerender). We assert they import cleanly and
@@ -128,5 +128,102 @@ describe('media engine — progress math (the -604120800% / >100% regression)', 
     dp.reset()
     const r = dp.update({ url: 'core.wasm', received: 0, total: 30_000_000 })
     expect(r.ratio).toBe(0)
+  })
+})
+
+// Bug 2 ("ffmpeg 也没有缓存"): the ~31MB core must be stored in a named Cache API bucket and served
+// from it on later loads (network ONCE). We mock a minimal Cache API + fetch and assert the
+// miss→put→hit lifecycle of cachedBlobURL / isRuntimeCached deterministically (no browser).
+describe('media engine — durable Cache API caching of the core (no re-download)', () => {
+  let realCaches, realFetch, realCreateObjURL, store
+  // Minimal in-memory Cache API: keyed by URL string; Responses are the bytes we put.
+  function makeMockCaches() {
+    const buckets = new Map()
+    return {
+      _buckets: buckets,
+      async open(name) {
+        if (!buckets.has(name)) buckets.set(name, new Map())
+        const b = buckets.get(name)
+        return {
+          async match(url) { return b.has(url) ? b.get(url).clone() : undefined },
+          async put(url, resp) { b.set(url, resp.clone ? resp.clone() : resp) },
+        }
+      },
+      async delete(name) { return buckets.delete(name) },
+    }
+  }
+
+  beforeEach(() => {
+    realCaches = globalThis.caches
+    realFetch = globalThis.fetch
+    realCreateObjURL = globalThis.URL.createObjectURL
+    store = makeMockCaches()
+    globalThis.caches = store
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock')
+    // Network fetch returns 5 bytes with a Content-Length; count calls to prove "network once".
+    globalThis.fetch = vi.fn(async (url) => new Response(new Blob([new Uint8Array([1, 2, 3, 4, 5])]), {
+      status: 200, headers: { 'Content-Length': '5', 'Content-Type': 'application/octet-stream' },
+    }))
+  })
+  afterEach(() => {
+    globalThis.caches = realCaches
+    globalThis.fetch = realFetch
+    globalThis.URL.createObjectURL = realCreateObjURL
+    vi.restoreAllMocks()
+  })
+
+  it('exposes the caching API', async () => {
+    const m = await import('../ffmpegRunner')
+    expect(typeof m.cachedBlobURL).toBe('function')
+    expect(typeof m.isRuntimeCached).toBe('function')
+    expect(typeof m.clearRuntimeCache).toBe('function')
+    expect(m.FFMPEG_CACHE).toBe('tb-ffmpeg-v1')
+  })
+
+  it('first call FETCHES + stores; second call serves from cache (network ONCE)', async () => {
+    const { cachedBlobURL, FFMPEG_CACHE } = await import('../ffmpegRunner')
+    const url = 'https://unpkg.com/@ffmpeg/core@x/dist/esm/ffmpeg-core.wasm'
+
+    const progress1 = []
+    const u1 = await cachedBlobURL(url, 'application/wasm', (e) => progress1.push(e))
+    expect(u1).toBe('blob:mock')
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)        // network hit
+    expect(progress1.at(-1).received).toBeGreaterThan(0)     // streamed progress reported
+    expect(progress1.at(-1).cached).toBeFalsy()              // first load is NOT from cache
+    // It was persisted under the URL key in our named bucket.
+    expect(store._buckets.get(FFMPEG_CACHE)?.has(url)).toBe(true)
+
+    const progress2 = []
+    const u2 = await cachedBlobURL(url, 'application/wasm', (e) => progress2.push(e))
+    expect(u2).toBe('blob:mock')
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)        // STILL once → no re-download
+    expect(progress2.at(-1)).toMatchObject({ cached: true }) // hit flagged as cached
+  })
+
+  it('isRuntimeCached is false until BOTH core assets are cached, then true', async () => {
+    const { cachedBlobURL, isRuntimeCached, CORE_CDN_BASE } = await import('../ffmpegRunner')
+    expect(await isRuntimeCached()).toBe(false)
+    await cachedBlobURL(`${CORE_CDN_BASE}/ffmpeg-core.js`, 'text/javascript')
+    expect(await isRuntimeCached()).toBe(false) // only the js so far
+    await cachedBlobURL(`${CORE_CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm')
+    expect(await isRuntimeCached()).toBe(true)  // both present now
+  })
+
+  it('clearRuntimeCache drops the bucket so the next load re-fetches', async () => {
+    const { cachedBlobURL, isRuntimeCached, clearRuntimeCache, CORE_CDN_BASE } = await import('../ffmpegRunner')
+    await cachedBlobURL(`${CORE_CDN_BASE}/ffmpeg-core.js`, 'text/javascript')
+    await cachedBlobURL(`${CORE_CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm')
+    expect(await isRuntimeCached()).toBe(true)
+    expect(await clearRuntimeCache()).toBe(true)
+    expect(await isRuntimeCached()).toBe(false)
+  })
+
+  it('degrades gracefully when the Cache API is unavailable (still returns a blob URL)', async () => {
+    globalThis.caches = undefined
+    const { cachedBlobURL, isRuntimeCached } = await import('../ffmpegRunner')
+    expect(await isRuntimeCached()).toBe(false)            // no caches → not cached, no throw
+    const u = await cachedBlobURL('https://x/ffmpeg-core.wasm', 'application/wasm')
+    expect(u).toBe('blob:mock')                            // plain fetch fallback
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 })

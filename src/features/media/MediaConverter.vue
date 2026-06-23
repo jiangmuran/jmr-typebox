@@ -53,7 +53,8 @@ const acknowledgedAdvanced = ref(false)
 const busy = ref(false)
 const phase = ref('')       // '' | 'loading' | 'converting'
 const progress = ref(0)     // 0..1 transcode progress
-const dl = ref(null)        // { received, total, ratio } during core download
+const dl = ref(null)        // { received, total, ratio, fromCache } during core load
+const runtimeCached = ref(false) // is the ~31MB core already in the Cache API? (drives the hint)
 const result = ref(null)    // { url, name, size, isVideo }
 
 // Waveform / playback state.
@@ -97,10 +98,12 @@ const outputName = computed(() => {
 let unsubEngine = null
 onMounted(async () => {
   window.addEventListener('paste', media.onPaste)
-  const { onEngineEvent } = await import('./ffmpegRunner')
+  const { onEngineEvent, isRuntimeCached } = await import('./ffmpegRunner')
   unsubEngine = onEngineEvent((e) => {
-    if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio }
+    if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio, fromCache: e.fromCache }
   })
+  // Decide the pre-run hint: is the heavy core already durably cached from a previous visit?
+  try { runtimeCached.value = await isRuntimeCached() } catch { runtimeCached.value = false }
 })
 onBeforeUnmount(() => {
   window.removeEventListener('paste', media.onPaste)
@@ -513,12 +516,19 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
           <!-- Run button (label adapts to active tab) -->
           <button class="run-btn" :disabled="runDisabled" @click="runActive">{{ runLabel }}</button>
 
+          <!-- Pre-run runtime hint: cached (instant) vs first-run download (~31MB). -->
+          <p v-if="!busy && media.file.value" class="note small runtime-hint">
+            <svg v-if="runtimeCached" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+            {{ runtimeCached ? t('media.runtimeCached') : t('media.runtimeWillDownload') }}
+          </p>
+
           <!-- Core download progress (first run only) -->
           <div v-if="busy && phase === 'loading'" class="progress">
             <div class="bar"><div class="bar-fill indet" :style="dlPct != null ? { width: dlPct + '%' } : {}"></div></div>
             <span class="progress-pct"><template v-if="dlPct != null">{{ dlPct }}%</template><template v-else>…</template></span>
           </div>
-          <p v-if="busy && phase === 'loading'" class="note small">{{ t('media.runtimeHint') }}</p>
+          <p v-if="busy && phase === 'loading'" class="note small">{{ dl?.fromCache ? t('media.runtimeFromCache') : t('media.runtimeHint') }}</p>
 
           <!-- Transcode progress -->
           <div v-if="busy && phase === 'converting'" class="progress">
@@ -586,6 +596,8 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 
 .note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 .note.small { font-size: 11px; margin-top: -4px; }
+.runtime-hint { display: flex; align-items: center; gap: 6px; margin-top: 0; }
+.runtime-hint svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-tertiary); }
 
 .adv-inline { border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface-hover); padding: 0 12px; }
 .adv-inline summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 10px 0; list-style: none; user-select: none; }

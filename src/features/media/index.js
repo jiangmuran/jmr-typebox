@@ -37,6 +37,10 @@ export default {
       'media.converting': 'Converting…',
       'media.loadingRuntime': 'Loading runtime…',
       'media.runtimeHint': 'First run downloads the ffmpeg engine (~31MB) from the official CDN. It is cached afterwards.',
+      // Pre-run hints reflecting whether the ~31MB core is already cached (Cache API).
+      'media.runtimeCached': 'Runtime cached — loads instantly, no download.',
+      'media.runtimeWillDownload': 'First run downloads the ffmpeg engine (~31MB) once, then caches it for next time.',
+      'media.runtimeFromCache': 'Loading cached runtime…',
       'media.download': 'Download',
       'media.change': 'Change file',
       'media.bitrate': 'Bitrate',
@@ -116,6 +120,10 @@ export default {
       'media.converting': '转换中…',
       'media.loadingRuntime': '正在加载运行时…',
       'media.runtimeHint': '首次运行会从官方 CDN 下载 ffmpeg 引擎(约 31MB),之后会被缓存。',
+      // 运行前提示:根据 ~31MB 核心是否已缓存(Cache API)显示不同文案。
+      'media.runtimeCached': '运行时已缓存 —— 立即加载,无需下载。',
+      'media.runtimeWillDownload': '首次运行会下载一次 ffmpeg 引擎(约 31MB),之后会被缓存以便下次直接使用。',
+      'media.runtimeFromCache': '正在加载已缓存的运行时…',
       'media.download': '下载',
       'media.change': '更换文件',
       'media.bitrate': '比特率',

@@ -232,6 +232,7 @@ const dict = {
     'ai.insertedBelow': 'Inserted below the document',
     'ai.continueHint': 'Tab to keep · Esc to undo',
     'ai.continueEmpty': 'Write something first, then continue',
+    'ai.ghostHint': 'Tab to accept',
     'ai.generatePrompt': 'What should I write about?',
     // selection actions
     'ai.act.improve': 'Improve',
@@ -505,6 +506,7 @@ const dict = {
     'ai.insertedBelow': '已插入到文档末尾',
     'ai.continueHint': 'Tab 保留 · Esc 撤销',
     'ai.continueEmpty': '请先写点内容再续写',
+    'ai.ghostHint': '按 Tab 采纳',
     'ai.generatePrompt': '想让我写些什么？',
     // 选区操作
     'ai.act.improve': '优化',
