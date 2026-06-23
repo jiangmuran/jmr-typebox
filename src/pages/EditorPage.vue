@@ -19,6 +19,9 @@ import Workspace from '../components/Workspace.vue'
 import StatusBar from '../components/StatusBar.vue'
 import StartPanel from '../components/StartPanel.vue'
 import EditorContextMenu from '../components/EditorContextMenu.vue'
+import AiPanel from '../components/AiPanel.vue'
+import AiInlineActions from '../components/AiInlineActions.vue'
+import { useAiActions } from '../composables/useAiActions'
 
 const { meta: m } = useRouteHead()
 const router = useRouter()
@@ -54,6 +57,13 @@ const ctxY = ref(0)
 function onEditorMounted(el) {
   editorRef.value = el
   el.addEventListener('contextmenu', onCtx)
+  // Drive the floating AI toolbar from selection changes.
+  el.addEventListener('mouseup', scheduleAiSelection)
+  el.addEventListener('keyup', e => { if (e.shiftKey || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)) scheduleAiSelection() })
+  el.addEventListener('select', scheduleAiSelection)
+  el.addEventListener('blur', () => { clearTimeout(aiSelTimer); aiSelTimer = setTimeout(() => { aiSelection.value = null }, 150) })
+  el.addEventListener('scroll', () => { if (aiSelection.value) refreshAiSelection() })
+  el.addEventListener('input', () => { aiSelection.value = null; ghost.value = null })
 }
 function onCtx(e) {
   e.preventDefault()
@@ -73,6 +83,157 @@ async function applyPlugin(plugin) {
     el.setRangeText(result, s, e, 'select')
     updateContent(el.value)
   } catch { showToast(t('tool.invalid')) }
+}
+
+// ---- AI integration ----
+const ai = useAiActions()
+const aiPanelOpen = ref(false)
+const aiMenuOpen = ref(false)
+// Floating selection toolbar state: {x, y, text} in screen coords, or null.
+const aiSelection = ref(null)
+let aiSelTimer = null
+
+// AI right-click submenu actions (run on the live selection or whole doc).
+async function applyAiCtx(action) {
+  ctxShow.value = false
+  const el = editorRef.value; if (!el) return
+  if (!ai.ready.value) { showToast(t('ai.notConfigured')); aiPanelOpenWithSettings(); return }
+  try {
+    if (action.scope === 'doc') {
+      await ai.runDocAction(action.id)
+      showToast(t('ai.done'))
+    } else {
+      const r = await ai.runSelectionAction(el, action.id, action.input)
+      if (!r.ok && r.reason === 'no-selection') { showToast(t('ai.selectFirst')); return }
+      if (r.replaced) showToast(t('ai.done'))
+      else if (r.text) { showToast(t('ai.done')) }
+    }
+  } catch (err) { showToast(err?.message || t('ai.error')) }
+}
+
+function aiPanelOpenWithSettings() {
+  // AI isn't configured yet — open the chat panel (its empty-state guides to Settings).
+  aiPanelOpen.value = true
+}
+// Open the Settings drawer at the AI section (SettingsPanel listens for this global event).
+function openAiSettings() {
+  aiPanelOpen.value = false
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tb-open-settings', { detail: { section: 'ai' } }))
+}
+
+// Update the floating toolbar position from the textarea selection.
+function refreshAiSelection() {
+  const el = editorRef.value
+  if (!el) { aiSelection.value = null; return }
+  const s = el.selectionStart, e = el.selectionEnd
+  if (e <= s || !settings.aiEnabled) { aiSelection.value = null; return }
+  const text = el.value.substring(s, e)
+  if (!text.trim()) { aiSelection.value = null; return }
+  // Anchor the toolbar above the start of the selection using a mirror measurement; fall back
+  // to the textarea's caret rect via a lightweight approximation (top-center of the textarea
+  // viewport near the selection line).
+  const rect = el.getBoundingClientRect()
+  const pos = caretCoordinates(el, s)
+  const x = rect.left + Math.min(Math.max(pos.left, 40), rect.width - 40)
+  const y = rect.top + pos.top - el.scrollTop
+  aiSelection.value = { x, y: Math.max(rect.top + 4, y), text }
+}
+
+function scheduleAiSelection() {
+  clearTimeout(aiSelTimer)
+  aiSelTimer = setTimeout(refreshAiSelection, 120)
+}
+
+// Approximate caret pixel coordinates inside a textarea using a hidden mirror div.
+function caretCoordinates(el, position) {
+  if (typeof document === 'undefined') return { top: 0, left: 0 }
+  const div = document.createElement('div')
+  const style = window.getComputedStyle(el)
+  const props = ['boxSizing','width','paddingTop','paddingRight','paddingBottom','paddingLeft','borderWidth','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','whiteSpace','wordWrap','textTransform']
+  for (const p of props) div.style[p] = style[p]
+  div.style.position = 'absolute'; div.style.visibility = 'hidden'; div.style.whiteSpace = 'pre-wrap'; div.style.wordWrap = 'break-word'
+  div.style.top = '0'; div.style.left = '-9999px'; div.style.height = 'auto'
+  div.style.width = el.clientWidth + 'px'
+  const text = el.value.substring(0, position)
+  div.textContent = text
+  const span = document.createElement('span'); span.textContent = el.value.substring(position) || '.'
+  div.appendChild(span)
+  document.body.appendChild(div)
+  const top = span.offsetTop + parseInt(style.borderTopWidth || '0', 10)
+  const left = span.offsetLeft + parseInt(style.borderLeftWidth || '0', 10)
+  document.body.removeChild(div)
+  return { top, left }
+}
+
+// Inline "continue writing" (⌃Space): stream a continuation at the cursor.
+const ghost = ref(null) // { pos, text } pending ghost completion awaiting Tab
+async function continueWriting() {
+  const el = editorRef.value; if (!el) return
+  if (!ai.ready.value) { showToast(t('ai.notConfigured')); aiPanelOpen.value = true; return }
+  if (ai.busy.value) { ai.abort(); return }
+  const startPos = el.selectionStart
+  ghost.value = { pos: startPos, text: '' }
+  let inserted = ''
+  try {
+    const r = await ai.continueWriting(el, {
+      onChunk: (full) => {
+        // Live-insert as a marked ghost region (we just insert plainly and track length).
+        const before = el.value.slice(0, startPos)
+        const after = el.value.slice(startPos + inserted.length)
+        inserted = full
+        updateContent(before + full + after)
+        // keep caret before the inserted ghost so user sees it grow ahead
+        nextTick(() => { try { el.selectionStart = el.selectionEnd = startPos } catch {} })
+      },
+    })
+    if (r.ok) {
+      ghost.value = { pos: startPos, text: r.text }
+      // Position caret at end of completion; it stays (already inserted). Tab/Esc handled below.
+      nextTick(() => { try { el.focus(); el.selectionStart = el.selectionEnd = startPos + (r.text?.length || 0) } catch {} })
+      showToast(t('ai.continueHint'))
+    } else if (r.reason === 'empty') {
+      showToast(t('ai.continueEmpty'))
+      ghost.value = null
+    }
+  } catch (err) {
+    showToast(err?.message || t('ai.error'))
+    ghost.value = null
+  }
+}
+
+// Whole-document AI actions from the AI menu.
+async function runDocAi(id) {
+  aiMenuOpen.value = false
+  if (!ai.ready.value) { showToast(t('ai.notConfigured')); aiPanelOpen.value = true; return }
+  const el = editorRef.value
+  try {
+    if (id === 'generate') {
+      const topic = (typeof window !== 'undefined') ? window.prompt(t('ai.generatePrompt')) : ''
+      if (!topic) return
+      startDismissed.value = true
+      await ai.generateDocument(topic, el)
+      showToast(t('ai.done'))
+      return
+    }
+    const r = await ai.runDocAction(id)
+    if (!r.ok && r.reason === 'empty') { showToast(t('ai.docEmpty')); return }
+    if (r.replaced) showToast(t('ai.done'))
+    else if (r.text) {
+      // non-replacing (summarize/outline/title): insert at top as a new section
+      const el2 = editorRef.value
+      if (el2) {
+        const heading = `\n\n---\n\n${r.text}\n`
+        updateContent(content.value + heading)
+        showToast(t('ai.insertedBelow'))
+      }
+    }
+  } catch (err) { showToast(err?.message || t('ai.error')) }
+}
+
+// Theme setter callback for the AI panel's set_theme tool.
+function onAiSetTheme({ id, target }) {
+  if (target === 'export') setSetting('exportTheme', id)
+  else setSetting('writingTheme', id)
 }
 
 function toggleZen() {
@@ -208,6 +369,17 @@ function handleNew() {
 
 function onKeydown(e) {
   const mod = isMac.value ? e.metaKey : e.ctrlKey
+  // Ctrl+Space → continue writing (works on any platform; Ctrl, not Cmd).
+  if (e.ctrlKey && (e.code === 'Space' || e.key === ' ') && settings.aiEnabled && settings.aiInlineComplete) {
+    const el = editorRef.value
+    if (el && document.activeElement === el) { e.preventDefault(); continueWriting(); return }
+  }
+  // Cmd/Ctrl+Shift+A → toggle AI panel.
+  if (mod && e.shiftKey && (e.key === 'A' || e.key === 'a')) { e.preventDefault(); aiPanelOpen.value = !aiPanelOpen.value; return }
+  // Accept ghost completion with Tab when one is pending.
+  if (e.key === 'Tab' && ghost.value?.text && editorRef.value && document.activeElement === editorRef.value) {
+    e.preventDefault(); ghost.value = null; return
+  }
   if (mod && e.key === 's') { e.preventDefault(); doExport('md') }
   else if (mod && e.key === 'b') { e.preventDefault(); insertMarkdown('**', '**', 'bold') }
   else if (mod && e.key === 'i') { e.preventDefault(); insertMarkdown('*', '*', 'italic') }
@@ -221,7 +393,19 @@ function onKeydown(e) {
     const modes = isMobile.value ? ['editor', 'preview'] : ['editor', 'split', 'preview']
     setViewMode(modes[(modes.indexOf(viewMode.value) + 1) % modes.length])
   } else if (e.key === 'Escape') {
-    searchOpen.value = false; exportOpen.value = false; ctxShow.value = false
+    searchOpen.value = false; exportOpen.value = false; ctxShow.value = false; aiMenuOpen.value = false
+    // Esc reverts a just-streamed ghost completion (remove the inserted text).
+    if (ghost.value?.text && editorRef.value) {
+      const el = editorRef.value
+      const { pos, text } = ghost.value
+      if (el.value.substr(pos, text.length) === text) {
+        el.setRangeText('', pos, pos + text.length, 'start')
+        updateContent(el.value)
+      }
+      ghost.value = null
+    }
+    if (ai.busy.value) ai.abort()
+    aiSelection.value = null
     if (zenMode.value) { zenMode.value = false; document.fullscreenElement && document.exitFullscreen?.() }
   } else if (e.key === 'F11') { e.preventDefault(); toggleZen() }
 }
@@ -285,6 +469,31 @@ onUnmounted(() => {
         <button class="ec-btn" @click="searchOpen = !searchOpen" :title="t('menu.find')">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg>
         </button>
+
+        <!-- AI: whole-document actions menu -->
+        <div class="dd-wrap">
+          <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.4 3.5 3.5 1.4-3.5 1.4L8 11.4 6.6 7.9 3.1 6.5l3.5-1.4L8 1.6z"/><path d="M12.8 10.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6.6-1.5z"/></svg>
+          </button>
+          <Transition name="dd">
+            <div v-if="aiMenuOpen" class="dd-menu ai-menu">
+              <div class="dd-label">{{ t('ai.menu') }}</div>
+              <button @click="aiPanelOpen = true; aiMenuOpen = false"><span class="ai-mi">💬</span>{{ t('ai.openChat') }}<kbd>{{ modLabel }}⇧A</kbd></button>
+              <div class="dd-sep"></div>
+              <div class="dd-label">{{ t('ai.wholeDoc') }}</div>
+              <button @click="runDocAi('polishDoc')"><span class="ai-mi">◇</span>{{ t('ai.doc.polish') }}</button>
+              <button @click="runDocAi('summarize')"><span class="ai-mi">≡</span>{{ t('ai.doc.summarize') }}</button>
+              <button @click="runDocAi('outline')"><span class="ai-mi">⋮</span>{{ t('ai.doc.outline') }}</button>
+              <button @click="runDocAi('title')"><span class="ai-mi">T</span>{{ t('ai.doc.title') }}</button>
+              <button @click="runDocAi('generate')"><span class="ai-mi">✎</span>{{ t('ai.doc.generate') }}</button>
+              <template v-if="settings.aiEnabled && settings.aiInlineComplete">
+                <div class="dd-sep"></div>
+                <button @click="aiMenuOpen = false; continueWriting()"><span class="ai-mi">→</span>{{ t('ai.continue') }}<kbd>Ctrl Space</kbd></button>
+              </template>
+            </div>
+          </Transition>
+        </div>
+
         <div class="dd-wrap">
           <button class="ec-btn ec-export" @click="exportOpen = !exportOpen" :title="t('export')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 10v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V10"/><polyline points="5 7 8 10 11 7"/><line x1="8" y1="10" x2="8" y2="2"/></svg>
@@ -318,6 +527,7 @@ onUnmounted(() => {
       </div>
 
       <div v-if="exportOpen" class="click-away" @click="exportOpen = false"></div>
+      <div v-if="aiMenuOpen" class="click-away" @click="aiMenuOpen = false"></div>
 
       <div class="editor-body">
         <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
@@ -338,7 +548,22 @@ onUnmounted(() => {
         </div>
       </Transition>
 
-      <EditorContextMenu :show="ctxShow" :x="ctxX" :y="ctxY" @apply="applyPlugin" @close="ctxShow = false" />
+      <EditorContextMenu :show="ctxShow" :x="ctxX" :y="ctxY" :ai-enabled="settings.aiEnabled" @apply="applyPlugin" @apply-ai="applyAiCtx" @close="ctxShow = false" />
+
+      <!-- Floating AI toolbar over the current selection -->
+      <AiInlineActions :editor-ref="editorRef" :selection="aiSelection" @changed="aiSelection = null" @dismiss="aiSelection = null" />
+
+      <!-- Streaming progress chip for whole-document AI actions -->
+      <Transition name="fade">
+        <div v-if="ai.busy.value && !aiSelection" class="ai-progress">
+          <span class="ai-progress-spin"></span>
+          <span>{{ t('ai.working') }}</span>
+          <button @click="ai.abort()">{{ t('ai.stop') }}</button>
+        </div>
+      </Transition>
+
+      <!-- Agentic AI chat panel -->
+      <AiPanel v-model:open="aiPanelOpen" :editor-el="editorRef" :export-fn="doExport" @set-theme="onAiSetTheme" @open-settings="openAiSettings" />
     </ClientOnly>
   </div>
 </template>
@@ -398,6 +623,16 @@ onUnmounted(() => {
 .dd-leave-active { transition: all 0.12s ease; }
 .dd-enter-from, .dd-leave-to { opacity: 0; transform: scale(0.95) translateY(-4px); }
 .click-away { position: fixed; inset: 0; z-index: 90; }
+
+.ec-ai.on { background: var(--surface-hover); color: var(--accent); }
+.ec-ai:hover { color: var(--accent); }
+.ai-menu { min-width: 220px; }
+.ai-menu .ai-mi { width: 17px; display: inline-flex; justify-content: center; margin-right: 8px; color: var(--accent); font-size: 12px; }
+.ai-progress { position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; align-items: center; gap: 9px; padding: 8px 12px 8px 14px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 11px; box-shadow: var(--shadow-lg); font-size: 12px; color: var(--text-secondary); }
+.ai-progress-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: aiSpin 0.7s linear infinite; }
+.ai-progress button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
+.ai-progress button:hover { background: var(--surface-hover); }
+@keyframes aiSpin { to { transform: rotate(360deg); } }
 
 .drag-overlay { position: fixed; inset: 8px; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--accent-bg); border: 2px dashed var(--accent); border-radius: 16px; font-size: 14px; font-weight: 500; color: var(--accent); backdrop-filter: blur(8px); pointer-events: none; }
 .drag-overlay svg { width: 32px; height: 32px; opacity: 0.7; }

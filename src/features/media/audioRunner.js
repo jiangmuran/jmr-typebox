@@ -2,8 +2,8 @@
 // these functions touch Blob/Worker via the engine, but the module has no top-level side effects
 // and is always reached through a dynamic import() from event handlers / converter run() calls.
 import {
-  buildConvertArgs, buildHardSubArgs, buildSoftSubArgs,
-  safeInputName, extForFormat, mimeForFormat, normalizeFormat, isVideoInput,
+  buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, buildEditArgs, buildCustomArgs,
+  safeInputName, extForFormat, mimeForFormat, normalizeFormat, isVideoInput, extOf,
 } from './mediaHelpers'
 import { runFFmpeg } from './ffmpegRunner'
 
@@ -32,8 +32,73 @@ export async function convertAudio(file, { outputFormat, options = {}, onProgres
     args,
     outName,
     outMime: mimeForFormat(fmt),
+    durationSec: options.durationSec,
     onProgress,
   })
+}
+
+// Edit an audio file with the workbench controls (trim / gain / fade / resample / channels /
+// normalize) and re-encode to `outputFormat`. Video inputs are reduced to their audio track.
+//   editAudio(file, { outputFormat, edit:{ trimStart, trimEnd, gainDb, fadeIn, fadeOut, normalize,
+//                     sampleRate, channels, bitrate, durationSec }, onProgress }) -> Blob
+export async function editAudio(file, { outputFormat, edit = {}, onProgress } = {}) {
+  const fmt = normalizeFormat(outputFormat)
+  const inName = safeInputName(file?.name, 'mp3')
+  const outName = `output.${extForFormat(fmt)}`
+  const stripVideo = isVideoInput(file?.name, file?.type)
+
+  const args = buildEditArgs({
+    input: inName,
+    output: outName,
+    format: fmt,
+    trimStart: edit.trimStart,
+    trimEnd: edit.trimEnd,
+    gainDb: edit.gainDb,
+    fadeIn: edit.fadeIn,
+    fadeOut: edit.fadeOut,
+    normalize: edit.normalize,
+    sampleRate: edit.sampleRate,
+    channels: edit.channels,
+    bitrate: edit.bitrate,
+    stripVideo,
+    clipDuration: edit.durationSec,
+  })
+
+  return runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName,
+    outMime: mimeForFormat(fmt),
+    durationSec: edit.durationSec,
+    onProgress,
+  })
+}
+
+// Run a RAW user-supplied ffmpeg command against the loaded file (advanced mode). We splice the
+// real input/output filenames in; the output extension defaults to the chosen format (or the
+// input's extension). Returns { blob, outName }.
+//   runCustomCommand(file, { raw, outputFormat, durationSec, onProgress }) -> { blob, name }
+export async function runCustomCommand(file, { raw, outputFormat, durationSec, onProgress } = {}) {
+  const inExt = extOf(file?.name) || 'mp3'
+  const inName = `input.${inExt}`
+  // Default output extension: an explicit chosen format wins; else mirror the input container.
+  const outExt = outputFormat ? extForFormat(outputFormat) : inExt
+  const defaultOutput = `output.${outExt}`
+
+  const { args, output } = buildCustomArgs({ raw, input: inName, defaultOutput })
+  // MIME best-effort from the resolved output extension.
+  const outExtFinal = (output.match(/\.([^.]+)$/)?.[1] || outExt).toLowerCase()
+  const outMime = mimeForFormat(outExtFinal)
+
+  const blob = await runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName: output,
+    outMime,
+    durationSec,
+    onProgress,
+  })
+  return { blob, name: output, ext: outExtFinal }
 }
 
 // Burn (hardcode) subtitles into a video — re-encodes the video stream so the subs are pixels.

@@ -44,5 +44,12 @@ const emit = defineEmits(['pick', 'drop', 'dragover', 'dragleave'])
 }
 .drop-zone svg { width: 48px; height: 48px; color: var(--text-tertiary); margin-bottom: 14px; }
 .drop-zone h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.drop-zone p { font-size: 13px; color: var(--text-secondary); }
+.drop-zone p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+@media (max-width: 768px) {
+  .drop-zone { padding: 40px 22px; border-radius: var(--radius); }
+  .drop-zone svg { width: 42px; height: 42px; margin-bottom: 12px; }
+  .drop-zone:hover, .drop-zone:focus-visible, .drop-zone.over { transform: none; }
+  .drop-zone p { font-size: 12.5px; }
+}
 </style>

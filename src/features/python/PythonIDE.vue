@@ -1,13 +1,21 @@
 <script setup>
-// Multi-file Python mini-IDE. Rendered ONLY inside <ClientOnly>, so it is safe to touch
+// Multi-file Python workbench. Rendered ONLY inside <ClientOnly>, so it is safe to touch
 // window/document/CodeMirror/pyodide here. Pure logic (file model, console model, examples,
-// package parsing) is imported from ./fileModel + ./pythonHelpers; CodeMirror is set up via
-// ./cmEditor and the wasm runtime is lazy-loaded from ./pythonRunner on first run. Nothing
-// heavy is touched at module top level or in synchronous setup beyond reading localStorage.
+// package parsing, request/proxy shaping) is imported from ./fileModel + ./pythonHelpers +
+// ./pythonNet; CodeMirror is set up via ./cmEditor and the wasm runtime is lazy-loaded from
+// ./pythonRunner on first run. Nothing heavy is touched at module top level or in synchronous
+// setup beyond reading localStorage.
+//
+// Layout: a VS-Code-like workbench on desktop (file explorer rail · editor with tabs · a
+// resizable, collapsible bottom panel that tabs between Output and the Web Preview) and a SIMPLE
+// single-column flow on mobile (file chips → editor → Run → output). The web preview is fully
+// collapsible and only opens when the CURRENT run produces a web app or the user opts in — it
+// never auto-pops on later runs once dismissed.
 import { ref, computed, reactive, shallowRef, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import { useSettings } from '../../composables/useSettings'
+import { useBackend } from '../../composables/useBackend'
 import { load, save } from '../../utils/storage'
 import { libLoadState } from '../../utils/loadLibrary'
 import BackendInfo from '../../components/BackendInfo.vue'
@@ -19,9 +27,9 @@ import {
   parsePackages,
   STORAGE_KEYS,
 } from './pythonHelpers'
+import { prettyJson } from './pythonNet'
 import {
   FILES_STORAGE_KEY,
-  createDefaultProject,
   deserializeProject,
   serializeProject,
   fileNames,
@@ -36,10 +44,9 @@ import {
 const { t, locale } = useI18n()
 const { showToast } = useToast()
 const { resolvedTheme } = useSettings()
+const { apiBase, probe: probeBackend } = useBackend()
 
 // ---- file project state -----------------------------------------------------------------
-// Migrate the legacy single-file draft (python-code) into main.py on first load if no file-set
-// has been saved yet, so returning users keep their code.
 const project = ref(deserializeProject(load(FILES_STORAGE_KEY), load(STORAGE_KEYS.code)))
 const names = computed(() => fileNames(project.value))
 const activeName = computed(() => project.value.active)
@@ -48,41 +55,61 @@ const pkgText = ref(load(STORAGE_KEYS.packages) ?? '')
 
 // ---- editor (CodeMirror) ----------------------------------------------------------------
 const editorEl = ref(null)
-const cm = shallowRef(null)          // editor handle from cmEditor.createEditor
+const cm = shallowRef(null)
 const editorReady = ref(false)
 
 // ---- run / output state -----------------------------------------------------------------
-const lines = reactive([])           // console-line model (see pythonHelpers.appendChunk)
-const result = ref({ kind: 'none', data: '' })  // last-expression rich repr
-const figures = ref([])              // base64 PNG data from matplotlib
-const htmlOut = ref('')              // sandboxed HTML output (from _repr_html_)
+const lines = reactive([])
+const result = ref({ kind: 'none', data: '' })
+const figures = ref([])
+const htmlOut = ref('')
 const busy = ref(false)
-const phase = ref('')                // localized status under the Run button
+const phase = ref('')
 const installing = ref(false)
 const hadError = ref(false)
 
-// Core-download progress (determinate bar). pct is 0..100, or null when not downloading.
-const coreProgress = ref(null)       // { loaded, total } bytes, or null
-const coreDownloading = ref(false)   // true only during the byte transfer phase
+const coreProgress = ref(null)
+const coreDownloading = ref(false)
 
 // ---- interactive stdin (input()) --------------------------------------------------------
-const stdinText = ref('')            // current console input box value
-const stdinInput = ref(null)         // <input> ref for autofocus
-const awaitingInput = ref(false)     // a run is in progress (input() may be called)
+const stdinText = ref('')
+const stdinInput = ref(null)
+const awaitingInput = ref(false)
 
-// ---- experimental web preview -----------------------------------------------------------
-const hasApp = ref(false)            // last run left a WSGI app in globals
+// ---- web preview ------------------------------------------------------------------------
+// hasApp: the LAST run left a web app (WSGI/ASGI) in globals. appKind: 'wsgi' | 'asgi' | ''.
+// previewVisible: the user's explicit show/hide. The auto-popup bug ("once activated it keeps
+// popping up") is fixed by gating the preview on previewVisible + the current run's hasApp only —
+// dismissing sets previewVisible=false and it STAYS dismissed until the user re-opens it or a
+// fresh run produces a (new) app and they haven't dismissed this run.
+const hasApp = ref(false)
+const appKind = ref('')
+const previewVisible = ref(false)
+const previewDismissed = ref(false)   // user closed the preview for the current run
 const previewPath = ref('/')
-const previewHtml = ref('')          // srcdoc for the preview iframe
-const previewStatus = ref('')        // e.g. "200 OK"
-const previewError = ref('')         // localized/explanatory error
+const previewHtml = ref('')
+const previewStatus = ref('')
+const previewStatusCode = ref(0)
+const previewCtype = ref('')
+const previewError = ref('')
 const previewBusy = ref(false)
+
+// ---- workbench panel layout (desktop) ---------------------------------------------------
+const panelTab = ref('output')           // 'output' | 'preview'
+const panelCollapsed = ref(false)        // bottom panel hidden (editor full-height)
+const explorerCollapsed = ref(load('python-explorer-collapsed') === '1')
+const panelHeight = ref(clampPanel(Number(load('python-panel-h')) || 280))
+const isNarrow = ref(false)              // mobile single-column mode
+
+function clampPanel(px) {
+  const max = typeof window !== 'undefined' ? Math.max(160, window.innerHeight - 260) : 600
+  return Math.min(Math.max(140, px || 280), max)
+}
 
 // Pyodide load state for the first-run banner.
 const coreLoading = computed(() => libLoadState.pyodide === 'loading')
 const coreReady = computed(() => libLoadState.pyodide === 'ready')
 
-// Human-readable progress, e.g. "4.2 / 12.0 MB". Falls back to a generic label pre-bytes.
 const progressLabel = computed(() => {
   const p = coreProgress.value
   if (!p || !p.total) return t('py.downloadingCore')
@@ -98,10 +125,29 @@ const progressPct = computed(() => {
 const examples = computed(() =>
   EXAMPLE_PROJECTS.map(e => ({ id: e.id, title: e.title[locale.value] || e.title.en, needsNetwork: e.needsNetwork }))
 )
+const examplesOpen = ref(false)
+const exWrapEl = ref(null)
+// Toggle the examples menu. Outside-clicks close it via a document listener registered only while
+// open (and on the NEXT tick), so the same gesture that opens it can't immediately close it — the
+// fragile full-screen-backdrop approach caught the opening click and snapped the menu shut.
+function toggleExamples() {
+  examplesOpen.value = !examplesOpen.value
+  if (examplesOpen.value) {
+    nextTick(() => document.addEventListener('pointerdown', onOutsideExamples, true))
+  } else {
+    document.removeEventListener('pointerdown', onOutsideExamples, true)
+  }
+}
+function onOutsideExamples(e) {
+  if (exWrapEl.value && !exWrapEl.value.contains(e.target)) {
+    examplesOpen.value = false
+    document.removeEventListener('pointerdown', onOutsideExamples, true)
+  }
+}
 
 const hasOutput = computed(() =>
   lines.length > 0 || figures.value.length > 0 || !!htmlOut.value ||
-  (result.value.kind === 'text' && !!result.value.data) || hasApp.value
+  (result.value.kind === 'text' && !!result.value.data)
 )
 
 const cmdLabel = computed(() =>
@@ -109,7 +155,7 @@ const cmdLabel = computed(() =>
 )
 
 // ---- inline rename state ----------------------------------------------------------------
-const renaming = ref(null)           // filename currently being renamed (or null)
+const renaming = ref(null)
 const renameText = ref('')
 const renameInput = ref(null)
 
@@ -117,10 +163,7 @@ const renameInput = ref(null)
 let saveTimer = null
 function persist() {
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    save(FILES_STORAGE_KEY, serializeProject(project.value))
-    save(STORAGE_KEYS.packages, pkgText.value)
-  }, 400)
+  saveTimer = setTimeout(persistNow, 400)
 }
 function persistNow() {
   clearTimeout(saveTimer)
@@ -137,7 +180,6 @@ async function initEditor() {
     doc: activeContent(project.value),
     dark: resolvedTheme.value === 'dark',
     onChange: (doc) => {
-      // Mirror the editor doc into the active file in our model, then persist (debounced).
       project.value = setContent(project.value, activeName.value, doc)
       persist()
     },
@@ -146,33 +188,27 @@ async function initEditor() {
   editorReady.value = true
 }
 
-// Switch the editor document when the active file changes (tab click / add / delete / example).
 watch(activeName, () => {
   if (cm.value) cm.value.setDoc(activeContent(project.value))
 })
-
-// Keep CodeMirror in sync with the app theme.
 watch(resolvedTheme, (theme) => {
   cm.value?.setDark(theme === 'dark')
 })
 
-// ---- file tab actions -------------------------------------------------------------------
+// ---- file actions -----------------------------------------------------------------------
 function switchTo(name) {
   if (renaming.value) return
   project.value = setActive(project.value, name)
   persist()
   nextTick(() => cm.value?.focus())
 }
-
 function newFile() {
   const { project: next, name, error } = addFile(project.value, null, '')
   if (error) { showToast(t('py.fileError')); return }
   project.value = next
   persistNow()
-  // Jump straight into renaming the freshly-created file.
   nextTick(() => beginRename(name))
 }
-
 function removeFile(name) {
   const { project: next, error } = deleteFile(project.value, name)
   if (error === 'last') { showToast(t('py.cantDeleteLast')); return }
@@ -181,21 +217,18 @@ function removeFile(name) {
   persistNow()
   nextTick(() => cm.value?.focus())
 }
-
 function beginRename(name) {
   renaming.value = name
   renameText.value = name
   nextTick(() => {
-    const el = renameInput.value
+    const el = Array.isArray(renameInput.value) ? renameInput.value[0] : renameInput.value
     if (el) {
       el.focus()
-      // Select the stem (before .py) for quick editing.
       const dot = name.lastIndexOf('.')
       el.setSelectionRange(0, dot > 0 ? dot : name.length)
     }
   })
 }
-
 function commitRename() {
   const from = renaming.value
   if (!from) return
@@ -209,10 +242,7 @@ function commitRename() {
   project.value = next
   persistNow()
 }
-
-function cancelRename() {
-  renaming.value = null
-}
+function cancelRename() { renaming.value = null }
 
 // ---- run --------------------------------------------------------------------------------
 async function run() {
@@ -224,38 +254,37 @@ async function run() {
   result.value = { kind: 'none', data: '' }
   figures.value = []
   htmlOut.value = ''
+  // Reset preview run-state. Crucially we clear hasApp/dismissed BEFORE the run so a previous
+  // run's app can't keep the pane alive, and a freshly-dismissed flag doesn't leak across runs.
   hasApp.value = false
+  appKind.value = ''
+  previewDismissed.value = false
   previewHtml.value = ''
   previewStatus.value = ''
+  previewStatusCode.value = 0
   previewError.value = ''
   phase.value = coreReady.value ? t('py.running') : t('py.loadingCore')
+  // On mobile, jump the view focus to output; on desktop default the panel to Output.
+  if (!isNarrow.value) { panelCollapsed.value = false }
 
-  // Batch stdout/stderr so chatty loops don't thrash the DOM.
   const outBatcher = createBatcher(s => appendChunk(lines, 'out', s))
   const errBatcher = createBatcher(s => appendChunk(lines, 'err', s))
   const flushTimer = setInterval(() => { outBatcher.flush(); errBatcher.flush() }, 60)
 
   try {
     const runner = await import('./pythonRunner')
-    const { runPython, setStdinHandlers, clearStdin } = runner
-    // Wire interactive input: lines the user pre-typed in the console box (queued via submitStdin)
-    // are consumed first; when none remain, fall back to window.prompt so an input()-loop never
-    // deadlocks. NOTE: we deliberately do NOT clear the queue here — any lines the user queued
-    // before pressing Run must survive to satisfy the program's input() calls (the JS thread is
-    // blocked synchronously inside the stdin callback during a run, so they can't type then).
-    // Prompt-sourced lines are echoed into the transcript; queued lines were echoed on submit.
+    const { runPython, setStdinHandlers, clearStdin, setProxyApiBase } = runner
+    // Point the in-interpreter network patch at the same-origin CORS proxy.
+    setProxyApiBase(apiBase || '')
     setStdinHandlers({
       prompt: () => {
-        // Make sure buffered stdout is visible before the modal prompt blocks the thread.
         outBatcher.flush(); errBatcher.flush()
         if (typeof window === 'undefined') return null
-        return window.prompt(t('py.waitingInput')) // null on cancel -> EOFError
+        return window.prompt(t('py.waitingInput'))
       },
       echo: (line) => { appendChunk(lines, 'in', String(line) + '\n') },
     })
 
-    // Hand the whole file set + active entry to the runner; it writes every file into the
-    // virtual FS first (so cross-file imports work) then executes the active file.
     const res = await runPython(
       { files: { ...project.value.files }, entry: activeName.value },
       {
@@ -269,11 +298,12 @@ async function run() {
       }
     )
     outBatcher.flush(); errBatcher.flush()
-    setStdinHandlers({})       // detach prompt/echo so nothing fires outside a run
+    setStdinHandlers({})
     clearStdin()
 
     figures.value = res.figures || []
     hasApp.value = !!res.hasApp
+    appKind.value = res.appKind || ''
     if (res.error) {
       hadError.value = true
       appendChunk(lines, 'err', formatError(res.error))
@@ -286,8 +316,17 @@ async function run() {
     if (!res.error && !lines.length && !figures.value.length && !htmlOut.value && res.result?.kind === 'none' && !hasApp.value) {
       appendChunk(lines, 'info', t('py.noOutput'))
     }
-    // If the program defined a web app, auto-render the root route into the preview pane.
-    if (hasApp.value) { await loadPreview() }
+    // Auto-open the preview ONLY for a fresh app on this run (and only if not dismissed). This is
+    // the fix for the auto-popup bug: a run with no app leaves the preview closed.
+    if (hasApp.value && !previewDismissed.value) {
+      previewVisible.value = true
+      panelTab.value = 'preview'
+      panelCollapsed.value = false
+      await loadPreview()
+    } else if (!hasApp.value) {
+      previewVisible.value = false
+      if (panelTab.value === 'preview') panelTab.value = 'output'
+    }
   } catch (err) {
     hadError.value = true
     appendChunk(lines, 'err', formatError(err))
@@ -303,26 +342,16 @@ async function run() {
   }
 }
 
-// ---- interactive stdin: console input box -----------------------------------------------
-// Submitting the box pushes the typed line into the stdin queue so the next input() call
-// consumes it. An EMPTY line is a legitimate input (e.g. pressing Enter to stop a "blank to
-// finish" loop), so we queue it too — Enter always feeds exactly one line. (If a run is blocked
-// on window.prompt, the prompt handles that case instead; this box pre-queues input ahead of /
-// between input() calls.)
+// ---- interactive stdin ------------------------------------------------------------------
 async function submitStdin() {
   const text = stdinText.value
   const { feedStdin } = await import('./pythonRunner')
   feedStdin(text)
-  // Mirror it into the transcript immediately so the user sees what they queued (a blank line
-  // shows as an empty line, matching terminal behaviour).
   appendChunk(lines, 'in', text + '\n')
   stdinText.value = ''
 }
 
-// ---- experimental web preview -----------------------------------------------------------
-// Route a synthetic request at previewPath to the user's WSGI app and render the response in a
-// sandboxed iframe. EXPERIMENTAL — Pyodide can't bind a real socket; this calls the app object
-// in-interpreter (see pythonRunner.callServer / _tb_wsgi_call).
+// ---- web preview ------------------------------------------------------------------------
 async function loadPreview() {
   if (previewBusy.value) return
   previewBusy.value = true
@@ -332,18 +361,22 @@ async function loadPreview() {
     const res = await callServer(previewPath.value || '/', 'GET')
     if (res && res.ok) {
       previewStatus.value = res.status || '200 OK'
-      // Only render text/html as a document; other content types are shown as text so we never
-      // execute unexpected payloads. The iframe is sandboxed (no same-origin, scripts allowed
-      // for interactive demos but isolated from the app).
-      if (/html/i.test(res.contentType || 'text/html')) {
+      previewStatusCode.value = res.statusCode || 200
+      previewCtype.value = res.contentType || 'text/html'
+      if (res.isHtml) {
         previewHtml.value = res.body || ''
+      } else if (res.isJson) {
+        previewHtml.value = renderTextDoc(prettyJson(res.body || ''))
       } else {
-        previewHtml.value = `<pre style="white-space:pre-wrap;font-family:monospace;padding:12px">${escapeHtml(res.body || '')}</pre>`
+        previewHtml.value = renderTextDoc(res.body || '')
       }
     } else {
       previewStatus.value = ''
+      previewStatusCode.value = 0
       previewHtml.value = ''
-      previewError.value = res && res.error === 'no-app' ? t('py.previewNoApp') : (res?.detail || t('py.previewNoApp'))
+      previewError.value = res && res.error === 'no-app'
+        ? t('py.previewNoApp')
+        : (res?.detail || t('py.previewNoApp'))
     }
   } catch (err) {
     previewError.value = (err && err.message) || String(err)
@@ -352,8 +385,26 @@ async function loadPreview() {
   }
 }
 
+function renderTextDoc(s) {
+  return `<pre style="white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.55;padding:14px;margin:0;color:#1c1c1e">${escapeHtml(s)}</pre>`
+}
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+}
+
+// Show the preview pane (user opt-in or re-open after dismiss).
+function openPreview() {
+  previewDismissed.value = false
+  previewVisible.value = true
+  panelTab.value = 'preview'
+  panelCollapsed.value = false
+  if (!previewHtml.value && !previewError.value) loadPreview()
+}
+// Dismiss the preview and keep it dismissed for this run (the bug fix).
+function dismissPreview() {
+  previewVisible.value = false
+  previewDismissed.value = true
+  if (panelTab.value === 'preview') panelTab.value = 'output'
 }
 
 // ---- packages (micropip — network) ------------------------------------------------------
@@ -361,6 +412,8 @@ async function installPkgs() {
   const specs = parsePackages(pkgText.value)
   if (!specs.length || installing.value) return
   installing.value = true
+  panelTab.value = 'output'
+  panelCollapsed.value = false
   appendChunk(lines, 'info', t('py.installing') + ' ' + specs.join(', '))
   try {
     const { installPackages } = await import('./pythonRunner')
@@ -381,21 +434,28 @@ async function installPkgs() {
 
 // ---- examples / actions -----------------------------------------------------------------
 function loadExample(id) {
+  examplesOpen.value = false
+  document.removeEventListener('pointerdown', onOutsideExamples, true)
   const ex = EXAMPLE_PROJECTS.find(e => e.id === id)
   if (!ex) return
-  // Replace the whole project with the example's file-set.
   const files = {}
   for (const n of Object.keys(ex.files)) files[n] = ex.files[n]
   const active = files[ex.entry] != null ? ex.entry : Object.keys(files)[0]
   project.value = { files, active }
   result.value = { kind: 'none', data: '' }
-  // The activeName watcher updates the editor doc; do it explicitly too in case the name is
-  // unchanged (e.g. example also uses main.py as the active file).
+  // Prefill the packages field only for examples needing a PyPI wheel (fastapi & requests are
+  // bundled with Pyodide and auto-load from the CDN, so they don't go in the micropip field).
+  if (id === 'packages') pkgText.value = mergePkg(pkgText.value, 'cowsay')
   nextTick(() => {
     cm.value?.setDoc(activeContent(project.value))
     cm.value?.focus()
   })
   persistNow()
+}
+function mergePkg(text, name) {
+  const have = new Set(parsePackages(text).map(s => s.toLowerCase().split(/[<>=!~ ]/)[0]))
+  if (have.has(name.toLowerCase())) return text
+  return text.trim() ? `${text.trim()}, ${name}` : name
 }
 
 function clearOutput() {
@@ -404,48 +464,118 @@ function clearOutput() {
   figures.value = []
   htmlOut.value = ''
   hadError.value = false
-  previewHtml.value = ''
-  previewStatus.value = ''
-  previewError.value = ''
 }
 
 async function copyActive() {
   try { await navigator.clipboard.writeText(activeContent(project.value)); showToast(t('toast.copied')) } catch {}
 }
 
-onMounted(() => { initEditor() })
+// ---- panel layout helpers ---------------------------------------------------------------
+function toggleExplorer() {
+  explorerCollapsed.value = !explorerCollapsed.value
+  save('python-explorer-collapsed', explorerCollapsed.value ? '1' : '0')
+}
+function togglePanel() { panelCollapsed.value = !panelCollapsed.value }
+
+// Drag-to-resize the bottom panel (desktop). Pointer events so it works with mouse + touch.
+let dragStartY = 0
+let dragStartH = 0
+function startPanelDrag(e) {
+  if (isNarrow.value) return
+  dragStartY = e.clientY
+  dragStartH = panelHeight.value
+  panelCollapsed.value = false
+  window.addEventListener('pointermove', onPanelDrag)
+  window.addEventListener('pointerup', endPanelDrag)
+  e.preventDefault()
+}
+function onPanelDrag(e) {
+  const dy = dragStartY - e.clientY
+  panelHeight.value = clampPanel(dragStartH + dy)
+}
+function endPanelDrag() {
+  window.removeEventListener('pointermove', onPanelDrag)
+  window.removeEventListener('pointerup', endPanelDrag)
+  save('python-panel-h', String(Math.round(panelHeight.value)))
+}
+
+// Responsive: switch to the simple single-column mobile layout under 900px.
+let mq = null
+function syncNarrow() {
+  if (typeof window === 'undefined') return
+  isNarrow.value = window.innerWidth <= 900
+  panelHeight.value = clampPanel(panelHeight.value)
+}
+
+onMounted(() => {
+  initEditor()
+  syncNarrow()
+  if (typeof window !== 'undefined') {
+    mq = window.matchMedia('(max-width: 900px)')
+    mq.addEventListener?.('change', syncNarrow)
+    window.addEventListener('resize', syncNarrow)
+  }
+  // Probe the optional backend so the proxy/Network note reflects availability.
+  probeBackend().catch(() => {})
+})
 onBeforeUnmount(() => {
   clearTimeout(saveTimer)
   persistNow()
   cm.value?.destroy()
+  if (typeof window !== 'undefined') {
+    mq?.removeEventListener?.('change', syncNarrow)
+    window.removeEventListener('resize', syncNarrow)
+    window.removeEventListener('pointermove', onPanelDrag)
+    window.removeEventListener('pointerup', endPanelDrag)
+    document.removeEventListener('pointerdown', onOutsideExamples, true)
+  }
 })
 </script>
 
 <template>
-  <main class="ide">
-    <!-- Header + examples -->
-    <header class="ide-head">
-      <div class="ide-titles">
-        <h2 class="ide-title">{{ t('py.title') }}</h2>
-        <p class="ide-sub">{{ t('py.hint') }}</p>
+  <main class="ide" :class="{ 'is-narrow': isNarrow }">
+    <!-- Top toolbar -->
+    <header class="toolbar">
+      <div class="tb-left">
+        <span class="tb-logo" aria-hidden="true">▷</span>
+        <span class="tb-title">{{ t('py.title') }}</span>
       </div>
-      <div class="examples" role="list" :aria-label="t('py.examples')">
-        <button
-          v-for="ex in examples"
-          :key="ex.id"
-          class="example"
-          role="listitem"
-          type="button"
-          @click="loadExample(ex.id)"
-        >
-          {{ ex.title }}
-          <span v-if="ex.needsNetwork" class="net-dot" :title="t('py.networkBadge')">●</span>
+
+      <div class="tb-actions">
+        <!-- Examples dropdown -->
+        <div ref="exWrapEl" class="ex-wrap">
+          <button class="tb-btn ghost" type="button" :aria-expanded="examplesOpen" @click="toggleExamples">
+            {{ t('py.examples') }} <span class="caret">▾</span>
+          </button>
+          <Transition name="pop">
+            <div v-if="examplesOpen" class="ex-menu">
+              <button
+                v-for="ex in examples"
+                :key="ex.id"
+                class="ex-item"
+                type="button"
+                @click="loadExample(ex.id)"
+              >
+                <span class="ex-name">{{ ex.title }}</span>
+                <span v-if="ex.needsNetwork" class="net-dot" :title="t('py.networkBadge')">●</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
+
+        <button class="tb-btn ghost" type="button" @click="copyActive">{{ t('tool.copy') }}</button>
+
+        <button class="tb-btn run" :disabled="busy" @click="run">
+          <span v-if="!busy" class="run-ico" aria-hidden="true">▶</span>
+          <span v-if="!busy">{{ t('py.run') }}</span>
+          <span v-else class="run-spin" aria-hidden="true"></span>
+          <span v-if="busy">{{ phase || t('py.running') }}</span>
+          <kbd v-if="!busy" class="run-kbd">{{ cmdLabel }}</kbd>
         </button>
       </div>
     </header>
 
-    <!-- First-run runtime download banner. While the ~12MB core is transferring we show a real
-         determinate progress bar with live MB counts; otherwise an informational note. -->
+    <!-- First-run runtime download banner -->
     <div v-if="!coreReady" class="banner" :class="{ 'banner-progress': coreDownloading }">
       <template v-if="coreDownloading">
         <div class="dl">
@@ -463,16 +593,22 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- The IDE: editor pane (file tabs + CodeMirror) | output pane -->
-    <div class="workbench">
-      <!-- Editor pane -->
-      <section class="pane editor-pane">
-        <!-- File tab strip -->
-        <div class="filebar" role="tablist" :aria-label="t('py.files')">
+    <!-- ============================ DESKTOP WORKBENCH ============================ -->
+    <div v-if="!isNarrow" class="wb">
+      <!-- File explorer rail -->
+      <aside class="explorer" :class="{ collapsed: explorerCollapsed }">
+        <div class="explorer-head">
+          <button class="explorer-toggle" type="button" :title="explorerCollapsed ? t('py.files') : t('py.collapse')" @click="toggleExplorer">
+            <span aria-hidden="true">{{ explorerCollapsed ? '»' : '«' }}</span>
+          </button>
+          <span v-if="!explorerCollapsed" class="explorer-title">{{ t('py.explorer') }}</span>
+          <button v-if="!explorerCollapsed" class="explorer-add" type="button" :title="t('py.newFile')" :aria-label="t('py.newFile')" @click="newFile">+</button>
+        </div>
+        <div v-if="!explorerCollapsed" class="filelist" role="tablist" :aria-label="t('py.files')">
           <div
             v-for="name in names"
             :key="name"
-            class="filetab"
+            class="fileitem"
             :class="{ active: name === activeName }"
             role="tab"
             :aria-selected="name === activeName"
@@ -482,61 +618,27 @@ onBeforeUnmount(() => {
                 ref="renameInput"
                 v-model="renameText"
                 class="rename-input"
-                spellcheck="false"
-                autocapitalize="off"
-                autocorrect="off"
+                spellcheck="false" autocapitalize="off" autocorrect="off"
                 @keydown.enter.prevent="commitRename"
                 @keydown.esc.prevent="cancelRename"
                 @blur="commitRename"
               />
             </template>
             <template v-else>
-              <button
-                class="filetab-name"
-                type="button"
-                @click="switchTo(name)"
-                @dblclick="beginRename(name)"
-                :title="t('py.renameHint')"
-              >{{ name }}</button>
+              <button class="fileitem-name" type="button" @click="switchTo(name)" @dblclick="beginRename(name)" :title="t('py.renameHint')">
+                <span class="file-ico" aria-hidden="true">🐍</span>{{ name }}
+              </button>
               <button
                 v-if="names.length > 1"
-                class="filetab-x"
-                type="button"
-                :aria-label="t('py.deleteFile') + ' ' + name"
-                :title="t('py.deleteFile')"
+                class="fileitem-x" type="button"
+                :aria-label="t('py.deleteFile') + ' ' + name" :title="t('py.deleteFile')"
                 @click.stop="removeFile(name)"
               >×</button>
             </template>
           </div>
-          <button class="filetab-add" type="button" :aria-label="t('py.newFile')" :title="t('py.newFile')" @click="newFile">+</button>
         </div>
-
-        <!-- CodeMirror mount point -->
-        <div ref="editorEl" class="cm-host"></div>
-
-        <!-- Editor footer: run + actions -->
-        <div class="editor-foot">
-          <button class="run-btn" :disabled="busy" @click="run">
-            <span v-if="!busy">▶ {{ t('py.run') }} · {{ cmdLabel }}</span>
-            <span v-else>{{ phase || t('py.running') }}</span>
-          </button>
-          <div class="foot-spacer"></div>
-          <button class="ghost-btn" type="button" @click="copyActive">{{ t('tool.copy') }}</button>
-          <button class="ghost-btn" type="button" :disabled="busy" @click="newFile">{{ t('py.newFile') }}</button>
-        </div>
-
-        <!-- Loading bar while the runtime downloads / inits. Determinate (real bytes) during the
-             core download; indeterminate while initialising or running user code. -->
-        <div v-if="busy" class="progress">
-          <div class="bar">
-            <div v-if="coreDownloading" class="bar-fill" :style="{ width: progressPct + '%' }"></div>
-            <div v-else class="bar-fill indet"></div>
-          </div>
-          <span class="progress-pct">{{ coreDownloading ? progressLabel : (phase || t('py.running')) }}</span>
-        </div>
-
-        <!-- Packages (micropip — explicitly a network operation) -->
-        <div class="pkg">
+        <!-- Packages live at the bottom of the explorer -->
+        <div v-if="!explorerCollapsed" class="explorer-pkg">
           <div class="pkg-head">
             <span class="pkg-label">{{ t('py.packages') }}</span>
             <span class="net-badge">{{ t('py.networkBadge') }}</span>
@@ -544,116 +646,242 @@ onBeforeUnmount(() => {
           </div>
           <div class="pkg-row">
             <input
-              v-model="pkgText"
-              class="pkg-input"
-              type="text"
-              spellcheck="false"
+              v-model="pkgText" class="pkg-input" type="text" spellcheck="false"
               :placeholder="t('py.packagesPlaceholder')"
-              @input="persist"
-              @keydown.enter.prevent="installPkgs"
+              @input="persist" @keydown.enter.prevent="installPkgs"
             />
             <button class="pkg-btn" :disabled="installing || !pkgText.trim()" @click="installPkgs">
               <span v-if="!installing">{{ t('py.install') }}</span>
               <span v-else>{{ t('py.installing') }}</span>
             </button>
           </div>
-          <p class="pkg-note">{{ t('py.packagesNote') }}</p>
+        </div>
+      </aside>
+
+      <!-- Editor + bottom panel column -->
+      <section class="main-col">
+        <!-- Editor tabs -->
+        <div class="tabstrip" role="tablist" :aria-label="t('py.files')">
+          <div
+            v-for="name in names"
+            :key="name"
+            class="tab"
+            :class="{ active: name === activeName }"
+            role="tab"
+            :aria-selected="name === activeName"
+          >
+            <button class="tab-name" type="button" @click="switchTo(name)" @dblclick="beginRename(name)">{{ name }}</button>
+            <button
+              v-if="names.length > 1"
+              class="tab-x" type="button"
+              :aria-label="t('py.deleteFile') + ' ' + name" :title="t('py.deleteFile')"
+              @click.stop="removeFile(name)"
+            >×</button>
+          </div>
+        </div>
+
+        <!-- Editor -->
+        <div class="editor-wrap" :style="{ minHeight: panelCollapsed ? '0' : '120px' }">
+          <div ref="editorEl" class="cm-host"></div>
+          <!-- thin run-progress strip overlaid at the editor bottom -->
+          <div v-if="busy" class="edge-progress">
+            <div v-if="coreDownloading" class="edge-fill" :style="{ width: progressPct + '%' }"></div>
+            <div v-else class="edge-fill indet"></div>
+          </div>
+        </div>
+
+        <!-- Resizable drag handle -->
+        <div v-show="!panelCollapsed" class="resizer" @pointerdown="startPanelDrag" :title="t('py.dragResize')">
+          <span class="resizer-grip" aria-hidden="true"></span>
+        </div>
+
+        <!-- Bottom panel: Output | Web preview -->
+        <div class="panel" :class="{ collapsed: panelCollapsed }" :style="panelCollapsed ? {} : { height: panelHeight + 'px' }">
+          <div class="panel-tabs">
+            <button class="ptab" :class="{ active: panelTab === 'output' }" type="button" @click="panelTab = 'output'; panelCollapsed = false">
+              {{ t('py.console') }}
+              <span v-if="hadError" class="ptab-dot err" aria-hidden="true"></span>
+            </button>
+            <button
+              v-if="previewVisible"
+              class="ptab"
+              :class="{ active: panelTab === 'preview' }"
+              type="button"
+              @click="panelTab = 'preview'; panelCollapsed = false"
+            >
+              {{ t('py.preview') }}
+              <span class="ptab-badge">{{ appKind === 'asgi' ? 'ASGI' : 'WSGI' }}</span>
+            </button>
+            <button v-if="hasApp && !previewVisible" class="ptab open-preview" type="button" @click="openPreview">
+              {{ t('py.openPreview') }}
+            </button>
+            <div class="panel-spacer"></div>
+            <button v-if="panelTab === 'output' && hasOutput" class="mini-btn" type="button" @click="clearOutput">{{ t('py.clearOutput') }}</button>
+            <button class="mini-btn icon" type="button" :title="panelCollapsed ? t('py.expand') : t('py.collapse')" @click="togglePanel">
+              {{ panelCollapsed ? '▴' : '▾' }}
+            </button>
+          </div>
+
+          <div v-show="!panelCollapsed" class="panel-body">
+            <!-- OUTPUT TAB -->
+            <div v-show="panelTab === 'output'" class="output-scroll">
+              <div v-if="!hasOutput" class="output-empty">{{ t('py.outputEmpty') }}</div>
+              <div v-if="lines.length" class="console"><span v-for="(ln, i) in lines" :key="i" :class="['ln', 'ln-' + ln.kind]">{{ ln.text }}</span></div>
+              <div v-if="result.kind === 'text' && result.data" class="block repr">
+                <div class="block-head">{{ t('py.lastValue') }}</div>
+                <div class="repr-body">{{ result.data }}</div>
+              </div>
+              <div v-if="figures.length" class="block figures">
+                <div class="block-head">{{ t('py.figures') }}</div>
+                <img v-for="(fig, i) in figures" :key="i" class="figure" :src="'data:image/png;base64,' + fig" :alt="t('py.figures') + ' ' + (i + 1)" />
+              </div>
+              <div v-if="htmlOut" class="block htmlout">
+                <div class="block-head">{{ t('py.htmlOutput') }}</div>
+                <iframe class="htmlout-frame" sandbox="allow-scripts" :srcdoc="htmlOut" :title="t('py.htmlOutput')"></iframe>
+              </div>
+            </div>
+
+            <!-- WEB PREVIEW TAB -->
+            <div v-show="panelTab === 'preview'" class="preview-scroll">
+              <div class="preview-bar">
+                <span class="addr-method">GET</span>
+                <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview" />
+                <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview">{{ t('py.previewGo') }}</button>
+                <span v-if="previewStatus" class="preview-status" :class="{ ok: previewStatusCode < 400, bad: previewStatusCode >= 400 }">{{ previewStatus }}</span>
+                <button class="preview-close" type="button" :title="t('py.dismissPreview')" :aria-label="t('py.dismissPreview')" @click="dismissPreview">×</button>
+              </div>
+              <p class="preview-hint">{{ t('py.previewHint') }}</p>
+              <p v-if="previewError" class="preview-error">{{ previewError }}</p>
+              <iframe
+                v-else-if="previewHtml"
+                class="preview-frame"
+                sandbox="allow-scripts allow-forms"
+                :srcdoc="previewHtml"
+                :title="t('py.preview')"
+              ></iframe>
+              <div v-else class="preview-empty">{{ t('py.previewEmpty') }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- stdin console box (always available) -->
+        <div class="stdin">
+          <span class="stdin-caret" aria-hidden="true">›</span>
+          <input
+            ref="stdinInput" v-model="stdinText" class="stdin-input" type="text"
+            spellcheck="false" autocomplete="off"
+            :placeholder="awaitingInput ? t('py.waitingInput') : t('py.stdinPlaceholder')"
+            @keydown.enter.prevent="submitStdin"
+          />
+          <button class="stdin-send" type="button" @click="submitStdin">{{ t('py.stdinSend') }}</button>
         </div>
       </section>
+    </div>
 
-      <!-- Output pane -->
-      <section class="pane output-pane">
-        <div class="output-head">
-          <span class="output-title">{{ t('py.console') }}</span>
+    <!-- ============================ MOBILE FLOW ============================ -->
+    <div v-else class="mobile">
+      <!-- File chips -->
+      <div class="m-files" role="tablist" :aria-label="t('py.files')">
+        <button
+          v-for="name in names"
+          :key="name"
+          class="m-chip"
+          :class="{ active: name === activeName }"
+          type="button"
+          role="tab"
+          :aria-selected="name === activeName"
+          @click="switchTo(name)"
+          @dblclick="beginRename(name)"
+        >{{ name }}</button>
+        <button class="m-chip add" type="button" :aria-label="t('py.newFile')" @click="newFile">+</button>
+      </div>
+
+      <!-- rename input surfaces inline above the editor on mobile -->
+      <div v-if="renaming" class="m-rename">
+        <input
+          ref="renameInput" v-model="renameText" class="rename-input wide"
+          spellcheck="false" autocapitalize="off" autocorrect="off"
+          @keydown.enter.prevent="commitRename" @keydown.esc.prevent="cancelRename" @blur="commitRename"
+        />
+        <button v-if="names.length > 1" class="m-del" type="button" @click="removeFile(renaming)">{{ t('py.deleteFile') }}</button>
+      </div>
+
+      <!-- Editor -->
+      <div class="m-editor">
+        <div ref="editorEl" class="cm-host"></div>
+      </div>
+
+      <!-- Big Run button -->
+      <button class="m-run" :disabled="busy" @click="run">
+        <span v-if="!busy">▶ {{ t('py.run') }}</span>
+        <span v-else>{{ phase || t('py.running') }}</span>
+      </button>
+      <div v-if="busy" class="m-progress">
+        <div class="bar"><div v-if="coreDownloading" class="bar-fill" :style="{ width: progressPct + '%' }"></div><div v-else class="bar-fill indet"></div></div>
+        <span class="m-progress-label">{{ coreDownloading ? progressLabel : (phase || t('py.running')) }}</span>
+      </div>
+
+      <!-- Packages -->
+      <details class="m-pkg">
+        <summary>
+          <span>{{ t('py.packages') }}</span>
+          <span class="net-badge">{{ t('py.networkBadge') }}</span>
+        </summary>
+        <div class="pkg-row">
+          <input v-model="pkgText" class="pkg-input" type="text" spellcheck="false" :placeholder="t('py.packagesPlaceholder')" @input="persist" @keydown.enter.prevent="installPkgs" />
+          <button class="pkg-btn" :disabled="installing || !pkgText.trim()" @click="installPkgs">{{ installing ? t('py.installing') : t('py.install') }}</button>
+        </div>
+        <p class="pkg-note">{{ t('py.packagesNote') }}</p>
+      </details>
+
+      <!-- Output -->
+      <section class="m-output">
+        <div class="m-output-head">
+          <span class="m-output-title">{{ t('py.console') }}</span>
           <button v-if="hasOutput" class="mini-btn" type="button" @click="clearOutput">{{ t('py.clearOutput') }}</button>
         </div>
-
-        <div class="output-body">
-          <div v-if="!hasOutput" class="output-empty">{{ t('py.outputEmpty') }}</div>
-
-          <!-- stdout / stderr / stdin-echo / info console. The container uses white-space:
-               pre-wrap + a monospace font so every newline and run of spaces from print() is
-               preserved exactly. Each coalesced chunk keeps its own colour via a span. -->
-          <div
-            v-if="lines.length"
-            class="console"
-          ><span v-for="(ln, i) in lines" :key="i" :class="['ln', 'ln-' + ln.kind]">{{ ln.text }}</span></div>
-
-          <!-- last-expression repr -->
+        <div class="m-output-body">
+          <div v-if="!hasOutput && !hasApp" class="output-empty">{{ t('py.outputEmpty') }}</div>
+          <div v-if="lines.length" class="console"><span v-for="(ln, i) in lines" :key="i" :class="['ln', 'ln-' + ln.kind]">{{ ln.text }}</span></div>
           <div v-if="result.kind === 'text' && result.data" class="block repr">
             <div class="block-head">{{ t('py.lastValue') }}</div>
             <div class="repr-body">{{ result.data }}</div>
           </div>
-
-          <!-- matplotlib figures -->
           <div v-if="figures.length" class="block figures">
             <div class="block-head">{{ t('py.figures') }}</div>
-            <img
-              v-for="(fig, i) in figures"
-              :key="i"
-              class="figure"
-              :src="'data:image/png;base64,' + fig"
-              :alt="t('py.figures') + ' ' + (i + 1)"
-            />
+            <img v-for="(fig, i) in figures" :key="i" class="figure" :src="'data:image/png;base64,' + fig" :alt="t('py.figures') + ' ' + (i + 1)" />
           </div>
-
-          <!-- sandboxed HTML (from _repr_html_) -->
           <div v-if="htmlOut" class="block htmlout">
             <div class="block-head">{{ t('py.htmlOutput') }}</div>
             <iframe class="htmlout-frame" sandbox="allow-scripts" :srcdoc="htmlOut" :title="t('py.htmlOutput')"></iframe>
           </div>
-
-          <!-- Experimental web preview: routes a synthetic request to a WSGI app in-interpreter
-               and renders the returned HTML in a sandboxed iframe. -->
-          <div v-if="hasApp" class="block preview">
-            <div class="block-head preview-head">
-              <span>{{ t('py.preview') }}</span>
-              <span class="exp-badge" :title="t('py.previewHint')">{{ t('py.previewExperimental') }}</span>
-              <span v-if="previewStatus" class="preview-status">{{ t('py.previewStatus') }}: {{ previewStatus }}</span>
-            </div>
-            <div class="preview-bar">
-              <input
-                v-model="previewPath"
-                class="preview-path"
-                type="text"
-                spellcheck="false"
-                :placeholder="t('py.previewPath')"
-                @keydown.enter.prevent="loadPreview"
-              />
-              <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview">{{ t('py.previewGo') }}</button>
-            </div>
-            <p class="preview-hint">{{ t('py.previewHint') }}</p>
-            <p v-if="previewError" class="preview-error">{{ previewError }}</p>
-            <iframe
-              v-else-if="previewHtml"
-              class="preview-frame"
-              sandbox="allow-scripts allow-forms"
-              :srcdoc="previewHtml"
-              :title="t('py.preview')"
-            ></iframe>
-          </div>
         </div>
-
-        <!-- Interactive stdin console box (feeds the next input() call). Always available so
-             input can be queued before/while a program runs. -->
+        <!-- stdin -->
         <div class="stdin">
-          <div class="stdin-row">
-            <span class="stdin-caret" aria-hidden="true">›</span>
-            <input
-              ref="stdinInput"
-              v-model="stdinText"
-              class="stdin-input"
-              type="text"
-              spellcheck="false"
-              autocomplete="off"
-              :placeholder="awaitingInput ? t('py.waitingInput') : t('py.stdinPlaceholder')"
-              @keydown.enter.prevent="submitStdin"
-            />
-            <button class="stdin-send" type="button" @click="submitStdin">{{ t('py.stdinSend') }}</button>
-          </div>
-          <p class="stdin-hint">{{ t('py.stdinHint') }}</p>
+          <span class="stdin-caret" aria-hidden="true">›</span>
+          <input v-model="stdinText" class="stdin-input" type="text" spellcheck="false" autocomplete="off"
+            :placeholder="awaitingInput ? t('py.waitingInput') : t('py.stdinPlaceholder')" @keydown.enter.prevent="submitStdin" />
+          <button class="stdin-send" type="button" @click="submitStdin">{{ t('py.stdinSend') }}</button>
         </div>
       </section>
+
+      <!-- Web preview (collapsible) -->
+      <section v-if="previewVisible" class="m-preview">
+        <div class="m-preview-head">
+          <span class="m-output-title">{{ t('py.preview') }}</span>
+          <span class="ptab-badge">{{ appKind === 'asgi' ? 'ASGI' : 'WSGI' }}</span>
+          <span v-if="previewStatus" class="preview-status" :class="{ ok: previewStatusCode < 400, bad: previewStatusCode >= 400 }">{{ previewStatus }}</span>
+          <button class="preview-close" type="button" :aria-label="t('py.dismissPreview')" @click="dismissPreview">×</button>
+        </div>
+        <div class="preview-bar">
+          <span class="addr-method">GET</span>
+          <input v-model="previewPath" class="preview-path" type="text" spellcheck="false" :placeholder="t('py.previewPath')" @keydown.enter.prevent="loadPreview" />
+          <button class="preview-go" type="button" :disabled="previewBusy" @click="loadPreview">{{ t('py.previewGo') }}</button>
+        </div>
+        <p v-if="previewError" class="preview-error">{{ previewError }}</p>
+        <iframe v-else-if="previewHtml" class="preview-frame" sandbox="allow-scripts allow-forms" :srcdoc="previewHtml" :title="t('py.preview')"></iframe>
+      </section>
+      <button v-else-if="hasApp" class="m-open-preview" type="button" @click="openPreview">{{ t('py.openPreview') }}</button>
     </div>
   </main>
 </template>
@@ -661,98 +889,43 @@ onBeforeUnmount(() => {
 <style scoped>
 .ide {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
-  padding: 20px 20px 28px; max-width: 1180px; margin: 0 auto; width: 100%;
+  width: 100%; max-width: 1320px; margin: 0 auto; padding: 12px 14px 14px;
   animation: tbIn 0.3s var(--ease-out);
 }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Header */
-.ide-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
-.ide-title { font-size: 22px; font-weight: 750; letter-spacing: -0.5px; }
-.ide-sub { margin-top: 4px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.5; max-width: 460px; }
-.examples { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
-.example { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 500; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
-.example:hover { background: var(--surface-hover); border-color: var(--text-tertiary); }
-.example:active { transform: scale(0.97); }
-.net-dot { color: var(--accent); font-size: 7px; line-height: 1; }
+/* ---------- Top toolbar ---------- */
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px 10px; }
+.tb-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tb-logo { color: var(--accent); font-size: 15px; }
+.tb-title { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; }
+.tb-actions { display: flex; align-items: center; gap: 8px; }
+.tb-btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-sans); cursor: pointer; border-radius: 9px; font-size: 12.5px; transition: all 0.15s; }
+.tb-btn.ghost { padding: 7px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
+.tb-btn.ghost:hover { color: var(--text); background: var(--surface-hover); border-color: var(--text-tertiary); }
+.caret { font-size: 9px; opacity: 0.7; }
+.tb-btn.run { padding: 8px 15px; border: none; background: var(--accent); color: var(--accent-text); font-weight: 650; }
+.tb-btn.run:hover:not(:disabled) { background: var(--accent-hover); }
+.tb-btn.run:active:not(:disabled) { transform: scale(0.98); }
+.tb-btn.run:disabled { opacity: 0.7; cursor: default; }
+.run-ico { font-size: 10px; }
+.run-kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.18); color: inherit; border: none; }
+.run-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* First-run banner */
-.banner { display: flex; align-items: center; gap: 9px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); background: var(--accent-bg); border: 1px solid var(--border-light); border-radius: 10px; padding: 9px 12px; margin-bottom: 12px; }
+/* Examples dropdown */
+.ex-wrap { position: relative; }
+.ex-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; min-width: 240px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; }
+.ex-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border: none; background: transparent; color: var(--text); font-size: 12.5px; font-family: var(--font-sans); border-radius: 8px; cursor: pointer; }
+.ex-item:hover { background: var(--surface-hover); }
+.ex-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.net-dot { color: var(--accent); font-size: 7px; line-height: 1; flex: 0 0 auto; }
+.pop-enter-active, .pop-leave-active { transition: opacity 0.14s, transform 0.14s; }
+.pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
+
+/* ---------- First-run banner ---------- */
+.banner { display: flex; align-items: center; gap: 9px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); background: var(--accent-bg); border: 1px solid var(--border-light); border-radius: 10px; padding: 9px 12px; margin-bottom: 10px; }
 .banner-icon { color: var(--accent); font-weight: 700; font-size: 14px; }
-
-/* Workbench split */
-.workbench { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 14px; }
-.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; }
-
-/* File tab strip */
-.filebar { display: flex; align-items: stretch; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); overflow-x: auto; }
-.filebar::-webkit-scrollbar { height: 0; }
-.filetab { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 4px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; font-size: 12px; max-width: 200px; flex: 0 0 auto; position: relative; top: 1px; }
-.filetab.active { background: var(--surface); border-color: var(--border-light); }
-.filetab-name { border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; padding: 7px 6px; cursor: pointer; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.filetab.active .filetab-name { color: var(--text); font-weight: 600; }
-.filetab-name:hover { color: var(--text); }
-.filetab-x { border: none; background: transparent; color: var(--text-tertiary); font-size: 15px; line-height: 1; width: 18px; height: 18px; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
-.filetab-x:hover { background: var(--surface-active); color: var(--text); }
-.filetab-add { flex: 0 0 auto; border: none; background: transparent; color: var(--text-secondary); font-size: 17px; line-height: 1; width: 28px; cursor: pointer; border-radius: 6px; margin: 2px 0; }
-.filetab-add:hover { background: var(--surface-active); color: var(--text); }
-.rename-input { width: 130px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 12px; padding: 5px 6px; margin: 3px 2px; outline: none; }
-
-/* CodeMirror host — fills available editor height */
-.cm-host { flex: 1; min-height: 220px; overflow: hidden; }
-.cm-host :deep(.cm-editor) { height: 100%; }
-.cm-host :deep(.cm-editor.cm-focused) { outline: none; }
-
-/* Editor footer */
-.editor-foot { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--border-light); background: var(--surface-hover); }
-.foot-spacer { flex: 1; }
-.run-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 16px; border: none; border-radius: 9px; background: var(--text); color: var(--bg); font-size: 13px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
-.run-btn:hover:not(:disabled) { opacity: 0.9; }
-.run-btn:active:not(:disabled) { transform: scale(0.99); }
-.run-btn:disabled { opacity: 0.6; cursor: default; }
-.ghost-btn { padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-secondary); font-size: 12px; font-family: var(--font-sans); cursor: pointer; }
-.ghost-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-active); }
-.ghost-btn:disabled { opacity: 0.5; cursor: default; }
-
-/* Loading bar */
-.progress { display: flex; align-items: center; gap: 10px; padding: 0 10px 8px; }
-.bar { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); border-radius: 99px; }
-.bar-fill.indet { width: 35%; animation: indet 1.1s var(--ease-out) infinite; }
-@keyframes indet { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
-.progress-pct { font-size: 11.5px; color: var(--text-secondary); }
-
-/* Packages */
-.pkg { padding: 11px 12px; border-top: 1px solid var(--border-light); }
-.pkg-head { display: flex; align-items: center; gap: 8px; }
-.pkg-label { font-size: 12px; font-weight: 650; color: var(--text); }
-.net-badge { font-size: 10px; font-weight: 600; color: var(--accent); background: var(--accent-bg); border-radius: 99px; padding: 2px 8px; }
-.pkg-row { display: flex; gap: 8px; margin-top: 8px; }
-.pkg-input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12.5px; font-family: var(--font-mono); outline: none; }
-.pkg-input:focus { border-color: var(--accent); }
-.pkg-btn { flex-shrink: 0; padding: 7px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-hover); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
-.pkg-btn:hover:not(:disabled) { border-color: var(--text-tertiary); }
-.pkg-btn:disabled { opacity: 0.5; cursor: default; }
-.pkg-note { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin-top: 7px; }
-
-/* Output pane */
-.output-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
-.output-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
-.mini-btn { border: none; background: var(--surface-active); color: var(--text-secondary); font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-sans); }
-.mini-btn:hover { color: var(--text); }
-.output-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
-.output-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 8px 0; }
-
-/* Console transcript: white-space: pre-wrap + monospace preserves every newline and space from
-   print()/stdout exactly. Each coalesced chunk is a span so stdout/stderr/stdin keep distinct
-   colours without breaking the surrounding whitespace flow. */
-.console { margin: 0 0 4px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; color: var(--text); white-space: pre-wrap; word-break: break-word; tab-size: 4; }
-.ln { display: inline; white-space: pre-wrap; }
-.ln-err { color: var(--danger, #e5484d); }
-.ln-info { color: var(--text-tertiary); font-style: italic; }
-.ln-in { color: var(--accent); }
-
-/* Determinate core-download progress inside the first-run banner */
 .banner-progress { display: block; }
 .dl { width: 100%; }
 .dl-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
@@ -761,6 +934,95 @@ onBeforeUnmount(() => {
 .dl-track { height: 7px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
 .dl-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.18s var(--ease-out); }
 
+/* ======================= DESKTOP WORKBENCH ======================= */
+.wb { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+
+/* File explorer */
+.explorer { display: flex; flex-direction: column; width: 240px; min-height: 0; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; transition: width 0.18s var(--ease-out); }
+.explorer.collapsed { width: 42px; }
+.explorer-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
+.explorer-toggle { flex: 0 0 auto; width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; }
+.explorer-toggle:hover { background: var(--surface-active); color: var(--text); }
+.explorer-title { flex: 1; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-tertiary); }
+.explorer-add { flex: 0 0 auto; width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 17px; line-height: 1; cursor: pointer; }
+.explorer-add:hover { background: var(--surface-active); color: var(--text); }
+.filelist { flex: 1; min-height: 0; overflow: auto; padding: 6px; }
+.fileitem { display: flex; align-items: center; border-radius: 8px; }
+.fileitem.active { background: var(--accent-bg); }
+.fileitem-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; padding: 7px 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.fileitem.active .fileitem-name { color: var(--text); font-weight: 600; }
+.fileitem-name:hover { color: var(--text); }
+.file-ico { font-size: 11px; flex: 0 0 auto; }
+.fileitem-x { flex: 0 0 auto; border: none; background: transparent; color: var(--text-tertiary); font-size: 15px; width: 22px; height: 22px; border-radius: 5px; cursor: pointer; margin-right: 4px; }
+.fileitem-x:hover { background: var(--surface-active); color: var(--text); }
+.rename-input { width: 100%; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 12px; padding: 6px 7px; margin: 1px 0; outline: none; }
+.rename-input.wide { width: 100%; }
+
+.explorer-pkg { border-top: 1px solid var(--border-light); padding: 10px; background: var(--surface-hover); }
+.pkg-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.pkg-label { font-size: 11.5px; font-weight: 650; color: var(--text); }
+.net-badge { font-size: 9.5px; font-weight: 600; color: var(--accent); background: var(--accent-bg); border-radius: 99px; padding: 2px 7px; }
+.pkg-row { display: flex; gap: 7px; margin-top: 8px; }
+.pkg-input { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; }
+.pkg-input:focus { border-color: var(--accent); }
+.pkg-btn { flex-shrink: 0; padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 11.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
+.pkg-btn:hover:not(:disabled) { border-color: var(--text-tertiary); }
+.pkg-btn:disabled { opacity: 0.5; cursor: default; }
+.pkg-note { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin-top: 7px; }
+
+/* Main column (editor + panel) */
+.main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.tabstrip { display: flex; align-items: stretch; gap: 1px; padding: 6px 6px 0; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); overflow-x: auto; }
+.tabstrip::-webkit-scrollbar { height: 0; }
+.tab { display: inline-flex; align-items: center; gap: 1px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; position: relative; top: 1px; flex: 0 0 auto; }
+.tab.active { background: var(--surface); border-color: var(--border-light); }
+.tab-name { border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; padding: 8px 10px; cursor: pointer; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab.active .tab-name { color: var(--text); font-weight: 600; }
+.tab-name:hover { color: var(--text); }
+.tab-x { border: none; background: transparent; color: var(--text-tertiary); font-size: 14px; width: 18px; height: 18px; border-radius: 5px; cursor: pointer; margin-right: 4px; }
+.tab-x:hover { background: var(--surface-active); color: var(--text); }
+
+.editor-wrap { flex: 1; min-height: 0; position: relative; }
+.cm-host { position: absolute; inset: 0; overflow: hidden; }
+.cm-host :deep(.cm-editor) { height: 100%; }
+.cm-host :deep(.cm-editor.cm-focused) { outline: none; }
+.edge-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--surface-active); overflow: hidden; }
+.edge-fill { height: 100%; background: var(--accent); }
+.edge-fill.indet { width: 35%; animation: indet 1.1s var(--ease-out) infinite; }
+@keyframes indet { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+
+/* Resizer */
+.resizer { height: 8px; cursor: ns-resize; display: flex; align-items: center; justify-content: center; background: var(--surface-hover); border-top: 1px solid var(--border-light); }
+.resizer:hover { background: var(--surface-active); }
+.resizer-grip { width: 36px; height: 3px; border-radius: 99px; background: var(--text-tertiary); opacity: 0.5; }
+.resizer:hover .resizer-grip { opacity: 0.9; }
+
+/* Bottom panel */
+.panel { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border-light); background: var(--surface); }
+.panel.collapsed { height: auto !important; }
+.panel-tabs { display: flex; align-items: center; gap: 2px; padding: 5px 8px; background: var(--surface-hover); border-bottom: 1px solid var(--border-light); }
+.ptab { position: relative; border: none; background: transparent; color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; padding: 5px 10px; border-radius: 7px; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 6px; }
+.ptab:hover { color: var(--text); background: var(--surface-active); }
+.ptab.active { color: var(--text); background: var(--surface-active); }
+.ptab.open-preview { color: var(--accent); }
+.ptab-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.ptab-dot.err { background: var(--danger, #e5484d); }
+.ptab-badge { font-size: 8.5px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent-text); background: var(--accent); border-radius: 99px; padding: 1px 6px; }
+.panel-spacer { flex: 1; }
+.mini-btn { border: none; background: var(--surface-active); color: var(--text-secondary); font-size: 11px; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: var(--font-sans); }
+.mini-btn:hover { color: var(--text); }
+.mini-btn.icon { padding: 4px 8px; font-size: 12px; }
+.panel-body { flex: 1; min-height: 0; display: flex; }
+.output-scroll, .preview-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+.output-scroll { padding: 12px 14px; }
+
+/* console + blocks (shared desktop+mobile) */
+.output-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 8px 0; }
+.console { margin: 0 0 4px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; color: var(--text); white-space: pre-wrap; word-break: break-word; tab-size: 4; }
+.ln { display: inline; white-space: pre-wrap; }
+.ln-err { color: var(--danger, #e5484d); }
+.ln-info { color: var(--text-tertiary); font-style: italic; }
+.ln-in { color: var(--accent); }
 .block { margin-top: 14px; border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; background: var(--bg); animation: tbIn 0.25s var(--ease-out); }
 .block-head { padding: 6px 11px; font-size: 10.5px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
 .repr-body { margin: 0; padding: 11px 13px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; color: var(--accent); white-space: pre-wrap; word-break: break-word; }
@@ -768,39 +1030,73 @@ onBeforeUnmount(() => {
 .figure { display: block; max-width: 100%; height: auto; margin: 11px 13px 0; border-radius: 8px; border: 1px solid var(--border-light); background: #fff; }
 .htmlout-frame { width: 100%; min-height: 220px; border: 0; background: #fff; display: block; }
 
-/* Experimental web preview */
-.preview-head { display: flex; align-items: center; gap: 8px; }
-.exp-badge { font-size: 9px; font-weight: 700; letter-spacing: 0.4px; color: #fff; background: var(--accent); border-radius: 99px; padding: 2px 7px; text-transform: uppercase; }
-.preview-status { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: none; letter-spacing: 0; }
-.preview-bar { display: flex; gap: 8px; padding: 9px 11px 0; }
+/* Web preview */
+.preview-scroll { display: flex; flex-direction: column; background: var(--bg); }
+.preview-bar { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
+.addr-method { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--accent); background: var(--accent-bg); border-radius: 6px; padding: 4px 7px; flex: 0 0 auto; }
 .preview-path { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; }
 .preview-path:focus { border-color: var(--accent); }
-.preview-go { flex-shrink: 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-hover); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
+.preview-go { flex-shrink: 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
 .preview-go:hover:not(:disabled) { border-color: var(--text-tertiary); }
 .preview-go:disabled { opacity: 0.5; cursor: default; }
-.preview-hint { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin: 7px 11px 0; }
-.preview-error { font-size: 11.5px; line-height: 1.5; color: var(--danger, #e5484d); margin: 9px 11px 11px; white-space: pre-wrap; font-family: var(--font-mono); }
-.preview-frame { width: 100%; min-height: 240px; border: 0; background: #fff; display: block; margin-top: 9px; }
+.preview-status { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 3px 7px; border-radius: 6px; flex: 0 0 auto; }
+.preview-status.ok { color: var(--status-ok, #34c759); background: var(--status-ok-bg, rgba(52,199,89,0.1)); }
+.preview-status.bad { color: var(--danger, #e5484d); background: rgba(229,72,77,0.1); }
+.preview-close { flex: 0 0 auto; border: none; background: transparent; color: var(--text-tertiary); font-size: 18px; line-height: 1; width: 26px; height: 26px; border-radius: 6px; cursor: pointer; }
+.preview-close:hover { background: var(--surface-active); color: var(--text); }
+.preview-hint { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin: 8px 12px 0; }
+.preview-error { font-size: 11.5px; line-height: 1.5; color: var(--danger, #e5484d); margin: 10px 12px; white-space: pre-wrap; font-family: var(--font-mono); }
+.preview-frame { flex: 1; width: 100%; min-height: 220px; border: 0; background: #fff; display: block; margin-top: 8px; }
+.preview-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 18px 14px; }
 
-/* Interactive stdin console box */
-.stdin { border-top: 1px solid var(--border-light); background: var(--surface-hover); padding: 8px 12px 10px; }
-.stdin-row { display: flex; align-items: center; gap: 7px; }
-.stdin-caret { color: var(--accent); font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
-.stdin-input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12.5px; font-family: var(--font-mono); outline: none; }
+/* stdin */
+.stdin { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border-light); background: var(--surface-hover); padding: 8px 12px; }
+.stdin-caret { color: var(--accent); font-family: var(--font-mono); font-weight: 700; font-size: 13px; flex: 0 0 auto; }
+.stdin-input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12.5px; font-family: var(--font-mono); outline: none; }
 .stdin-input:focus { border-color: var(--accent); }
-.stdin-send { flex-shrink: 0; padding: 7px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
-.stdin-send:hover:not(:disabled) { border-color: var(--text-tertiary); }
-.stdin-send:disabled { opacity: 0.5; cursor: default; }
-.stdin-hint { font-size: 10px; line-height: 1.45; color: var(--text-tertiary); margin-top: 6px; }
+.stdin-send { flex-shrink: 0; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; }
+.stdin-send:hover { border-color: var(--text-tertiary); }
 
-/* Responsive: stack panes on narrow screens */
-@media (max-width: 880px) {
-  .ide { padding: 16px 12px 24px; }
-  .ide-head { flex-direction: column; }
-  .examples { justify-content: flex-start; }
-  .workbench { grid-template-columns: 1fr; grid-auto-rows: minmax(0, auto); }
-  .cm-host { min-height: 300px; flex: none; height: 340px; }
-  .output-pane { min-height: 240px; }
-  .output-body { max-height: 420px; }
-}
+/* ======================= MOBILE FLOW ======================= */
+.mobile { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+.m-files { display: flex; gap: 7px; overflow-x: auto; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
+.m-files::-webkit-scrollbar { height: 0; }
+.m-chip { flex: 0 0 auto; padding: 9px 14px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--text-secondary); font-family: var(--font-mono); font-size: 13px; cursor: pointer; min-height: 38px; }
+.m-chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.m-chip.add { font-size: 18px; padding: 9px 16px; color: var(--text-secondary); }
+.m-rename { display: flex; gap: 8px; align-items: center; }
+.m-del { flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--danger, #e5484d); font-size: 12.5px; cursor: pointer; }
+
+.m-editor { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; height: 46vh; min-height: 280px; }
+.m-editor .cm-host { position: relative; height: 100%; }
+
+.m-run { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; min-height: 52px; }
+.m-run:disabled { opacity: 0.7; cursor: default; }
+.m-run:active:not(:disabled) { transform: scale(0.99); }
+.m-progress { display: flex; flex-direction: column; gap: 6px; }
+.m-progress .bar { height: 6px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
+.m-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 99px; }
+.m-progress .bar-fill.indet { width: 35%; animation: indet 1.1s var(--ease-out) infinite; }
+.m-progress-label { font-size: 11.5px; color: var(--text-secondary); }
+
+.m-pkg { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 12px 14px; }
+.m-pkg > summary { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text); list-style: none; }
+.m-pkg > summary::-webkit-details-marker { display: none; }
+.m-pkg > summary::before { content: '▸'; color: var(--text-tertiary); transition: transform 0.15s; }
+.m-pkg[open] > summary::before { transform: rotate(90deg); }
+.m-pkg .pkg-row { margin-top: 12px; }
+.m-pkg .pkg-input { padding: 11px 12px; font-size: 14px; min-height: 44px; }
+.m-pkg .pkg-btn { padding: 11px 16px; font-size: 13px; min-height: 44px; }
+
+.m-output { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.m-output-head, .m-preview-head { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-bottom: 1px solid var(--border-light); background: var(--surface-hover); }
+.m-output-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+.m-preview-head .preview-status { margin-left: 0; }
+.m-preview-head .preview-close { margin-left: auto; }
+.m-output-body { padding: 13px 14px; min-height: 110px; max-height: 50vh; overflow: auto; }
+
+.m-preview { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.m-preview .preview-frame { min-height: 300px; }
+.m-open-preview { width: 100%; padding: 13px; border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-bg); color: var(--accent); font-size: 13.5px; font-weight: 650; cursor: pointer; min-height: 48px; }
+.m-pkg .pkg-note { font-size: 11px; line-height: 1.5; color: var(--text-tertiary); margin-top: 9px; }
 </style>

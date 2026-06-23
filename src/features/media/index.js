@@ -54,9 +54,37 @@ export default {
       'media.mono': 'Mono',
       'media.stereo': 'Stereo',
 
+      // Workbench tabs
+      'media.tab.convert': 'Convert',
+      'media.tab.edit': 'Edit',
+      'media.tab.advanced': 'Advanced',
+
+      // Edit tab
+      'media.edit.hint': 'Trim, adjust volume, fade, or normalize — applied with ffmpeg and re-encoded.',
+      'media.edit.apply': 'Apply & export',
+      'media.edit.trim': 'Trim',
+      'media.edit.start': 'Start',
+      'media.edit.end': 'End',
+      'media.edit.clearTrim': 'Clear',
+      'media.edit.dragHint': 'Tip: drag across the waveform to set a trim range; click to seek.',
+      'media.edit.gain': 'Volume / gain',
+      'media.edit.fadeIn': 'Fade in',
+      'media.edit.fadeOut': 'Fade out',
+      'media.edit.normalize': 'Normalize loudness (EBU R128)',
+      'media.edit.normalizeHint': 'Evens out perceived loudness to a broadcast target (~-16 LUFS).',
+
+      // Advanced / custom command
+      'media.adv.intro': 'Run a raw ffmpeg command against your file. For advanced users.',
+      'media.adv.label': 'ffmpeg arguments',
+      'media.adv.placeholder': "e.g.  -af loudnorm   (input & output are wired automatically)",
+      'media.adv.tokens': 'Your input is added as -i automatically; the output is appended. Use {input} / {output} to place them explicitly.',
+      'media.adv.ack': 'I understand this runs a custom command in my browser.',
+      'media.adv.run': 'Run command',
+      'media.adv.failed': 'Command failed — check your ffmpeg arguments',
+
       // Converter page header
-      'media.conv.title': 'Media Converter',
-      'media.conv.sub': 'Convert audio between MP3, WAV, FLAC, OGG, Opus, AAC, M4A — or extract audio from video. Private, in-browser.',
+      'media.conv.title': 'Audio Workbench',
+      'media.conv.sub': 'Convert, trim, fade, normalize, and visualize audio — or extract audio from video. Powered by ffmpeg, fully in your browser. Private, nothing uploaded.',
 
       // Subtitle tool
       'media.sub.title': 'Subtitle Tool',
@@ -105,8 +133,36 @@ export default {
       'media.mono': '单声道',
       'media.stereo': '立体声',
 
-      'media.conv.title': '媒体转换',
-      'media.conv.sub': '在 MP3、WAV、FLAC、OGG、Opus、AAC、M4A 之间转换音频,或从视频中提取音频。本地处理、私密。',
+      // 工作台标签
+      'media.tab.convert': '转换',
+      'media.tab.edit': '编辑',
+      'media.tab.advanced': '高级',
+
+      // 编辑
+      'media.edit.hint': '裁剪、调整音量、淡入淡出或响度归一 —— 由 ffmpeg 处理并重新编码。',
+      'media.edit.apply': '应用并导出',
+      'media.edit.trim': '裁剪',
+      'media.edit.start': '起点',
+      'media.edit.end': '终点',
+      'media.edit.clearTrim': '清除',
+      'media.edit.dragHint': '提示:在波形上拖动可设置裁剪区间;点击可跳转播放位置。',
+      'media.edit.gain': '音量 / 增益',
+      'media.edit.fadeIn': '淡入',
+      'media.edit.fadeOut': '淡出',
+      'media.edit.normalize': '响度归一化(EBU R128)',
+      'media.edit.normalizeHint': '将感知响度调整到广播标准(约 -16 LUFS)。',
+
+      // 高级 / 自定义命令
+      'media.adv.intro': '对你的文件运行原始 ffmpeg 命令。面向高级用户。',
+      'media.adv.label': 'ffmpeg 参数',
+      'media.adv.placeholder': '例如  -af loudnorm  (输入与输出会自动接入)',
+      'media.adv.tokens': '输入会自动以 -i 加入,输出会自动追加。可用 {input} / {output} 显式指定它们的位置。',
+      'media.adv.ack': '我了解这会在我的浏览器中运行自定义命令。',
+      'media.adv.run': '运行命令',
+      'media.adv.failed': '命令执行失败 —— 请检查你的 ffmpeg 参数',
+
+      'media.conv.title': '音频工作台',
+      'media.conv.sub': '转换、裁剪、淡入淡出、响度归一并可视化音频,或从视频中提取音频。由 ffmpeg 驱动,完全在浏览器中处理,私密、绝不上传。',
 
       'media.sub.title': '字幕工具',
       'media.sub.sub': '将字幕烧录进视频,或从 .srt / .ass 文件添加可切换的软字幕轨道。',

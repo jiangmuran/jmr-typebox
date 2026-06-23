@@ -127,8 +127,9 @@ function download() {
   import('./mediaDom').then(({ downloadBlob }) => downloadBlob(result.value.blob, result.value.name))
 }
 
-const progressPct = computed(() => Math.round(progress.value * 100))
-const dlPct = computed(() => dl.value?.total ? Math.round(dl.value.ratio * 100) : null)
+// Clamp to 0..100 defensively (matches the converter) so a bad ratio can't render nonsense.
+const progressPct = computed(() => Math.max(0, Math.min(100, Math.round(progress.value * 100))))
+const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.round((dl.value.ratio || 0) * 100))) : null)
 </script>
 
 <template>

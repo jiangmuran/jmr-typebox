@@ -1,0 +1,226 @@
+/* ===========================================================================
+   Shared UI kit for the four image tools (Compress / Convert / Watermark / Edit).
+
+   Every primitive lives under the `.img-ui` root class so these rules can be a
+   plain (non-scoped) stylesheet imported once by <ImageShell> without leaking
+   into the rest of the app. The four pages were originally built separately and
+   drifted (different paddings, radii, button styles, breakpoints); this file is
+   the single source of truth so they line up pixel-for-pixel.
+
+   Uses only the app's existing CSS variables (global.css) — clean + monochrome.
+   Mobile-first concerns are handled at the bottom: ≤768px = phone/tablet,
+   with comfortable tap targets (≥40px) for every control on a 390px screen.
+   =========================================================================== */
+
+/* ---- Page shell ---------------------------------------------------------- */
+.img-ui.route-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.img-ui .sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+.img-wrap {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 28px 20px 56px;
+  animation: imgIn 0.32s var(--ease-out);
+}
+.img-wrap.wide { max-width: 980px; }
+@keyframes imgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.img-head { margin-bottom: 18px; }
+.img-head h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; line-height: 1.2; }
+.img-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+
+/* ---- Stack rhythm: the body lays out cards/sections with a consistent gap -- */
+.img-body { display: flex; flex-direction: column; gap: 12px; }
+
+/* ---- Cards & controls ---------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.card + .card { margin-top: 0; }
+.card.pad-sm { padding: 12px; }
+.card-stack { display: flex; flex-direction: column; gap: 14px; }
+
+.ctrl { display: block; }
+.ctrl > label,
+.ctrl-label {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 7px;
+}
+.ctrl-label .val { color: var(--text-tertiary); font-weight: 500; font-family: var(--font-mono); }
+.note { font-size: 11.5px; color: var(--text-tertiary); line-height: 1.5; }
+
+/* Two controls side by side (collapses to stacked on phones). */
+.ctrl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.ctrl-row.color-size { grid-template-columns: auto 1fr; align-items: end; }
+
+/* ---- Segmented buttons --------------------------------------------------- */
+.seg {
+  display: flex; background: var(--surface-hover);
+  border-radius: var(--radius-sm); padding: 3px; gap: 3px;
+}
+.seg button {
+  flex: 1; min-height: 32px; padding: 6px 10px; border: none; border-radius: 5px;
+  font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; font-family: var(--font-sans);
+}
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
+
+/* ---- Inputs -------------------------------------------------------------- */
+.img-ui input[type="range"] {
+  width: 100%; accent-color: var(--accent);
+  height: 22px; /* enlarges the hit area so the thumb is grabbable on touch */
+  cursor: pointer;
+}
+.text-input,
+.num-input {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm); background: var(--surface-hover); color: var(--text);
+  font-size: 13px; outline: none; transition: border-color 0.15s;
+}
+.text-input { font-family: var(--font-sans); }
+.num-input { font-family: var(--font-mono); font-size: 12.5px; }
+.text-input:focus, .num-input:focus { border-color: var(--accent); }
+
+.color-input {
+  width: 46px; height: 36px; padding: 2px; border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm); background: var(--surface-hover); cursor: pointer;
+  flex-shrink: 0;
+}
+
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+/* ---- 9-grid position picker ---------------------------------------------- */
+.grid9 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; aspect-ratio: 3 / 2; }
+.grid9.disabled { opacity: 0.4; pointer-events: none; }
+.grid9 button {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+  background: var(--surface-hover); cursor: pointer; transition: all 0.15s;
+}
+.grid9 button span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); transition: all 0.15s; }
+.grid9 button:hover { border-color: var(--accent); }
+.grid9 button.on { background: var(--accent-bg); border-color: var(--accent); }
+.grid9 button.on span { background: var(--accent); }
+
+/* ---- Buttons ------------------------------------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 10px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); color: var(--text);
+  font-size: 13px; font-weight: 500; font-family: var(--font-sans);
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-hover); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn svg { width: 15px; height: 15px; }
+.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn.primary:hover { opacity: 0.9; background: var(--text); }
+.btn.block { width: 100%; }
+.btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+
+.link-btn { border: none; background: none; color: var(--accent); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 2px; }
+.link-btn:hover { text-decoration: underline; }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* ---- Action bar (Add more / Clear / Download …) -------------------------- */
+.actions { display: flex; gap: 8px; }
+.actions .btn { flex: 1; }
+
+/* ---- Single-image preview card (Compress) -------------------------------- */
+.preview-card { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; }
+.preview-card img { width: 100%; max-height: 280px; object-fit: contain; background: var(--code-bg); display: block; }
+.preview-meta {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  font-size: 11.5px; color: var(--text-secondary); border-top: 1px solid var(--border-light);
+}
+.preview-meta .meta-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Before/after stats (Compress) --------------------------------------- */
+.stats { display: flex; align-items: center; gap: 14px; position: relative; }
+.stat { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); }
+.stat strong { font-size: 18px; font-weight: 700; }
+.stat em { font-size: 11px; color: var(--text-secondary); font-style: normal; font-family: var(--font-mono); }
+.stat-arrow { color: var(--text-tertiary); font-size: 16px; flex-shrink: 0; }
+.badge { position: absolute; top: 10px; right: 12px; font-size: 11px; font-weight: 700; color: var(--status-ok); background: var(--status-ok-bg); padding: 3px 8px; border-radius: 20px; }
+.badge.neg { color: var(--status-warn); background: var(--status-warn-bg); }
+
+/* ---- Batch list (Convert) ------------------------------------------------ */
+.file-list { display: flex; flex-direction: column; gap: 8px; border: 2px dashed transparent; border-radius: var(--radius-lg); transition: border-color 0.2s; padding: 2px; }
+.file-list.over { border-color: var(--accent); }
+.file-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius); }
+.file-row img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); background: var(--code-bg); flex-shrink: 0; }
+.file-row .row-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.file-row .row-name { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row .row-sub { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+
+/* ---- Canvas preview pane (Watermark / Edit) ------------------------------ */
+.canvas-pane { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; }
+.canvas-frame { background: var(--code-bg); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.canvas-frame canvas { max-width: 100%; object-fit: contain; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); display: block; }
+
+/* ===========================================================================
+   Responsive — tablet & phone. The app frame already shrinks at 768px; the
+   image tools follow suit and become a single comfortable column on phones.
+   =========================================================================== */
+@media (max-width: 768px) {
+  .img-wrap { padding: 18px 14px 64px; }
+  .img-wrap.wide { max-width: 600px; } /* collapse the desktop two-column workbench */
+  .img-head { margin-bottom: 14px; }
+  .img-head h2 { font-size: 19px; }
+  .img-head p { font-size: 12.5px; }
+
+  .card { padding: 14px; border-radius: var(--radius); }
+
+  /* Stack paired controls so sliders get full width and stay grabbable. */
+  .ctrl-row { grid-template-columns: 1fr; gap: 14px; }
+  .ctrl-row.color-size { grid-template-columns: auto 1fr; }
+
+  /* Comfortable tap targets on phones. */
+  .seg button { min-height: 38px; font-size: 12.5px; }
+  .btn { min-height: 44px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .color-input { width: 52px; height: 40px; }
+  .grid9 button { min-height: 40px; }
+  .img-ui input[type="range"] { height: 28px; }
+
+  /* Action bars wrap to two-up rather than squishing. */
+  .actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 400px) {
+  .img-wrap { padding: 16px 12px 64px; }
+  .stat strong { font-size: 16px; }
+}

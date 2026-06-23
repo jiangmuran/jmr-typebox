@@ -1,7 +1,9 @@
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useSettings } from '../composables/useSettings'
 import { useI18n } from '../composables/useI18n'
 import BackendInfo from './BackendInfo.vue'
+import AiInfo from './AiInfo.vue'
 
 const open = defineModel('open', { default: false })
 const { settings, setSetting, resetSettings, clearAllData } = useSettings()
@@ -15,6 +17,7 @@ const TOOLS = [
   { id: 'image', path: '/image/compress' },
   { id: 'media', path: '/media/mp3-to-wav' },
   { id: 'python', path: '/python' },
+  { id: 'tools', path: '/tools/base64' },
 ]
 
 function toggleTool(id) {
@@ -30,6 +33,18 @@ function onClear() {
 
 function doPrint() { if (typeof window !== 'undefined') window.print() }
 const REPO = 'https://github.com/jiangmuran/jmr-typebox'
+
+// AI: reveal the key field on demand (it's a password input otherwise).
+const showKey = ref(false)
+
+// Allow any part of the app (e.g. the AI panel's "Open Settings" CTA) to open this drawer
+// and focus the AI section via a global event, without prop-drilling.
+function onOpenRequest(e) {
+  open.value = true
+  if (e?.detail?.section === 'ai') setSetting('aiEnabled', settings.aiEnabled) // no-op; ensures section renders
+}
+onMounted(() => { if (typeof window !== 'undefined') window.addEventListener('tb-open-settings', onOpenRequest) })
+onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListener('tb-open-settings', onOpenRequest) })
 </script>
 
 <template>
@@ -110,6 +125,38 @@ const REPO = 'https://github.com/jiangmuran/jmr-typebox'
             </label>
           </section>
 
+          <!-- AI assistant -->
+          <section>
+            <h3><span class="lbl">{{ t('settings.ai') }} <AiInfo /></span></h3>
+            <label class="row"><span class="lbl">{{ t('settings.aiEnabled') }}</span>
+              <input type="checkbox" :checked="settings.aiEnabled" @change="setSetting('aiEnabled', $event.target.checked)">
+            </label>
+            <template v-if="settings.aiEnabled">
+              <label class="row col">{{ t('settings.aiBaseUrl') }}
+                <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.aiBaseUrl" :placeholder="'https://api.openai.com/v1'" @input="setSetting('aiBaseUrl', $event.target.value)">
+              </label>
+              <label class="row col">{{ t('settings.aiKey') }}
+                <span class="key-wrap">
+                  <input class="text-in" :type="showKey ? 'text' : 'password'" spellcheck="false" autocomplete="off" :value="settings.aiKey" placeholder="sk-..." @input="setSetting('aiKey', $event.target.value)">
+                  <button type="button" class="key-eye" :title="showKey ? t('settings.aiKeyHide') : t('settings.aiKeyShow')" @click="showKey = !showKey">{{ showKey ? '🙈' : '👁' }}</button>
+                </span>
+              </label>
+              <label class="row col">{{ t('settings.aiModel') }}
+                <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.aiModel" placeholder="gpt-4o-mini" @input="setSetting('aiModel', $event.target.value)">
+              </label>
+              <label class="row col">{{ t('settings.aiTemperature') }}: {{ settings.aiTemperature }}
+                <input type="range" min="0" max="2" step="0.1" :value="settings.aiTemperature" @input="setSetting('aiTemperature', +$event.target.value)">
+              </label>
+              <label class="row"><span class="lbl">{{ t('settings.aiInlineComplete') }}</span>
+                <input type="checkbox" :checked="settings.aiInlineComplete" @change="setSetting('aiInlineComplete', $event.target.checked)">
+              </label>
+              <label class="row"><span class="lbl">{{ t('settings.aiDirect') }}</span>
+                <input type="checkbox" :checked="settings.aiDirect" @change="setSetting('aiDirect', $event.target.checked)">
+              </label>
+              <p class="ai-hint">{{ settings.aiDirect ? t('settings.aiDirectHint') : t('settings.aiProxyHint') }}</p>
+            </template>
+          </section>
+
           <!-- Language -->
           <section>
             <h3>{{ t('settings.language') }}</h3>
@@ -178,6 +225,14 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .about-link { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
 .danger-btn { width: 100%; padding: 8px; border: 1px solid rgba(255,69,58,0.3); border-radius: 8px; background: rgba(255,69,58,0.06); color: #ff453a; font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
 .danger-btn:hover { background: rgba(255,69,58,0.12); }
+
+.text-in { width: 100%; padding: 7px 9px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; transition: border-color 0.15s; }
+.text-in:focus { border-color: var(--accent); }
+.key-wrap { position: relative; display: flex; }
+.key-wrap .text-in { padding-right: 34px; }
+.key-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border: none; background: transparent; cursor: pointer; font-size: 13px; border-radius: 6px; line-height: 1; }
+.key-eye:hover { background: var(--surface-hover); }
+.ai-hint { font-size: 11px; color: var(--text-tertiary); line-height: 1.5; margin-top: -4px; }
 
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.28s var(--ease-out); }
 .drawer-enter-active .drawer-scrim, .drawer-leave-active .drawer-scrim { transition: opacity 0.28s ease; }

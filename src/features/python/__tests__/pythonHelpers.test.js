@@ -204,8 +204,23 @@ describe('EXAMPLE_PROJECTS (multi-file file-sets for the IDE)', () => {
     expect(getExampleProject('numpy')?.needsNetwork).toBe(false)
   })
 
-  it('only the micropip demo needs the network', () => {
-    expect(EXAMPLE_PROJECTS.filter(e => e.needsNetwork).map(e => e.id)).toEqual(['packages'])
+  it('network demos are flagged needsNetwork (fastapi · network · packages)', () => {
+    expect(EXAMPLE_PROJECTS.filter(e => e.needsNetwork).map(e => e.id).sort())
+      .toEqual(['fastapi', 'network', 'packages'])
+  })
+
+  it('ships a FastAPI/ASGI demo defining a FastAPI() app', () => {
+    const ex = getExampleProject('fastapi')
+    expect(ex).toBeTruthy()
+    expect(ex.files['main.py']).toMatch(/app\s*=\s*FastAPI\(\)/)
+    expect(ex.files['main.py']).toMatch(/@app\.get/)
+  })
+
+  it('ships a cross-origin network demo that calls a public API', () => {
+    const ex = getExampleProject('network')
+    expect(ex).toBeTruthy()
+    expect(ex.files['main.py']).toMatch(/urlopen|requests\.get/)
+    expect(ex.files['main.py']).toMatch(/https:\/\//)
   })
 
   it('getExampleProject returns null for unknown ids', () => {

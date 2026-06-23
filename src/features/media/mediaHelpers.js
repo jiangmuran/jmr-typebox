@@ -256,6 +256,204 @@ export function buildSoftSubArgs({
 }
 
 // ---------------------------------------------------------------------------
+// Audio EDITING — pure builders for the workbench (trim / gain / fade / resample / normalize)
+// ---------------------------------------------------------------------------
+
+// Clamp a number into [min,max], returning `fallback` if it isn't finite.
+export function clampNum(v, min, max, fallback = min) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, n))
+}
+
+// Format seconds for ffmpeg's -ss/-to (plain seconds with ms precision). 3.5 -> '3.5'.
+export function secToFFTime(sec) {
+  const n = Math.max(0, Number(sec) || 0)
+  // Trim trailing zeros but keep up to 3 decimals.
+  return String(Math.round(n * 1000) / 1000)
+}
+
+// Build the -af filter chain for an edit. Returns a string like 'volume=2.0,afade=t=in:...'
+// or '' when no audio filters are requested. Order matters: trim is done via -ss/-to (outside the
+// filter), then volume → fades → normalize. Fades are anchored to the *output* clip length.
+//   buildAudioFilters({ gainDb, fadeIn, fadeOut, normalize, clipDuration })
+export function buildAudioFilters({ gainDb, fadeIn = 0, fadeOut = 0, normalize = false, clipDuration } = {}) {
+  const parts = []
+
+  const g = Number(gainDb)
+  if (Number.isFinite(g) && Math.abs(g) > 0.0001) {
+    // volume filter accepts a dB suffix.
+    parts.push(`volume=${Math.round(g * 100) / 100}dB`)
+  }
+
+  const fi = clampNum(fadeIn, 0, 1e6, 0)
+  if (fi > 0) parts.push(`afade=t=in:st=0:d=${secToFFTime(fi)}`)
+
+  const fo = clampNum(fadeOut, 0, 1e6, 0)
+  if (fo > 0) {
+    // afade out needs a start time; anchor to the end of the clip when we know its length.
+    const dur = Number(clipDuration)
+    if (Number.isFinite(dur) && dur > fo) {
+      parts.push(`afade=t=out:st=${secToFFTime(dur - fo)}:d=${secToFFTime(fo)}`)
+    } else {
+      // Unknown/short duration: still apply a fade-out of the requested length from t=0-relative.
+      parts.push(`afade=t=out:d=${secToFFTime(fo)}`)
+    }
+  }
+
+  if (normalize) {
+    // EBU R128 loudness normalization (single-pass) — the most useful "make it sound even" knob.
+    parts.push('loudnorm=I=-16:TP=-1.5:LRA=11')
+  }
+
+  return parts.join(',')
+}
+
+// Build ffmpeg args for an audio EDIT → re-encode to `format`. Combines trim (-ss/-to), a filter
+// chain, optional resample/channels and a bitrate (for lossy). Pure/string-only so it's unit-tested.
+//   buildEditArgs({ input, output, format, trimStart, trimEnd, gainDb, fadeIn, fadeOut, normalize,
+//                    sampleRate, channels, bitrate, stripVideo, clipDuration })
+export function buildEditArgs({
+  input = 'input.bin',
+  output = 'output.mp3',
+  format,
+  trimStart,
+  trimEnd,
+  gainDb,
+  fadeIn,
+  fadeOut,
+  normalize = false,
+  sampleRate,
+  channels,
+  bitrate,
+  stripVideo = false,
+  clipDuration,
+} = {}) {
+  const def = audioFormatDef(format)
+  if (!def) throw new Error(`Unsupported output format: ${format}`)
+
+  const args = []
+  // Input-side trim: -ss before -i is fast (keyframe seek) and accurate enough for audio.
+  const ss = Number(trimStart)
+  const hasStart = Number.isFinite(ss) && ss > 0
+  if (hasStart) args.push('-ss', secToFFTime(ss))
+  args.push('-i', input)
+  // -to is relative to the start of the *input*; when we pre-seek with -ss we must use -t (duration)
+  // OR convert -to to be relative. Simpler and robust: use -t with (end - start).
+  const te = Number(trimEnd)
+  if (Number.isFinite(te) && te > (hasStart ? ss : 0)) {
+    const dur = te - (hasStart ? ss : 0)
+    if (dur > 0) args.push('-t', secToFFTime(dur))
+  }
+
+  if (stripVideo) args.push('-vn')
+
+  // Effective clip duration for fade-out anchoring.
+  let effDur = Number(clipDuration)
+  if (Number.isFinite(te) && te > 0) effDur = te - (hasStart ? ss : 0)
+  else if (Number.isFinite(effDur) && hasStart) effDur = effDur - ss
+
+  const af = buildAudioFilters({ gainDb, fadeIn, fadeOut, normalize, clipDuration: effDur })
+  if (af) args.push('-af', af)
+
+  args.push('-c:a', def.codec)
+  if (def.lossy) {
+    args.push('-b:a', normalizeBitrate(bitrate))
+  }
+  if (Number.isFinite(Number(sampleRate)) && Number(sampleRate) > 0) {
+    args.push('-ar', String(Math.round(Number(sampleRate))))
+  }
+  if (Number.isFinite(Number(channels)) && Number(channels) > 0) {
+    args.push('-ac', String(Math.round(Number(channels))))
+  }
+  args.push(output)
+  return args
+}
+
+// ---------------------------------------------------------------------------
+// CUSTOM ffmpeg command (power users) — tokenize a raw arg string the way a shell would, then
+// splice in the real input/output filenames. Client-side & sandboxed (their own browser/in-memory
+// FS), so this is about UX correctness, not security.
+// ---------------------------------------------------------------------------
+
+// Split a command string into argv, honoring single/double quotes and backslash escapes. Does NOT
+// do glob/var expansion. tokenizeArgs(`-af "volume=2dB" -b:a 192k`) -> ['-af','volume=2dB',...]
+export function tokenizeArgs(str) {
+  const s = String(str || '')
+  const out = []
+  let cur = ''
+  let quote = null // "'" | '"' | null
+  let has = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (quote) {
+      if (c === quote) { quote = null }
+      else if (c === '\\' && quote === '"' && i + 1 < s.length) { cur += s[++i] }
+      else { cur += c }
+      has = true
+    } else if (c === "'" || c === '"') {
+      quote = c; has = true
+    } else if (c === '\\' && i + 1 < s.length) {
+      cur += s[++i]; has = true
+    } else if (/\s/.test(c)) {
+      if (has) { out.push(cur); cur = ''; has = false }
+    } else {
+      cur += c; has = true
+    }
+  }
+  if (has) out.push(cur)
+  return out
+}
+
+// Known media file extensions we'll accept as an explicit OUTPUT filename in a raw command. Kept
+// deliberately broad (covers our outputs + common containers) but bounded, so filter values like
+// `atempo=2.0` / `volume=2.0` are NEVER mistaken for filenames.
+const CUSTOM_OUTPUT_EXTS = new Set([
+  ...AUDIO_OUTPUT_FORMATS, ...AUDIO_INPUT_EXTS, ...VIDEO_INPUT_EXTS,
+  'mp3', 'wav', 'flac', 'ogg', 'opus', 'aac', 'm4a', 'mp4', 'mkv', 'mov', 'webm', 'mka', 'wma',
+])
+
+// Decide whether a raw token is a real OUTPUT filename (vs a flag, a flag value, or a filter graph
+// like `atempo=2.0`). Rules: not a flag (no leading '-'); contains no '=' (filtergraphs/options do);
+// has a dotted extension whose suffix is a KNOWN media extension. This is what stops the
+// "atempo=2.0 looks like a file" bug.
+function looksLikeOutputFile(tk) {
+  if (!tk || tk[0] === '-') return false
+  if (tk.includes('=')) return false
+  const ext = (tk.match(/\.([A-Za-z0-9]{1,5})$/)?.[1] || '').toLowerCase()
+  return !!ext && CUSTOM_OUTPUT_EXTS.has(ext)
+}
+
+// Splice a raw user ffmpeg command into a runnable argv against our in-memory FS. Client-side &
+// sandboxed (their own browser), so this is about correctness, not security.
+//   buildCustomArgs({ raw, input, defaultOutput }) -> { args, output }
+// Behavior:
+//   • {input} / {output} placeholders are expanded to the real names first.
+//   • If the user already supplied an explicit output filename (a real media filename as the LAST
+//     token), we keep it; otherwise we append `defaultOutput`.
+//   • If the user didn't pass `-i`, we prepend `-i <input>` so their filters run against the file.
+export function buildCustomArgs({ raw, input = 'input.bin', defaultOutput = 'output.out' } = {}) {
+  let tokens = tokenizeArgs(raw).map(tk =>
+    tk.replace(/\{input\}/g, input).replace(/\{output\}/g, defaultOutput)
+  )
+
+  const hasInput = tokens.includes('-i')
+
+  // Only the LAST token may be an output, and only if it's a real media filename (not a filter).
+  let output = null
+  if (tokens.length) {
+    const last = tokens[tokens.length - 1]
+    // Don't treat the token right after -i (the input filename) as the output.
+    const prev = tokens[tokens.length - 2]
+    if (looksLikeOutputFile(last) && last !== input && prev !== '-i') output = last
+  }
+
+  if (!hasInput) tokens = ['-i', input, ...tokens]
+  if (!output) { output = defaultOutput; tokens = [...tokens, output] }
+  return { args: tokens, output }
+}
+
+// ---------------------------------------------------------------------------
 // Converter route registry (single source of truth shared by index.js + pages)
 // ---------------------------------------------------------------------------
 

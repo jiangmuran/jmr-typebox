@@ -8,13 +8,22 @@ export const DEFAULT_SETTINGS = {
   editorFontSize: 15,
   editorLineHeight: 1.7,
   density: 'comfortable',   // 'comfortable' | 'compact'
-  tabsVisible: ['markdown', 'image', 'media', 'python'],
-  tabsOrder: ['markdown', 'image', 'media', 'python'],
+  tabsVisible: ['markdown', 'image', 'media', 'python', 'tools'],
+  tabsOrder: ['markdown', 'image', 'media', 'python', 'tools'],
   defaultTool: '/',
   restoreLast: true,
   writingTheme: 'default',
   exportTheme: 'inkwell',
   backendEnabled: true,
+  // AI assistant (OpenAI-compatible /chat/completions). Keys are stored locally in the
+  // browser; requests go to the configured endpoint (via the same-origin proxy by default).
+  aiEnabled: false,
+  aiBaseUrl: 'https://api.openai.com/v1',
+  aiKey: '',
+  aiModel: 'gpt-4o-mini',
+  aiTemperature: 0.7,
+  aiDirect: false,          // false = route through /api/ai proxy (beats CORS); true = call endpoint directly
+  aiInlineComplete: true,   // enable ⌃Space "continue writing" in the editor
 }
 
 function hydrate() {
@@ -22,6 +31,10 @@ function hydrate() {
 }
 
 const settings = reactive({ ...structuredClone(DEFAULT_SETTINGS), ...hydrate() })
+
+// One-time migration: surface the Toolbox tab for users whose saved settings predate it.
+if (Array.isArray(settings.tabsOrder) && !settings.tabsOrder.includes('tools')) settings.tabsOrder.push('tools')
+if (Array.isArray(settings.tabsVisible) && !settings.tabsVisible.includes('tools')) settings.tabsVisible.push('tools')
 
 // Track the system color scheme so resolvedTheme reacts to it.
 const systemDark = ref(false)

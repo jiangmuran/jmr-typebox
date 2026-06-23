@@ -6,6 +6,7 @@ import {
   formatSize, formatDuration, normalizeBitrate,
   isVideoInput, isAudioInput, isSubtitleInput, isMediaInput, safeInputName,
   buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, escapeSubtitlePath,
+  buildAudioFilters, buildEditArgs, tokenizeArgs, buildCustomArgs, clampNum, secToFFTime,
   MEDIA_CONVERTERS, converterForRoute,
 } from '../mediaHelpers'
 import { ALL_PATHS } from '../../../router/meta'
@@ -206,6 +207,181 @@ describe('media helpers — ffmpeg arg builders', () => {
     const args = buildSoftSubArgs({ container: 'mp4', language: 'eng' })
     expect(args).toContain('-metadata:s:s:0')
     expect(args[args.indexOf('-metadata:s:s:0') + 1]).toBe('language=eng')
+  })
+})
+
+describe('media helpers — small math utils', () => {
+  it('clampNum clamps and falls back on non-finite', () => {
+    expect(clampNum(5, 0, 10)).toBe(5)
+    expect(clampNum(-3, 0, 10)).toBe(0)
+    expect(clampNum(99, 0, 10)).toBe(10)
+    expect(clampNum('x', 0, 10, 7)).toBe(7)
+    expect(clampNum(undefined, 1, 10, 3)).toBe(3)
+  })
+
+  it('secToFFTime renders plain seconds with ms precision', () => {
+    expect(secToFFTime(3)).toBe('3')
+    expect(secToFFTime(3.5)).toBe('3.5')
+    expect(secToFFTime(3.12345)).toBe('3.123')
+    expect(secToFFTime(-1)).toBe('0')
+  })
+})
+
+describe('media helpers — audio edit filter builder', () => {
+  it('empty edit yields no filter', () => {
+    expect(buildAudioFilters({})).toBe('')
+    expect(buildAudioFilters({ gainDb: 0, fadeIn: 0, fadeOut: 0, normalize: false })).toBe('')
+  })
+
+  it('gain in dB', () => {
+    expect(buildAudioFilters({ gainDb: 3 })).toBe('volume=3dB')
+    expect(buildAudioFilters({ gainDb: -6.5 })).toBe('volume=-6.5dB')
+  })
+
+  it('fade in/out anchored to clip duration', () => {
+    expect(buildAudioFilters({ fadeIn: 2 })).toBe('afade=t=in:st=0:d=2')
+    expect(buildAudioFilters({ fadeOut: 3, clipDuration: 10 })).toBe('afade=t=out:st=7:d=3')
+  })
+
+  it('fade out without known duration still applies', () => {
+    const f = buildAudioFilters({ fadeOut: 3 })
+    expect(f).toContain('afade=t=out')
+    expect(f).toContain('d=3')
+  })
+
+  it('normalize adds loudnorm', () => {
+    expect(buildAudioFilters({ normalize: true })).toContain('loudnorm=')
+  })
+
+  it('chains multiple filters in order', () => {
+    const f = buildAudioFilters({ gainDb: 2, fadeIn: 1, fadeOut: 1, normalize: true, clipDuration: 10 })
+    expect(f.split(',')).toEqual([
+      'volume=2dB', 'afade=t=in:st=0:d=1', 'afade=t=out:st=9:d=1', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+    ])
+  })
+})
+
+describe('media helpers — buildEditArgs', () => {
+  it('plain re-encode with no edits', () => {
+    const args = buildEditArgs({ input: 'input.wav', output: 'output.mp3', format: 'mp3' })
+    expect(args).toEqual(['-i', 'input.wav', '-c:a', 'libmp3lame', '-b:a', '192k', 'output.mp3'])
+  })
+
+  it('trim uses -ss before -i and -t for duration', () => {
+    const args = buildEditArgs({ input: 'i.mp3', output: 'o.mp3', format: 'mp3', trimStart: 5, trimEnd: 12 })
+    expect(args[0]).toBe('-ss'); expect(args[1]).toBe('5')
+    expect(args[2]).toBe('-i'); expect(args[3]).toBe('i.mp3')
+    expect(args).toContain('-t'); expect(args[args.indexOf('-t') + 1]).toBe('7') // 12 - 5
+  })
+
+  it('trim end only (no start) uses -t = end', () => {
+    const args = buildEditArgs({ input: 'i.mp3', output: 'o.mp3', format: 'mp3', trimEnd: 8 })
+    expect(args[0]).toBe('-i')
+    expect(args[args.indexOf('-t') + 1]).toBe('8')
+  })
+
+  it('gain + fades produce an -af chain', () => {
+    const args = buildEditArgs({ input: 'i.wav', output: 'o.wav', format: 'wav', gainDb: -3, fadeIn: 1, clipDuration: 20 })
+    expect(args).toContain('-af')
+    const af = args[args.indexOf('-af') + 1]
+    expect(af).toContain('volume=-3dB')
+    expect(af).toContain('afade=t=in')
+    // wav is lossless → no -b:a
+    expect(args).not.toContain('-b:a')
+  })
+
+  it('fade-out anchors to the trimmed clip length, not the original', () => {
+    const args = buildEditArgs({ input: 'i.mp3', output: 'o.mp3', format: 'mp3', trimStart: 10, trimEnd: 20, fadeOut: 2, clipDuration: 100 })
+    const af = args[args.indexOf('-af') + 1]
+    // clip is 10s long (20-10), fade-out 2s → starts at 8s
+    expect(af).toContain('afade=t=out:st=8:d=2')
+  })
+
+  it('stripVideo + resample + channels', () => {
+    const args = buildEditArgs({ input: 'i.mp4', output: 'o.mp3', format: 'mp3', stripVideo: true, sampleRate: 44100, channels: 1 })
+    expect(args).toContain('-vn')
+    expect(args[args.indexOf('-ar') + 1]).toBe('44100')
+    expect(args[args.indexOf('-ac') + 1]).toBe('1')
+  })
+
+  it('throws on unknown output format', () => {
+    expect(() => buildEditArgs({ format: 'zzz' })).toThrow(/Unsupported output format/)
+  })
+})
+
+describe('media helpers — custom command tokenizer', () => {
+  it('splits on whitespace', () => {
+    expect(tokenizeArgs('-ar 44100 -ac 1')).toEqual(['-ar', '44100', '-ac', '1'])
+  })
+  it('honors double quotes', () => {
+    expect(tokenizeArgs('-af "volume=2dB"')).toEqual(['-af', 'volume=2dB'])
+  })
+  it('honors single quotes', () => {
+    expect(tokenizeArgs("-af 'aresample=async=1'")).toEqual(['-af', 'aresample=async=1'])
+  })
+  it('keeps quoted spaces together', () => {
+    expect(tokenizeArgs('-metadata "title=My Song"')).toEqual(['-metadata', 'title=My Song'])
+  })
+  it('empty / whitespace → []', () => {
+    expect(tokenizeArgs('')).toEqual([])
+    expect(tokenizeArgs('   ')).toEqual([])
+  })
+})
+
+describe('media helpers — buildCustomArgs', () => {
+  it('wires -i input and appends default output when user gives only filters', () => {
+    const { args, output } = buildCustomArgs({ raw: '-af loudnorm', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(args).toEqual(['-i', 'input.mp3', '-af', 'loudnorm', 'output.mp3'])
+    expect(output).toBe('output.mp3')
+  })
+
+  it('respects an explicit output filename in the user command', () => {
+    const { args, output } = buildCustomArgs({ raw: '-af loudnorm out.wav', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(output).toBe('out.wav')
+    expect(args[args.length - 1]).toBe('out.wav')
+    // still injects the input
+    expect(args.slice(0, 2)).toEqual(['-i', 'input.mp3'])
+  })
+
+  it('does not double-inject -i when the user already supplied one', () => {
+    const { args } = buildCustomArgs({ raw: '-i input.mp3 -af loudnorm out.mp3', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(args.filter(a => a === '-i').length).toBe(1)
+  })
+
+  it('expands {input}/{output} placeholders', () => {
+    const { args, output } = buildCustomArgs({ raw: '-i {input} -af loudnorm {output}', input: 'input.mp3', defaultOutput: 'output.wav' })
+    expect(args).toContain('input.mp3')
+    expect(output).toBe('output.wav')
+    expect(args[args.length - 1]).toBe('output.wav')
+  })
+
+  // Regression: a filter value like `atempo=2.0` ends with ".0" and used to be mistaken for an
+  // output filename, leaving the command with NO output → "At least one output file must be
+  // specified". A real output must always be appended.
+  it('does NOT treat a filter value (atempo=2.0) as an output filename', () => {
+    const { args, output } = buildCustomArgs({ raw: '-af atempo=2.0', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(output).toBe('output.mp3')
+    expect(args).toEqual(['-i', 'input.mp3', '-af', 'atempo=2.0', 'output.mp3'])
+  })
+
+  it('does NOT treat volume=0.5 / equals-bearing tokens as filenames', () => {
+    const { args, output } = buildCustomArgs({ raw: "-af 'volume=0.5' -b:a 320k", input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(output).toBe('output.mp3')
+    expect(args[args.length - 1]).toBe('output.mp3')
+    expect(args).toContain('volume=0.5')
+  })
+
+  it('still honors an explicit real output extension even after a filter value', () => {
+    const { args, output } = buildCustomArgs({ raw: '-af atempo=2.0 out.wav', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(output).toBe('out.wav')
+    expect(args[args.length - 1]).toBe('out.wav')
+  })
+
+  it('treats a lone -i input (no filter) correctly (input not mistaken for output)', () => {
+    const { args, output } = buildCustomArgs({ raw: '-i input.mp3 -ar 44100', input: 'input.mp3', defaultOutput: 'output.mp3' })
+    expect(args.filter(a => a === '-i').length).toBe(1)
+    expect(output).toBe('output.mp3')
+    expect(args[args.length - 1]).toBe('output.mp3')
   })
 })
 

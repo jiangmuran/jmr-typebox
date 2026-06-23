@@ -25,6 +25,7 @@ const TABS = [
   { id: 'image', to: '/image/compress', icon: 'image' },
   { id: 'media', to: '/media/mp3-to-wav', icon: 'media' },
   { id: 'python', to: '/python', icon: 'python' },
+  { id: 'tools', to: '/tools/base64', icon: 'tools' },
 ]
 const activeTab = computed(() => route.meta?.tab || 'markdown')
 
