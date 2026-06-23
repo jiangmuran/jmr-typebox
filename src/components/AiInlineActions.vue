@@ -28,13 +28,33 @@ const resultText = ref('')      // non-replacing result (explain) to show in a p
 const showResult = ref(false)
 const runningId = ref('')
 
-// Position the toolbar just above the selection's top edge.
+// Position the result popover near the selection (kept simple; it's wide + centered).
 const style = computed(() => {
   const s = props.selection
   if (!s) return { display: 'none' }
   const x = Math.max(8, Math.min(s.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 8))
   return { left: x + 'px', top: Math.max(8, s.y - 8) + 'px' }
 })
+
+// Toolbar position: clamp fully inside the viewport (it used to clip at the page edges) and
+// flip below the selection when there isn't room above. Measured after render for an exact fit.
+const barEl = ref(null)
+const barStyle = ref({})
+function clampBar(s, w, h) {
+  const vw = window.innerWidth, vh = window.innerHeight
+  const left = Math.min(Math.max(8, s.x - w / 2), Math.max(8, vw - w - 8))
+  let top = s.y - h - 10
+  if (top < 8) top = s.y + 22
+  top = Math.min(top, vh - h - 8)
+  return { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` }
+}
+function placeBar() {
+  const s = props.selection
+  if (!s || !ready.value) return
+  barStyle.value = clampBar(s, 320, 38) // estimate so it paints immediately
+  nextTick(() => { const el = barEl.value; if (el && props.selection) barStyle.value = clampBar(props.selection, el.offsetWidth, el.offsetHeight) })
+}
+watch(() => props.selection, placeBar)
 
 // Icons are inline SVG (never emoji/glyphs). `ico()` wraps path markup in a standard 16-box svg.
 function ico(inner) {
@@ -111,7 +131,7 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
 
 <template>
   <Teleport to="body">
-    <div v-if="selection" class="ai-bar" :style="style" @mousedown.prevent>
+    <div v-if="selection && ready" ref="barEl" class="ai-bar" :style="barStyle" @mousedown.prevent>
       <!-- streaming indicator while a replacing action runs -->
       <template v-if="busy && !showResult">
         <span class="ai-spin"></span>
@@ -156,12 +176,12 @@ function closeAll() { showResult.value = false; promptFor.value = ''; abort(); e
 
 <style scoped>
 .ai-bar {
-  position: fixed; z-index: 410; transform: translate(-50%, -100%);
+  position: fixed; z-index: 410;
   display: flex; align-items: center; gap: 2px; max-width: 92vw;
   background: var(--surface); border: 1px solid var(--border-light); border-radius: 10px;
   box-shadow: var(--shadow-lg); padding: 4px; animation: aiIn 0.14s var(--ease-out);
 }
-@keyframes aiIn { from { opacity: 0; transform: translate(-50%, -100%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -100%) scale(1); } }
+@keyframes aiIn { from { opacity: 0; transform: translateY(4px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .ai-spark { width: 13px; height: 13px; margin: 0 4px 0 2px; opacity: 0.85; color: var(--accent); flex-shrink: 0; }
 .ai-act { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border: none; border-radius: 7px; background: transparent; color: var(--text); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
 .ai-act:hover { background: var(--surface-hover); }
