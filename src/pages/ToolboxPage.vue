@@ -167,4 +167,10 @@ function onDrop(e) {
 .stat strong { font-size: 26px; font-weight: 750; }
 .stat span { font-size: 11px; color: var(--text-secondary); }
 @media (max-width: 560px) { .tb-stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* Phones: grow the action/operation buttons to comfortable thumb targets (≥40px tall). */
+@media (max-width: 640px) {
+  .tb-actions button { padding: 9px 13px; font-size: 12.5px; }
+  .op { padding: 11px 16px; font-size: 13px; }
+}
 </style>

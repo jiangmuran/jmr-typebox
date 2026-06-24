@@ -594,8 +594,17 @@ onUnmounted(() => {
   .doc-tab-x { width: 22px; height: 22px; font-size: 16px; }
   .doc-tab-new { width: 38px; height: 32px; }
   .doc-tab { padding-top: 8px; padding-bottom: 8px; }
+  /* The controls row wraps on phones, so a button-anchored dropdown (relative to .dd-wrap) can open
+     off-screen — to the left when the button wrapped to the left edge, or to the right when it sits
+     at the right. Re-parent the menu to the full-width controls row (see the .dd-menu override
+     below) so it's always pinned to the screen's right edge, whatever line the trigger wrapped onto. */
+  .editor-controls { position: relative; }
+  .dd-wrap { position: static; }
 }
 .dd-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 200px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; z-index: 200; }
+/* Phone override (must follow the base rule to win the cascade): with .dd-wrap made static above,
+   this anchors to .editor-controls and keeps the menu inside the viewport. */
+@media (max-width: 768px) { .dd-menu { right: 10px; left: auto; width: 240px; max-width: calc(100vw - 20px); } }
 .dd-menu button { display: flex; align-items: center; width: 100%; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text); font-size: 13px; font-family: var(--font-sans); cursor: pointer; text-align: left; }
 .dd-menu button:hover { background: var(--surface-hover); }
 .dd-menu button kbd { margin-left: auto; font-size: 10px; color: var(--text-tertiary); background: var(--surface-hover); padding: 1px 5px; border-radius: 3px; }

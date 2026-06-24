@@ -1396,4 +1396,11 @@ onBeforeUnmount(() => {
 .m-preview .preview-frame { min-height: 300px; }
 .m-open-preview { width: 100%; padding: 13px; border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-bg); color: var(--accent); font-size: 13.5px; font-weight: 650; cursor: pointer; min-height: 48px; }
 .m-pkg .pkg-note { font-size: 11px; line-height: 1.5; color: var(--text-tertiary); margin-top: 9px; }
+
+/* Phones: nudge the toolbar/stdin buttons to a comfortable tap height. */
+@media (max-width: 768px) {
+  .tb-btn.ghost { padding: 9px 12px; }
+  .tb-btn.run, .tb-btn.stop { padding: 9px 15px; }
+  .stdin-send { padding: 10px 14px; }
+}
 </style>

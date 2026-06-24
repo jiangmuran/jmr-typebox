@@ -132,9 +132,12 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
 @media (max-width: 900px) {
   .pl-desktop { display: none; }
   .pl-mobile { display: flex; flex-direction: column; gap: 10px; }
-  .pl-dots { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 0 4px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; border: none; background: var(--border); cursor: pointer; padding: 0; transition: all 0.2s; }
-  .dot.on { background: var(--accent); width: 20px; border-radius: 4px; }
+  .pl-dots { display: flex; align-items: center; justify-content: center; gap: 2px; padding: 2px 0 4px; }
+  /* The visible pill stays small (::before), but the button itself is a ~32px tap target so the
+     deck pager is reliably reachable by thumb. */
+  .dot { width: 28px; height: 30px; border: none; background: transparent; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--border); transition: all 0.2s; }
+  .dot.on::before { background: var(--accent); width: 20px; border-radius: 4px; }
   .pl-deck-clip { overflow: hidden; }
   .pl-deck { display: flex; width: 100%; transition: transform 0.32s var(--ease-out); }
   .pl-slide { flex: 0 0 100%; min-width: 100%; padding: 0 2px; }

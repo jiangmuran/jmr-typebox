@@ -582,5 +582,9 @@ const infoRows = computed(() => {
   .kv-add-btn { grid-area: btn; justify-content: center; }
   .actions { flex-direction: column; }
   .convert-btn, .strip-btn { min-width: 0; width: 100%; }
+  /* Comfortable tap targets on phones for the small inline controls. */
+  .kv-del { height: 40px; }
+  .link-btn { padding: 8px 12px; }
+  .mini-btn { padding: 9px 8px; }
 }
 </style>

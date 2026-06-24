@@ -306,5 +306,5 @@ input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
 .download-btn:hover { opacity: 0.9; }
 
-@media (max-width: 560px) { .media { padding: 20px 16px 48px; } .control { flex-direction: column; align-items: stretch; gap: 6px; } input[type="range"] { max-width: 100%; } }
+@media (max-width: 560px) { .media { padding: 20px 16px 48px; } .control { flex-direction: column; align-items: stretch; gap: 6px; } input[type="range"] { max-width: 100%; } .seg button { padding: 10px 12px; font-size: 12.5px; } }
 </style>

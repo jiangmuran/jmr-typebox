@@ -326,5 +326,11 @@ async function clearCache() {
   .lib-list { min-height: 220px; }
   .track { padding: 9px 12px; }
   .track-art { width: 42px; height: 42px; }
+  /* Bigger tap target for the per-track "⋮" menu on phones. */
+  .track-menu-btn { width: 38px; height: 38px; }
+  .track-menu-btn svg { width: 17px; height: 17px; }
+  /* Playlist chips + add button: comfortable tap height. */
+  .pl-chip { padding: 8px 12px; }
+  .pl-add { width: 36px; height: 36px; }
 }
 </style>
