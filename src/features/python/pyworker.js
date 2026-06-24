@@ -92,25 +92,74 @@ async function reportCacheStatus(id) {
   post({ type: 'cacheStatus', id, runtimeCached: cached })
 }
 
-// ---- interactive stdin (queue-fed) ------------------------------------------------------
-// Pyodide's stdin is SYNCHRONOUS and we have no SharedArrayBuffer in the worker, so we cannot block
-// the worker waiting for the user to type. Instead the terminal sends typed lines ({type:'stdin'})
-// which we queue; input() shifts the next queued line. If the queue is empty we post an 'input'
-// notice (so the terminal can prompt) and return EOF — a clean EOFError rather than a deadlock.
-let stdinQueue = []
-let inputPrompted = false     // avoid spamming 'input' notices for one empty-queue stall
+// ---- interactive BLOCKING stdin (SharedArrayBuffer + Atomics.wait) ------------------------
+// Pyodide's stdin callback is SYNCHRONOUS — it must return a line immediately. To make input()
+// genuinely BLOCK the running program until the user types (like a real terminal), the worker waits
+// on a SharedArrayBuffer with Atomics.wait(): readStdinLine() flips the control word to WAITING,
+// notifies the UI, then blocks the worker thread until the main thread writes the typed line into
+// the SAB and Atomics.notify()s. This needs cross-origin isolation (COOP/COEP) for SAB, which we
+// enable via public/_headers (COEP credentialless keeps the CDN ffmpeg/Pyodide working).
+//
+// SAB layout (set up by the main thread, shared once via 'stdinBuffer' message):
+//   control: Int32Array(4) over the first 16 bytes —
+//     [0] STATE: IDLE(0) | WAITING(1) | READY(2) | EOF(3)
+//     [1] LEN:   byte length of the line written into the data region
+//   data: Uint8Array over the rest — the UTF-8 line bytes the user typed.
+//
+// Fallback: if no SAB was provided (isolation unavailable), input() uses the pre-typed QUEUE.
+const ST_IDLE = 0, ST_WAITING = 1, ST_READY = 2, ST_EOF = 3
+const CTRL_STATE = 0, CTRL_LEN = 1
+const DATA_OFFSET = 16          // bytes; control Int32Array(4) occupies [0,16)
+
+let stdinSAB = null             // SharedArrayBuffer for blocking stdin (or null → queue fallback)
+let stdinCtrl = null            // Int32Array view over the control region
+let stdinData = null            // Uint8Array view over the data region
+let stdinDecoder = null
+
+let stdinQueue = []             // queue-fed fallback (pre-typed lines)
+let inputPrompted = false       // avoid spamming 'input' notices in fallback mode
+
+function post(msg) { try { self.postMessage(msg) } catch { /* ignore */ } }
+
+function setupStdinBuffer(sab) {
+  stdinSAB = sab || null
+  if (sab) {
+    stdinCtrl = new Int32Array(sab, 0, 4)
+    stdinData = new Uint8Array(sab, DATA_OFFSET)
+    stdinDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null
+  } else {
+    stdinCtrl = stdinData = stdinDecoder = null
+  }
+}
 
 function readStdinLine() {
+  // Blocking SAB path: pause the worker until the main thread provides a line (or EOF).
+  if (stdinSAB && stdinCtrl && typeof Atomics !== 'undefined') {
+    Atomics.store(stdinCtrl, CTRL_STATE, ST_WAITING)
+    // Tell the UI a program is now PAUSED awaiting input (focus/highlight the terminal).
+    post({ type: 'input', id: currentRunId })
+    // Block this worker thread until notified. Loop guards against spurious wakeups.
+    while (Atomics.load(stdinCtrl, CTRL_STATE) === ST_WAITING) {
+      Atomics.wait(stdinCtrl, CTRL_STATE, ST_WAITING)
+    }
+    const state = Atomics.load(stdinCtrl, CTRL_STATE)
+    Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE)
+    if (state === ST_EOF) return null // EOF -> EOFError in input()
+    const len = Atomics.load(stdinCtrl, CTRL_LEN) | 0
+    // Return the typed line (no trailing newline). autoEOF:true appends EOF after this string, so
+    // input()/readline gets exactly this one line from a SINGLE stdin() call (no re-block).
+    if (len <= 0) return ''
+    const bytes = stdinData.slice(0, Math.min(len, stdinData.length))
+    return stdinDecoder ? stdinDecoder.decode(bytes) : String.fromCharCode.apply(null, bytes)
+  }
+  // Fallback: queue-fed (no blocking possible without SAB). One line per call; autoEOF terminates it.
   if (stdinQueue.length) { inputPrompted = false; return stdinQueue.shift() }
-  // Empty queue: tell the UI a program is waiting on input (once), then signal EOF.
   if (!inputPrompted) {
     inputPrompted = true
     post({ type: 'input', id: currentRunId })
   }
   return null
 }
-
-function post(msg) { try { self.postMessage(msg) } catch { /* ignore */ } }
 
 // ---- core download with real progress ---------------------------------------------------
 // loadPyodide has no progress hook for its big wasm/stdlib download, so we prefetch the two large
@@ -167,7 +216,7 @@ async function getPyodide() {
     ])
     post({ type: 'status', phase: 'init' })
     const py = await mod.loadPyodide({ indexURL: PYODIDE_CDN_URL })
-    try { py.setStdin({ stdin: readStdinLine, autoEOF: false }) } catch { /* older API */ }
+    try { py.setStdin({ stdin: readStdinLine, autoEOF: true }) } catch { /* older API */ }
     pyodide = py
     post({ type: 'status', phase: 'ready' })
     post({ type: 'ready' })
@@ -638,9 +687,11 @@ function writeFiles(py, files) {
 async function handleRun(req) {
   const { id, files, entry } = req
   currentRunId = id
-  // Seed the stdin queue with any lines the user pre-typed before Run (reset first so a previous
-  // run's leftovers don't bleed in).
-  stdinQueue = Array.isArray(req.stdin) ? req.stdin.slice() : []
+  // Reset stdin for this run. With a SAB present, input() BLOCKS via Atomics.wait (lines come from
+  // the main thread through the SAB, so the local queue isn't used and is cleared); without it, the
+  // queue-fed fallback is seeded with any pre-typed lines.
+  if (stdinSAB && stdinCtrl) Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE)
+  stdinQueue = stdinSAB ? [] : (Array.isArray(req.stdin) ? req.stdin.slice() : [])
   inputPrompted = false
   proxyBase = String(req.proxyBase || '')
 
@@ -664,7 +715,7 @@ async function handleRun(req) {
   // stream. We tag each chunk with the run id so a late chunk from a terminated run is ignorable.
   py.setStdout({ batched: (s) => post({ type: 'stdout', id, text: s + '\n' }) })
   py.setStderr({ batched: (s) => post({ type: 'stderr', id, text: s + '\n' }) })
-  try { py.setStdin({ stdin: readStdinLine, autoEOF: false }) } catch { /* older API */ }
+  try { py.setStdin({ stdin: readStdinLine, autoEOF: true }) } catch { /* older API */ }
 
   const figures = []
   let result = { kind: 'none', data: '' }
@@ -854,6 +905,10 @@ async function handleUninstall(req) {
 self.onmessage = (e) => {
   const msg = e.data || {}
   switch (msg.type) {
+    case 'stdinBuffer':
+      // One-time setup: the SharedArrayBuffer the main thread uses to deliver blocking-input lines.
+      setupStdinBuffer(msg.buffer || null)
+      break
     case 'run': handleRun(msg); break
     case 'install': handleInstall(msg); break
     case 'callServer': handleCallServer(msg); break
@@ -861,7 +916,7 @@ self.onmessage = (e) => {
     case 'uninstall': handleUninstall(msg); break
     case 'cacheStatus': reportCacheStatus(msg.id); break
     case 'stdin':
-      // Queue typed lines (split on newlines) to satisfy the next input() call(s).
+      // Fallback (no SAB): queue typed lines for the next input() call(s).
       if (msg.text != null) {
         for (const part of String(msg.text).split('\n')) stdinQueue.push(part)
         inputPrompted = false

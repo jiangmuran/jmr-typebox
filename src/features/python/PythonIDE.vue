@@ -75,14 +75,16 @@ const restarting = ref(false)        // worker was terminated by Stop; a fresh o
 const runtimeCached = ref(false)     // the Pyodide runtime is in the durable cache (instant start)
 
 // ---- interactive stdin (input()) --------------------------------------------------------
-// input() reads from the IN-PAGE terminal line — NEVER a browser alert/prompt. When a program
-// calls input() with nothing queued, the worker notifies us (awaitingInput) and we focus the
-// terminal input + show an inline "waiting for input" affordance. The user types a line, Enter
-// queues it for the worker's stdin and echoes it into the transcript.
+// input() reads from the IN-PAGE terminal line — NEVER a browser alert/prompt. With the stdin
+// Service Worker active (stdinBlocking), a program calling input() truly PAUSES until the user
+// types a line + Enter, then resumes — like a real terminal. When the program is waiting we set
+// awaitingInput to focus/highlight the terminal input. (If the SW is unavailable, input() falls
+// back to consuming pre-typed lines.)
 const stdinText = ref('')
 const stdinInput = ref(null)
 const mStdinInput = ref(null)
 const awaitingInput = ref(false)
+const stdinBlocking = ref(false)     // SW-backed blocking input() is available
 
 // ---- web preview ------------------------------------------------------------------------
 // hasApp: the LAST run left a web app (WSGI/ASGI) in globals. appKind: 'wsgi' | 'asgi' | ''.
@@ -344,15 +346,17 @@ async function run() {
     const res = await runPython(
       { files: { ...project.value.files }, entry: activeName.value },
       {
-        onStdout: s => outBatcher.push(s),
-        onStderr: s => errBatcher.push(s),
+        // Output resuming means the program moved past any input() — clear the awaiting state.
+        onStdout: s => { awaitingInput.value = false; outBatcher.push(s) },
+        onStderr: s => { awaitingInput.value = false; errBatcher.push(s) },
         onStatus: st => {
           coreDownloading.value = st === 'download'
           phase.value = st === 'download' ? t('py.loadingCore') : t('py.initRuntime')
         },
         onProgress: ({ loaded, total }) => { coreProgress.value = { loaded, total } },
-        // The program called input() with nothing queued: surface an inline prompt + focus the
-        // terminal input (NO browser dialog). The user types a line and presses Enter.
+        // The program called input(): with the stdin Service Worker active the program is now PAUSED
+        // until the user types a line in the terminal (NO browser dialog). Focus + highlight the
+        // terminal input. (Without the SW, this means a pre-typed line is being consumed.)
         onInput: () => {
           outBatcher.flush(); errBatcher.flush()
           awaitingInput.value = true
@@ -675,12 +679,14 @@ onMounted(() => {
     window.addEventListener('message', onPreviewMessage)
     document.addEventListener('fullscreenchange', onFsChange)
   }
-  // Subscribe to runtime status so the banner reflects download/init/ready/restarting.
-  import('./pythonRunner').then(({ onRuntimeStatus }) => {
+  // Subscribe to runtime status so the banner reflects download/init/ready/restarting, and register
+  // the stdin Service Worker EARLY (before the first run) so input() can block on it.
+  import('./pythonRunner').then(({ onRuntimeStatus, registerStdinSW }) => {
     offRuntimeStatus = onRuntimeStatus(({ phase }) => {
       if (phase === 'ready') { runtimeReadyFlag.value = true; restarting.value = false }
       else if (phase === 'stopped') { runtimeReadyFlag.value = false }
     })
+    registerStdinSW?.().then((ok) => { stdinBlocking.value = !!ok }).catch(() => {})
   }).catch(() => {})
   // Probe whether the Pyodide runtime is already in the durable cache (so the banner/pill can show
   // "cached — instant" without spawning the worker or downloading anything). Same-origin Cache API.

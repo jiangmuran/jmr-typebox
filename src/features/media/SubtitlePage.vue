@@ -8,6 +8,8 @@ import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ClientOnly from '../../components/ClientOnly.vue'
+import MediaShell from './MediaShell.vue'
+import MediaToolNav from './MediaToolNav.vue'
 import { useMediaFile } from './useMediaFile'
 import MediaDropZone from './MediaDropZone.vue'
 import { isVideoInput, isSubtitleInput, formatSize, buildOutputNameWithSuffix } from './mediaHelpers'
@@ -135,11 +137,13 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
 </script>
 
 <template>
-  <div class="route-page">
-    <h1 class="sr-only">{{ m.h1 }}</h1>
-    <ClientOnly>
-      <main class="media">
-        <header class="media-head">
+  <MediaShell>
+    <div class="route-page">
+      <h1 class="sr-only">{{ m.h1 }}</h1>
+      <div class="media-navwrap"><MediaToolNav /></div>
+      <ClientOnly>
+        <main class="media">
+          <header class="media-head">
           <h2 class="media-title">{{ t('media.sub.title') }}</h2>
           <p class="media-sub">{{ t('media.sub.sub') }}</p>
         </header>
@@ -234,16 +238,19 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
             <button class="download-btn" @click="download">{{ t('media.download') }}</button>
           </div>
         </div>
-      </main>
-    </ClientOnly>
-  </div>
+        </main>
+      </ClientOnly>
+    </div>
+  </MediaShell>
 </template>
 
 <style scoped>
-.route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.media-navwrap { max-width: 640px; margin: 0 auto; width: 100%; padding: 22px 24px 0; }
+@media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 32px 24px 56px; max-width: 640px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 40px; max-width: 640px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 20px; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }

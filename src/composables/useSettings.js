@@ -24,6 +24,12 @@ export const DEFAULT_SETTINGS = {
   aiTemperature: 0.7,
   aiDirect: false,          // false = route through /api/ai proxy (beats CORS); true = call endpoint directly
   aiInlineComplete: true,   // enable ⌃Space "continue writing" in the editor
+  // Image host (图床): pasting/dropping an image in the editor uploads it and inserts
+  // ![name](url). Empty imageHostUrl = use the built-in same-origin /api/upload proxy (the
+  // shared host's key stays a server secret). Set both to point at your own host (key stored
+  // locally only). https://github.com/jiangmuran/user_files
+  imageHostUrl: '',         // '' = built-in proxy; otherwise a direct upload endpoint
+  imageHostKey: '',         // Bearer key for a custom host (local only; password field)
 }
 
 function hydrate() {

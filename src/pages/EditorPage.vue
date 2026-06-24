@@ -8,8 +8,9 @@ import { useI18n } from '../composables/useI18n'
 import { useTheme } from '../composables/useTheme'
 import { convertersFor } from '../converters/registry'
 import { renderMarkdown } from '../utils/markdown'
+import { prerenderMermaid } from '../utils/mermaid'
 import { useSettings } from '../composables/useSettings'
-import { buildThemedHtml } from '../themes/registry'
+import { buildThemedHtml, THEMES } from '../themes/registry'
 import ThemePicker from '../themes/ThemePicker.vue'
 import { load, save } from '../utils/storage'
 import ClientOnly from '../components/ClientOnly.vue'
@@ -288,9 +289,22 @@ function downloadBlob(blob, name) {
 }
 
 // ---- Export (conversions live in the editor) ----
+// Is the active export theme a dark one? (Picks the mermaid diagram theme.)
+function exportThemeIsDark() {
+  const id = exportThemeId()
+  return !!(THEMES.find(th => th.id === id)?.dark)
+}
+// Render markdown AND pre-render mermaid diagrams to inline SVG, so exports (HTML/
+// PNG/PDF — all static, no client JS) include diagrams. KaTeX math is already in
+// the HTML (DOMPurify-safe), and buildThemedHtml adds KaTeX CSS when math present.
+async function renderExportBody(extra = '') {
+  const body = await prerenderMermaid(renderMarkdown(content.value), exportThemeIsDark())
+  return body + extra
+}
+
 async function printThemed() {
   showToast(t('toast.genPdf'))
-  const html = await buildThemedHtml(renderMarkdown(content.value), exportThemeId())
+  const html = await buildThemedHtml(await renderExportBody(), exportThemeId())
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;'
   iframe.onload = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {} ; setTimeout(() => iframe.remove(), 2000) }
@@ -303,7 +317,7 @@ async function doExport(fmt) {
   const fn = filename.value || 'untitled'
   try {
     if (fmt === 'docx') {
-      const conv = convertersFor('md').find(c => c.output === 'docx')
+      const conv = convertersFor('markdown').find(c => c.output === 'docx')
       if (!conv) { showToast(t('toast.exportFailed')); return }
       showToast(t('toast.genDocx'))
       downloadBlob(await conv.run(content.value, {}), `${fn}.docx`)
@@ -311,7 +325,7 @@ async function doExport(fmt) {
       return
     }
     if (fmt === 'html') {
-      const html = await buildThemedHtml(renderMarkdown(content.value), exportThemeId())
+      const html = await buildThemedHtml(await renderExportBody(), exportThemeId())
       downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), `${fn}.html`)
       showToast(`${t('toast.downloaded')} ${fn}.html`)
       return
@@ -323,7 +337,7 @@ async function doExport(fmt) {
     if (fmt === 'png' || fmt === 'copyImage') {
       showToast(t('toast.genImg'))
       const footer = '<hr style="margin-top:2.4em;border:none;border-top:1px solid currentColor;opacity:.18"><p style="opacity:.5;font-size:.82em;margin-top:.8em">Made with TypeBox · box.muran.tech</p>'
-      const themedHtml = await buildThemedHtml(renderMarkdown(content.value) + footer, exportThemeId())
+      const themedHtml = await buildThemedHtml(await renderExportBody(footer), exportThemeId())
       const ex = await import('../utils/export')
       try {
         if (fmt === 'copyImage') { await ex.copyThemedPNG(themedHtml); showToast(t('toast.imgCopied')) }
@@ -341,7 +355,7 @@ async function doExport(fmt) {
     switch (fmt) {
       case 'txt': result = exportTXT(content.value, fn); break
       case 'md': result = exportMD(content.value, fn); break
-      case 'copyHtml': result = await copyHTML(content.value); break
+      case 'copyHtml': result = await copyHTML(content.value, theme.value === 'dark'); break
       case 'copyMd': result = await copyMarkdown(content.value); break
     }
     if (result) showToast(result.params ? `${t(result.key)} ${result.params.name || ''}`.trim() : t(result.key))
@@ -351,11 +365,23 @@ async function doExport(fmt) {
 // ---- File open / import (PDF → Markdown happens IN the editor, as a new doc) ----
 function openFilePicker() {
   const input = document.createElement('input')
-  input.type = 'file'; input.accept = '.txt,.md,.markdown,.html,.htm,.pdf'
+  input.type = 'file'; input.accept = '.txt,.md,.markdown,.html,.htm,.pdf,.xlsx,.xls,.csv,.pptx,.ppt'
   input.onchange = e => { if (e.target.files[0]) importFile(e.target.files[0]) }
   input.click()
 }
+// Office files (.xlsx / .pptx) open in the dedicated viewer (with light spreadsheet editing). We
+// stage the File for the viewer (it can't ride in the URL) and route to /office. Returns true if
+// the file was handled here.
+async function maybeOpenOffice(file) {
+  const { isOfficeName } = await import('../features/office/officeHelpers')
+  if (!isOfficeName(file.name)) return false
+  const { stageOfficeFile } = await import('../features/office/officeStore')
+  stageOfficeFile(file)
+  router.push('/office')
+  return true
+}
 async function importFile(file) {
+  if (await maybeOpenOffice(file)) return
   if (/\.pdf$/i.test(file.name)) {
     showToast(`${t('pdf.extracting')} ${file.name}...`)
     try {
@@ -636,7 +662,14 @@ onUnmounted(() => {
 .ec-export-lbl { font-size: 12px; font-weight: 500; }
 .dd-theme { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 8px; }
 .dd-theme-lbl { font-size: 11px; color: var(--text-tertiary); }
-@media (max-width: 768px) { .ec-export-lbl { display: none; } }
+@media (max-width: 768px) {
+  .ec-export-lbl { display: none; }
+  .ec-btn { width: 38px; height: 38px; }
+  .view-seg button { width: 34px; height: 34px; }
+  .doc-tab-x { width: 22px; height: 22px; font-size: 16px; }
+  .doc-tab-new { width: 38px; height: 32px; }
+  .doc-tab { padding-top: 8px; padding-bottom: 8px; }
+}
 .dd-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 200px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; z-index: 200; }
 .dd-menu button { display: flex; align-items: center; width: 100%; padding: 7px 10px; border: none; border-radius: 7px; background: transparent; color: var(--text); font-size: 13px; font-family: var(--font-sans); cursor: pointer; text-align: left; }
 .dd-menu button:hover { background: var(--surface-hover); }

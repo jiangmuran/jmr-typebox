@@ -193,6 +193,22 @@ export function buildConvertArgs({
   return args
 }
 
+// Build args to (re)write ID3/container metadata tags onto an audio file WITHOUT re-encoding the
+// audio (`-c copy`), so it's fast and lossless. Only title/artist/album are exposed (the player's
+// editable fields). Empty/blank values are skipped so we don't clobber existing tags with "".
+//   buildTagArgs({ input, output, title, artist, album }) -> string[]
+export function buildTagArgs({ input = 'input.mp3', output = 'output.mp3', title, artist, album } = {}) {
+  const args = ['-i', input, '-map', '0', '-c', 'copy', '-id3v2_version', '3']
+  const add = (key, val) => {
+    if (val != null && String(val).length) args.push('-metadata', `${key}=${String(val)}`)
+  }
+  add('title', title)
+  add('artist', artist)
+  add('album', album)
+  args.push(output)
+  return args
+}
+
 // Escape a path for use inside ffmpeg's -vf subtitles= filter. Within an in-memory FS we use a
 // plain ascii filename, but colons/backslashes/quotes still need escaping for the filtergraph.
 export function escapeSubtitlePath(path) {

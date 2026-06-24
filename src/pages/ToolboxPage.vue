@@ -144,7 +144,7 @@ function onDrop(e) {
 .tb-pane { border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; background: var(--surface); }
 .tb-pane-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-light); font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 .tb-actions { display: flex; gap: 4px; }
-.tb-actions button { border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-sans); }
+.tb-actions button { border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 12px; padding: 6px 11px; border-radius: 5px; cursor: pointer; font-family: var(--font-sans); }
 .tb-actions button:hover { color: var(--text); }
 .tb-pane textarea { width: 100%; min-height: 120px; border: none; background: transparent; padding: 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; }
 .tb-pass input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; outline: none; }

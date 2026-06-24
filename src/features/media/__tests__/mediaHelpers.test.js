@@ -7,7 +7,7 @@ import {
   isVideoInput, isAudioInput, isSubtitleInput, isMediaInput, safeInputName,
   buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, escapeSubtitlePath,
   buildAudioFilters, buildEditArgs, tokenizeArgs, buildCustomArgs, clampNum, secToFFTime,
-  MEDIA_CONVERTERS, converterForRoute,
+  buildTagArgs, MEDIA_CONVERTERS, converterForRoute,
 } from '../mediaHelpers'
 import { ALL_PATHS } from '../../../router/meta'
 
@@ -403,5 +403,25 @@ describe('media helpers — converter registry', () => {
     for (const c of MEDIA_CONVERTERS) {
       expect(audioFormatDef(c.output), c.id).toBeTruthy()
     }
+  })
+})
+
+describe('media helpers — buildTagArgs (player metadata rewrite)', () => {
+  it('copies streams and writes only the provided non-empty tags', () => {
+    const args = buildTagArgs({ input: 'input.mp3', output: 'output.mp3', title: 'T', artist: 'A', album: '' })
+    expect(args).toContain('-c')
+    expect(args[args.indexOf('-c') + 1]).toBe('copy')
+    expect(args).toContain('-metadata')
+    expect(args.join(' ')).toContain('title=T')
+    expect(args.join(' ')).toContain('artist=A')
+    // empty album is skipped (no album= token)
+    expect(args.join(' ')).not.toContain('album=')
+    // output is last
+    expect(args[args.length - 1]).toBe('output.mp3')
+  })
+  it('skips all tags when none provided (still copies through)', () => {
+    const args = buildTagArgs({ input: 'i.mp3', output: 'o.mp3' })
+    expect(args).not.toContain('-metadata')
+    expect(args).toEqual(['-i', 'i.mp3', '-map', '0', '-c', 'copy', '-id3v2_version', '3', 'o.mp3'])
   })
 })

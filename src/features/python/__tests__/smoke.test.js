@@ -7,12 +7,14 @@ vi.mock('../cmEditor', () => ({
 }))
 vi.mock('../pythonRunner', () => ({
   runPython: async () => ({ ok: true, result: { kind: 'none', data: '' }, figures: [], error: null, hasApp: false, appKind: '' }),
-  setStdinHandlers() {}, clearStdin() {}, feedStdin() {}, setProxyApiBase() {},
+  setStdinHandlers() {}, clearStdin() {}, feedStdin() {}, endStdin() {}, setProxyApiBase() {},
   callServer: async () => ({ ok: false, error: 'no-app' }),
   installPackages: async () => true,
   // New worker-proxy surface the overhauled component touches.
   stopRun: () => true,
   isReady: () => false,
+  registerStdinSW: async () => false,
+  stdinBlockingAvailable: () => false,
   onRuntimeStatus: () => () => {},
   listPackages: async () => [],
   uninstallPackage: async () => true,

@@ -1,0 +1,8 @@
+# Cross-origin isolation for the whole site so SharedArrayBuffer is available (the Python IDE's
+# Web Worker uses it for BLOCKING input() via Atomics.wait). COEP `credentialless` is the permissive
+# variant: cross-origin no-cors subresources (Pyodide from jsDelivr, ffmpeg-core from unpkg) load
+# without each needing a CORP header — they are fetched without credentials. COOP `same-origin`
+# completes the isolation. Applied by Cloudflare Workers Assets directly (no Worker round-trip).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

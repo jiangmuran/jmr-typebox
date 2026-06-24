@@ -213,7 +213,16 @@ function escapeForStyle(css) {
  */
 export async function buildThemedHtml(bodyHtml, themeId, opts = {}) {
   const css = await getThemeCss(themeId)
-  return buildThemedHtmlSync(bodyHtml, css, opts)
+  // Math: if the body contains KaTeX output, embed KaTeX CSS (with bundled font
+  // URLs) in the <head> so it styles inside the base-URL-less iframe / export.
+  let katexCss = opts.katexCss
+  if (katexCss == null && typeof bodyHtml === 'string' && bodyHtml.indexOf('class="katex') !== -1) {
+    try {
+      const { getKatexCss } = await import('../utils/katexCss')
+      katexCss = await getKatexCss()
+    } catch { katexCss = '' }
+  }
+  return buildThemedHtmlSync(bodyHtml, css, { ...opts, katexCss })
 }
 
 /**
@@ -223,6 +232,10 @@ export async function buildThemedHtml(bodyHtml, themeId, opts = {}) {
 export function buildThemedHtmlSync(bodyHtml, css, opts = {}) {
   const lang = opts.lang || 'en'
   const title = opts.title || 'TypeBox'
+  // KaTeX CSS (with bundled font URLs) — only present when the body has math.
+  const katexStyle = opts.katexCss
+    ? `<style data-katex>\n${escapeForStyle(opts.katexCss)}\n</style>`
+    : ''
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -234,7 +247,13 @@ export function buildThemedHtmlSync(bodyHtml, css, opts = {}) {
 html,body{margin:0;padding:0}
 #write{box-sizing:border-box}
 img{max-width:100%}
+/* Math + diagrams: keep wide content inside the page and center diagrams. */
+.katex-display{overflow-x:auto;overflow-y:hidden;margin:1em 0}
+.mermaid,pre.mermaid{margin:1em 0;background:transparent;text-align:center;overflow-x:auto}
+.mermaid svg{max-width:100%;height:auto}
+.mermaid-error{display:inline-block;color:#b42318;background:rgba(180,35,24,.08);border:1px solid rgba(180,35,24,.3);border-radius:6px;padding:8px 12px;font-family:monospace;font-size:.82em;white-space:pre-wrap}
 </style>
+${katexStyle}
 <style data-typora-theme>
 ${escapeForStyle(css)}
 </style>

@@ -2,6 +2,7 @@ import { health } from './api/health.js'
 import { proxyFetch } from './api/fetch.js'
 import { preview } from './api/preview.js'
 import { proxyAI } from './api/ai.js'
+import { uploadImage } from './api/upload.js'
 import { clientIp, rateLimit, tooManyRequests } from './lib/rateLimit.js'
 
 // Per-IP request budget (requests / 60s) for the abuse-prone proxy endpoints. The open URL
@@ -13,6 +14,7 @@ const RATE_CFG = {
   '/api/fetch': { name: 'fetch', limit: 40 },
   '/api/preview': { name: 'preview', limit: 40 },
   '/api/ai': { name: 'ai', limit: 60 },
+  '/api/upload': { name: 'upload', limit: 20 },
 }
 const RATE_WINDOW_MS = 60_000
 
@@ -71,6 +73,7 @@ export default {
     if (url.pathname === '/api/fetch') return proxyFetch(request)
     if (url.pathname === '/api/preview') return preview(request)
     if (url.pathname === '/api/ai') return proxyAI(request)
+    if (url.pathname === '/api/upload') return uploadImage(request, env)
     if (url.pathname.startsWith('/api/')) {
       return new Response('Not found', { status: 404 })
     }

@@ -35,6 +35,51 @@ describe('media engine modules are SSG/node-safe at import', () => {
     expect(typeof mod.drawWaveform).toBe('function')
   })
 
+  it('player infra modules import without touching IndexedDB/Audio/window at top level', async () => {
+    // These power the music-player mode. Importing them in node (no indexedDB/Audio/navigator) must
+    // not throw — every browser global is accessed lazily inside functions, behind dynamic import.
+    const db = await import('../mediaDb')
+    expect(typeof db.putTrack).toBe('function')
+    expect(typeof db.listTrackRecords).toBe('function')
+    expect(typeof db.kvGet).toBe('function')
+    // mediaDb gracefully reports "no DB" in a node env rather than throwing.
+    expect(await db.listTrackRecords()).toEqual([])
+    expect(await db.kvGet('missing', 'fb')).toBe('fb')
+
+    const engine = await import('../audioEngine')
+    expect(typeof engine.getEngine).toBe('function')
+    // getEngine() only constructs an Audio element when window/Audio exist; the import itself must
+    // never touch them (asserted by reaching this line). In jsdom it returns an engine object; in a
+    // real SSG/node prerender (no Audio) it returns null. Either way: no throw at import.
+    const eng = engine.getEngine()
+    expect(eng === null || typeof eng.play === 'function').toBe(true)
+    engine._destroyEngine()
+
+    const store = await import('../usePlayerStore')
+    expect(typeof store.usePlayerStore).toBe('function')
+    const s = store.usePlayerStore()
+    expect(s.tracks.value).toEqual([])
+    expect(typeof s.init).toBe('function')
+
+    const pool = await import('../useMediaPool')
+    expect(typeof pool.useMediaPool).toBe('function')
+    expect(pool.useMediaPool().takePending()).toBeNull()
+
+    const meta = await import('../metadata')
+    expect(typeof meta.readTags).toBe('function')
+    expect(await meta.readTags(null)).toMatchObject({ hasCover: false }) // null in → safe empty
+
+    const embed = await import('../embed')
+    expect(typeof embed.parseEmbed).toBe('function')
+    expect(typeof embed.isAllowedEmbedUrl).toBe('function')
+    expect(embed.parseEmbed('not a url')).toBeNull() // pure string parsing, no globals needed
+  })
+
+  it('writeTags is exposed by audioRunner (player export-tagged-file path)', async () => {
+    const mod = await import('../audioRunner')
+    expect(typeof mod.writeTags).toBe('function')
+  })
+
   it('computePeaks reduces an AudioBuffer-like to N {min,max} buckets (pure, no DOM)', async () => {
     const { computePeaks } = await import('../waveform')
     // Minimal fake AudioBuffer: 1 channel, a ramp from -1..1.

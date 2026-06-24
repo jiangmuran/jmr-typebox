@@ -37,6 +37,8 @@ const REPO = 'https://github.com/jiangmuran/jmr-typebox'
 
 // AI: reveal the key field on demand (it's a password input otherwise).
 const showKey = ref(false)
+// Image host: same reveal toggle for the custom-host upload key.
+const showImgKey = ref(false)
 
 // Allow any part of the app (e.g. the AI panel's "Open Settings" CTA) to open this drawer
 // and focus the AI section via a global event, without prop-drilling.
@@ -161,6 +163,26 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
             </template>
           </section>
 
+          <!-- Image host (图床) -->
+          <section>
+            <h3>{{ t('settings.imageHost') }}</h3>
+            <p class="ai-hint hint-lead">{{ t('settings.imageHostHint') }}</p>
+            <label class="row col">{{ t('settings.imageHostUrl') }}
+              <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.imageHostUrl" placeholder="https://files.example.com/api/upload" @input="setSetting('imageHostUrl', $event.target.value)">
+            </label>
+            <label class="row col" v-if="settings.imageHostUrl.trim()">{{ t('settings.imageHostKey') }}
+              <span class="key-wrap">
+                <input class="text-in" :type="showImgKey ? 'text' : 'password'" spellcheck="false" autocomplete="off" :value="settings.imageHostKey" placeholder="••••••••" @input="setSetting('imageHostKey', $event.target.value)">
+                <button type="button" class="key-eye" :title="showImgKey ? t('settings.aiKeyHide') : t('settings.aiKeyShow')" @click="showImgKey = !showImgKey">
+                  <svg v-if="showImgKey" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2.5l11.5 11.5"/><path d="M6.3 6.4a2 2 0 0 0 2.8 2.8"/><path d="M5 3.6A6.6 6.6 0 0 1 8 3c3.6 0 5.9 3.2 6.5 5-.2.7-.7 1.6-1.5 2.4M3.2 5.2C2.1 6.1 1.6 7.2 1.5 8c.6 1.8 2.9 5 6.5 5 .8 0 1.6-.2 2.3-.5"/></svg>
+                  <svg v-else width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3 8 3s6.5 5 6.5 5-2.5 5-6.5 5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>
+                </button>
+              </span>
+            </label>
+            <p class="ai-hint">{{ t('settings.imageHostDefaultHint') }}</p>
+            <a class="ghost about-link img-repo" href="https://github.com/jiangmuran/user_files" target="_blank" rel="noopener">{{ t('settings.imageHostRepo') }} →</a>
+          </section>
+
           <!-- Language -->
           <section>
             <h3>{{ t('settings.language') }}</h3>
@@ -211,7 +233,7 @@ h3.danger { color: #ff453a; }
 .row.col { flex-direction: column; align-items: stretch; gap: 8px; }
 .lbl { display: inline-flex; align-items: center; gap: 6px; }
 .seg { display: flex; gap: 1px; background: var(--surface-hover); border-radius: 7px; padding: 2px; }
-.seg button { flex: 1; padding: 5px 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+.seg button { flex: 1; padding: 7px 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-light); cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--surface-hover); }
@@ -237,6 +259,8 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .key-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border: none; background: transparent; cursor: pointer; font-size: 13px; border-radius: 6px; line-height: 1; }
 .key-eye:hover { background: var(--surface-hover); }
 .ai-hint { font-size: 11px; color: var(--text-tertiary); line-height: 1.5; margin-top: -4px; }
+.hint-lead { margin-top: 0; margin-bottom: 12px; }
+.img-repo { margin-top: 10px; font-size: 12px; }
 
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.28s var(--ease-out); }
 .drawer-enter-active .drawer-scrim, .drawer-leave-active .drawer-scrim { transition: opacity 0.28s ease; }

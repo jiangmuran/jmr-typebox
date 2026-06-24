@@ -17,13 +17,14 @@ import {
 } from '../workerProtocol'
 
 describe('worker message constructors (main -> worker wire format)', () => {
-  it('runRequest carries id, files, entry, proxyBase, stdin with defaults', () => {
-    const m = runRequest(7, { 'main.py': 'x' }, 'main.py', '/api/fetch', ['ada'])
-    expect(m).toEqual({ type: MSG.RUN, id: 7, files: { 'main.py': 'x' }, entry: 'main.py', proxyBase: '/api/fetch', stdin: ['ada'] })
-    // Defaults: empty files map, main.py entry, empty proxy, empty stdin seed.
-    expect(runRequest(1)).toEqual({ type: 'run', id: 1, files: {}, entry: 'main.py', proxyBase: '', stdin: [] })
-    // Non-array stdin coerces to [].
+  it('runRequest carries id, files, entry, proxyBase, stdin, blockStdin with defaults', () => {
+    const m = runRequest(7, { 'main.py': 'x' }, 'main.py', '/api/fetch', ['ada'], true)
+    expect(m).toEqual({ type: MSG.RUN, id: 7, files: { 'main.py': 'x' }, entry: 'main.py', proxyBase: '/api/fetch', stdin: ['ada'], blockStdin: true })
+    // Defaults: empty files map, main.py entry, empty proxy, empty stdin seed, blockStdin false.
+    expect(runRequest(1)).toEqual({ type: 'run', id: 1, files: {}, entry: 'main.py', proxyBase: '', stdin: [], blockStdin: false })
+    // Non-array stdin coerces to []; blockStdin coerces to boolean.
     expect(runRequest(2, {}, 'main.py', '', 'oops').stdin).toEqual([])
+    expect(runRequest(3, {}, 'main.py', '', [], 1).blockStdin).toBe(true)
   })
 
   it('installRequest coerces specs to an array', () => {

@@ -105,7 +105,7 @@ async function pasteIn() {
 .cv-pane.dragging { border-color: var(--accent); }
 .cv-pane-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-light); font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 .cv-actions { display: flex; gap: 4px; }
-.cv-actions button { border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-sans); }
+.cv-actions button { border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 12px; padding: 6px 11px; border-radius: 5px; cursor: pointer; font-family: var(--font-sans); }
 .cv-actions button:hover { color: var(--text); }
 .cv-pane textarea { width: 100%; min-height: 220px; border: none; background: transparent; padding: 14px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; }
 .cv-drop-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); font-weight: 600; font-size: 14px; pointer-events: none; backdrop-filter: blur(2px); }

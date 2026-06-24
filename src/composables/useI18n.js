@@ -89,6 +89,13 @@ const dict = {
     'settings.aiDirectHint': 'Calls your endpoint straight from the browser. Only works if the endpoint allows CORS (e.g. a local server).',
     'settings.aiProxyHint': 'Requests are relayed through this site\'s backend so they work even when the endpoint blocks browser (CORS) calls.',
     'settings.aiPrivacy': 'Your API key is stored only in this browser (localStorage) and never sent anywhere except your configured AI endpoint. OpenAI-compatible /chat/completions. Bring your own key.',
+    // Image host (图床)
+    'settings.imageHost': 'Image host',
+    'settings.imageHostUrl': 'Custom upload URL',
+    'settings.imageHostKey': 'Upload key',
+    'settings.imageHostHint': 'Paste or drop an image in the editor to upload it (5 MB max) and insert it as Markdown.',
+    'settings.imageHostDefaultHint': 'Leave the URL empty to use the built-in host (rate-limited). Or point it at your own open-source host. Keys are stored locally only.',
+    'settings.imageHostRepo': 'Self-host: jiangmuran/user_files',
     'settings.language': 'Language',
     'settings.danger': 'Danger zone',
     'settings.reset': 'Reset settings',
@@ -187,6 +194,14 @@ const dict = {
     'toast.copied': 'Copied to clipboard',
     'toast.zenHint': 'Zen mode — Esc to exit',
     'toast.startFresh': 'Start fresh? Current content will be cleared.',
+
+    // Image upload (图床)
+    'upload.placeholder': 'uploading…',
+    'upload.uploading': 'Uploading image…',
+    'upload.done': 'Image uploaded',
+    'upload.failed': 'Image upload failed',
+    'upload.tooBig': 'Image is larger than 5 MB',
+    'upload.notImage': 'Only images can be uploaded here',
 
     // Branding (for image export)
     'brand.watermark': 'Made with TypeBox · github.com/jiangmuran/jmr-typebox',
@@ -371,6 +386,13 @@ const dict = {
     'settings.aiDirectHint': '直接从浏览器调用你的接口，仅当接口允许跨域 (CORS) 时可用（如本地服务）。',
     'settings.aiProxyHint': '请求会经由本站后端转发，因此即使接口禁止浏览器跨域调用也能正常使用。',
     'settings.aiPrivacy': '你的 API 密钥仅保存在本浏览器 (localStorage) 中，除你配置的 AI 接口外不会发送到任何地方。兼容 OpenAI /chat/completions，需自备密钥。',
+    // 图床
+    'settings.imageHost': '图床',
+    'settings.imageHostUrl': '自定义上传地址',
+    'settings.imageHostKey': '上传密钥',
+    'settings.imageHostHint': '在编辑器里粘贴或拖入图片即可上传（最大 5 MB）并以 Markdown 形式插入。',
+    'settings.imageHostDefaultHint': '留空地址即使用内置图床（有频率限制），也可指向你自己的开源图床。密钥仅保存在本地。',
+    'settings.imageHostRepo': '自建图床：jiangmuran/user_files',
     'settings.language': '语言',
     'settings.danger': '危险区',
     'settings.reset': '重置设置',
@@ -462,6 +484,14 @@ const dict = {
     'toast.copied': '已复制到剪贴板',
     'toast.zenHint': '专注模式 — 按 Esc 退出',
     'toast.startFresh': '新建文档？当前内容将被清除。',
+
+    // 图床上传
+    'upload.placeholder': '上传中…',
+    'upload.uploading': '正在上传图片…',
+    'upload.done': '图片已上传',
+    'upload.failed': '图片上传失败',
+    'upload.tooBig': '图片大于 5 MB',
+    'upload.notImage': '此处只能上传图片',
 
     'brand.watermark': 'Made with TypeBox · github.com/jiangmuran/jmr-typebox',
 

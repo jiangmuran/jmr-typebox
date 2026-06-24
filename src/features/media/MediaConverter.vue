@@ -14,6 +14,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import { useMediaFile } from './useMediaFile'
+import { useMediaPool } from './useMediaPool'
 import MediaDropZone from './MediaDropZone.vue'
 import MediaWaveform from './MediaWaveform.vue'
 import {
@@ -25,6 +26,7 @@ import {
 const route = useRoute()
 const { t } = useI18n()
 const { showToast } = useToast()
+const pool = useMediaPool()
 
 // Optional per-route preset (e.g. /media/mp4-to-mp3 prefills mp4→mp3); the universal /media/convert
 // route just defaults to mp3.
@@ -35,8 +37,9 @@ const bitrate = ref(DEFAULT_BITRATE)
 const sampleRate = ref('') // '' = keep source
 const channels = ref('')   // '' = keep source
 
-// Workbench tabs (desktop right panel / mobile sections).
-const tab = ref('convert') // 'convert' | 'edit' | 'advanced'
+// Workbench tabs (desktop right panel / mobile sections). The /media/edit route opens on Edit.
+const initialTab = (route.meta?.path || route.path) === '/media/edit' ? 'edit' : 'convert'
+const tab = ref(initialTab) // 'convert' | 'edit' | 'advanced'
 
 // Editing controls.
 const gainDb = ref(0)        // -30..+30 dB
@@ -98,6 +101,14 @@ const outputName = computed(() => {
 let unsubEngine = null
 onMounted(async () => {
   window.addEventListener('paste', media.onPaste)
+  // Pick up a file handed off from the player ("Send to Edit/Convert"). The player sets tab='edit'
+  // or leaves it blank for convert; we honor it and load the file into the workbench.
+  const pending = pool.peekPending()
+  if (pending && pending.file && pending.tab !== 'player') {
+    pool.takePending()
+    media.set(pending.file)
+    if (pending.tab === 'edit') tab.value = 'edit'
+  }
   const { onEngineEvent, isRuntimeCached } = await import('./ffmpegRunner')
   unsubEngine = onEngineEvent((e) => {
     if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio, fromCache: e.fromCache }
@@ -105,6 +116,16 @@ onMounted(async () => {
   // Decide the pre-run hint: is the heavy core already durably cached from a previous visit?
   try { runtimeCached.value = await isRuntimeCached() } catch { runtimeCached.value = false }
 })
+
+// "Add to player": push the loaded SOURCE file (or the converted RESULT) into the player library.
+async function addToPlayer(which) {
+  const file = which === 'result' && result.value?.blob
+    ? new File([result.value.blob], result.value.name, { type: result.value.blob.type })
+    : (media.file.value || null)
+  if (!file) return
+  const taken = await pool.addToPlayer(file, { source: 'convert' })
+  showToast(t(taken ? 'media.addedToPlayer' : 'media.addToPlayer'))
+}
 onBeforeUnmount(() => {
   window.removeEventListener('paste', media.onPaste)
   unsubEngine?.()
@@ -329,7 +350,12 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
                 <template v-if="extracting"> · {{ t('media.videoInput') }}</template>
               </span>
             </div>
-            <button class="link-btn" :disabled="busy" @click="pickNew">{{ t('media.change') }}</button>
+            <div class="file-actions">
+              <button class="link-btn" :disabled="busy" @click="addToPlayer('source')" :title="t('media.addToPlayer')">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
+              </button>
+              <button class="link-btn" :disabled="busy" @click="pickNew">{{ t('media.change') }}</button>
+            </div>
           </div>
 
           <!-- Waveform (audio path) -->
@@ -372,7 +398,13 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
             <span class="result-size">{{ formatSize(result.size) }}</span>
           </div>
           <audio class="player" :src="result.url" controls preload="metadata"></audio>
-          <button class="download-btn" @click="download">{{ t('media.download') }}</button>
+          <div class="result-actions">
+            <button class="download-btn" @click="download">{{ t('media.download') }}</button>
+            <button class="add-player-btn" @click="addToPlayer('result')">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
+              {{ t('media.addToPlayer') }}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -542,7 +574,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 </template>
 
 <style scoped>
-.wb { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: 1120px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.wb { width: 100%; animation: tbIn 0.3s var(--ease-out); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .wb-head { margin-bottom: 18px; }
 .wb-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
@@ -558,9 +590,15 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .file-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .file-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-size { font-size: 11px; color: var(--text-secondary); }
-.link-btn { flex-shrink: 0; border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 12px; padding: 5px 11px; border-radius: 7px; cursor: pointer; font-family: var(--font-sans); }
+.file-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.link-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; border: none; background: var(--surface-hover); color: var(--text-secondary); font-size: 12px; padding: 5px 11px; border-radius: 7px; cursor: pointer; font-family: var(--font-sans); }
 .link-btn:hover:not(:disabled) { color: var(--text); }
 .link-btn:disabled { opacity: 0.5; cursor: default; }
+.link-btn svg { width: 14px; height: 14px; }
+.result-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.add-player-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text-secondary); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
+.add-player-btn:hover { color: var(--text); border-color: var(--accent); }
+.add-player-btn svg { width: 14px; height: 14px; }
 
 .trim-readout { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .wf-hint { font-size: 11px; color: var(--text-tertiary); }

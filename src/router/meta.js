@@ -89,6 +89,22 @@ export const ROUTE_META = {
     h1: 'Subtitle Tool',
     keywords: 'burn subtitles, hardsub, softsub, mux subtitles, srt, ass, add subtitles to video, 字幕, 烧录字幕',
   },
+  // Audio EDIT view (the workbench's trim/fade/normalize, opened directly). Renders MediaConverter
+  // with the Edit tab active.
+  '/media/edit': {
+    title: 'Audio Editor — Trim, Fade & Normalize Online — TypeBox',
+    description: 'Trim, fade, adjust volume, and normalize loudness of your audio in the browser with ffmpeg. Private, nothing uploaded — part of the TypeBox audio suite.',
+    h1: 'Audio Editor',
+    keywords: 'audio editor, trim audio, fade audio, normalize audio, cut mp3, edit audio online, 音频编辑, 剪辑音频',
+  },
+  // Music PLAYER mode — a private, offline player for audio you own/upload. Library + playlists in
+  // IndexedDB, ID3 metadata, synced .lrc lyrics, waveform seek, MediaSession lock-screen controls.
+  '/media/player': {
+    title: 'Music Player — Play Your Own Audio with Lyrics — TypeBox',
+    description: 'A private, offline music player for files you own: playlists saved in your browser, ID3 tags, synced .lrc lyrics, waveform seek, and lock-screen controls. Nothing is uploaded — local files only.',
+    h1: 'Music Player',
+    keywords: 'music player, local music player, offline player, lrc lyrics, synced lyrics, id3 tags, playlist, waveform, 音乐播放器, 本地播放器, 歌词',
+  },
   '/media/mp3-to-wav': {
     title: 'MP3 to WAV Converter — TypeBox',
     description: 'Convert MP3 audio to WAV in your browser — private, no upload, runs entirely on your device with ffmpeg.',
@@ -176,6 +192,16 @@ export const ROUTE_META = {
     description: 'Run Python online with Pyodide: plots, packages via micropip, and HTML output — no server, fully sandboxed and cached.',
     h1: 'Python Playground',
     keywords: 'python online, run python browser, pyodide, python playground, python interpreter',
+  },
+
+  // ---- Office (Excel / PowerPoint viewer) ----
+  // Renders an in-browser preview (+ light spreadsheet editing) of .xlsx / .pptx files. SheetJS and
+  // JSZip are lazy-loaded only after a file is opened, so this route stays light at prerender.
+  '/office': {
+    title: 'Excel & PowerPoint Viewer — Open XLSX / PPTX Online — TypeBox',
+    description: 'Open and preview Excel (.xlsx) spreadsheets and PowerPoint (.pptx) slides in your browser. Edit spreadsheet cells and re-download as .xlsx. Private, no upload.',
+    h1: 'Spreadsheet & Slides Viewer',
+    keywords: 'xlsx viewer, excel viewer online, open xlsx, pptx viewer, powerpoint viewer, edit spreadsheet, view slides, 表格预览, 幻灯片预览',
   },
 }
 

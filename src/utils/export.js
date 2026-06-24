@@ -1,4 +1,15 @@
 import { renderMarkdown, buildStandaloneHTML } from './markdown'
+import { prerenderMermaid, hasMermaid } from './mermaid'
+
+// Math present? -> embed KaTeX CSS (with bundled fonts) so a standalone/exported
+// document styles it. Lazy so no-math exports stay lean.
+async function katexCssIfNeeded(html) {
+  if (typeof html !== 'string' || html.indexOf('class="katex') === -1) return ''
+  try {
+    const { getKatexCss } = await import('./katexCss')
+    return await getKatexCss()
+  } catch { return '' }
+}
 
 function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type })
@@ -35,9 +46,11 @@ export function exportMD(content, filename) {
   return { key: 'toast.downloaded', params: { name: `${filename}.md` } }
 }
 
-export function exportHTML(content, filename) {
-  const html = renderMarkdown(content)
-  downloadBlob(buildStandaloneHTML(filename, html), `${filename}.html`, 'text/html;charset=utf-8')
+export async function exportHTML(content, filename, isDark = false) {
+  let html = renderMarkdown(content)
+  html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG
+  const katexCss = await katexCssIfNeeded(html)
+  downloadBlob(buildStandaloneHTML(filename, html, { katexCss }), `${filename}.html`, 'text/html;charset=utf-8')
   return { key: 'toast.downloaded', params: { name: `${filename}.html` } }
 }
 
@@ -46,8 +59,10 @@ export async function exportPDF(content, filename) {
     import('html2canvas'),
     import('jspdf'),
   ])
-  const el = createExportElement(renderMarkdown(content), false)
+  const html = renderMarkdown(content)
+  const el = createExportElement(html, false)
   el.style.background = '#fff'; el.style.color = '#1c1c1e'
+  if (hasMermaid(html)) { const { renderMermaidIn } = await import('./mermaid'); await renderMermaidIn(el, false) }
   const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
   document.body.removeChild(el)
   const pdf = new jsPDF('p', 'px', 'a4', true)
@@ -70,7 +85,9 @@ export async function exportPDF(content, filename) {
 
 export async function exportPNG(content, filename, isDark) {
   const { default: html2canvas } = await import('html2canvas')
-  const el = createExportElement(renderMarkdown(content), isDark)
+  const html = renderMarkdown(content)
+  const el = createExportElement(html, isDark)
+  if (hasMermaid(html)) { const { renderMermaidIn } = await import('./mermaid'); await renderMermaidIn(el, isDark) }
 
   // Branding footer
   const footer = document.createElement('div')
@@ -125,8 +142,9 @@ export async function copyThemedPNG(themedHtml) {
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
 }
 
-export async function copyHTML(content) {
-  const html = renderMarkdown(content)
+export async function copyHTML(content, isDark = false) {
+  let html = renderMarkdown(content)
+  html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG so pasted HTML is self-contained
   try { await navigator.clipboard.writeText(html) } catch { await fallbackCopy(html) }
   return { key: 'toast.htmlCopied' }
 }

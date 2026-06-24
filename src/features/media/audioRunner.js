@@ -2,10 +2,26 @@
 // these functions touch Blob/Worker via the engine, but the module has no top-level side effects
 // and is always reached through a dynamic import() from event handlers / converter run() calls.
 import {
-  buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, buildEditArgs, buildCustomArgs,
+  buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, buildEditArgs, buildCustomArgs, buildTagArgs,
   safeInputName, extForFormat, mimeForFormat, normalizeFormat, isVideoInput, extOf,
 } from './mediaHelpers'
 import { runFFmpeg } from './ffmpegRunner'
+
+// Re-tag an audio file (title/artist/album) WITHOUT re-encoding (`-c copy`) — fast + lossless.
+// Keeps the source container/extension. Returns a Blob of the tagged file.
+//   writeTags(file, { title, artist, album }) -> Blob
+export async function writeTags(file, { title, artist, album } = {}) {
+  const ext = extOf(file?.name) || 'mp3'
+  const inName = `input.${ext}`
+  const outName = `output.${ext}`
+  const args = buildTagArgs({ input: inName, output: outName, title, artist, album })
+  return runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName,
+    outMime: mimeForFormat(ext) === 'application/octet-stream' ? (file?.type || 'application/octet-stream') : mimeForFormat(ext),
+  })
+}
 
 // Convert any audio/video input into an audio file of `outputFormat`. When the input is a video
 // container, the video stream is dropped (-vn) so we extract the audio track.

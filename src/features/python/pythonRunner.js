@@ -16,6 +16,10 @@
 //
 // No SharedArrayBuffer / COOP / COEP — the terminate-to-stop design needs none, which keeps the
 // CDN-loaded ffmpeg + Pyodide and the analytics beacon working.
+//
+// BLOCKING input(): a Service Worker (public/pyodide-sw.js) lets the Pyodide worker pause on a
+// synchronous XHR until the user types a line (see registerStdinSW + feedStdin below). No isolation
+// headers needed. If the SW can't be registered/controlled, input() degrades to the pre-typed queue.
 
 import { libLoadState, libMeta } from '../../utils/loadLibrary'
 import { PYODIDE_SIZE_MB } from './pythonHelpers'
@@ -78,6 +82,8 @@ function getWorker() {
     pending.clear()
     setLibState('error')
   }
+  // Hand the blocking-input SharedArrayBuffer to the new worker (if isolation gave us one).
+  sendStdinBufferToWorker()
   return worker
 }
 
@@ -101,7 +107,14 @@ function onWorkerMessage(e) {
       return
     case 'stdout': { const h = pending.get(msg.id); h?.onStdout?.(msg.text); return }
     case 'stderr': { const h = pending.get(msg.id); h?.onStderr?.(msg.text); return }
-    case 'input': { const h = pending.get(msg.id); h?.onInput?.(); return }
+    case 'input': {
+      // The worker is now WAITING on input() (blocking-mode SAB or fallback). If the user pre-typed
+      // a line before the program asked, deliver it now so the program resumes without stalling.
+      if (blockingAvailable && stdinSAB && preStdin.length && Atomics.load(stdinCtrl, CTRL_STATE) === ST_WAITING) {
+        deliverStdinLine(preStdin.shift())
+      }
+      const h = pending.get(msg.id); h?.onInput?.(); return
+    }
     case 'result': {
       const h = pending.get(msg.id)
       pending.delete(msg.id)
@@ -158,6 +171,10 @@ export function stopRun() {
   worker = null
   runtimeReady = false
   try { w.terminate() } catch { /* ignore */ }
+  // Reset the blocking-input SAB so a stale WAITING state can't affect the next worker (the
+  // terminated worker's Atomics.wait dies with it). The next worker gets a fresh SAB handle.
+  if (blockingAvailable && stdinCtrl) { try { Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE) } catch { /* ignore */ } }
+  preStdin = []
   // Reject every pending op; the run promise rejects with a recognisable code.
   for (const [, h] of pending) {
     try { h.reject?.(Object.assign(new Error('stopped'), { stopped: true })) } catch { /* ignore */ }
@@ -177,29 +194,96 @@ export function setProxyApiBase(apiBase = '') {
   proxyBase = `${String(apiBase || '')}${PROXY_PATH}`
 }
 
-// ---- public: stdin (queue-fed) -----------------------------------------------------------
-// Lines the user pre-types before a worker exists are buffered here and flushed to the worker on
-// spawn, so a line typed BEFORE Run still satisfies the program's first input(). (No
-// SharedArrayBuffer → input() can't synchronously block; an empty queue yields EOF, and the UI is
-// notified via the onInput callback so it can highlight the terminal.)
-let preStdin = []
+// ---- BLOCKING input() via SharedArrayBuffer + Atomics ------------------------------------
+// When a Python program calls input(), the Pyodide worker Atomics.wait()s on a SharedArrayBuffer —
+// genuinely pausing the program — until the user types a line in the terminal. feedStdin() writes
+// that line into the SAB and Atomics.notify()s, resuming the program (like a real TTY). SAB needs
+// cross-origin isolation (COOP/COEP via public/_headers). If SAB is unavailable (not isolated /
+// unsupported), we degrade to the pre-typed QUEUE (lines forwarded to the worker / seeded into the
+// run request) — input() then consumes pre-typed lines, otherwise EOFs rather than blocking.
+//
+// SAB layout: control Int32Array(4) over [0,16) — [0]=STATE, [1]=LEN; data Uint8Array over [16,end)
+// holding the UTF-8 line. STATE: IDLE 0 | WAITING 1 | READY 2 | EOF 3.
+const ST_IDLE = 0, ST_WAITING = 1, ST_READY = 2, ST_EOF = 3
+const CTRL_STATE = 0, CTRL_LEN = 1
+const STDIN_DATA_OFFSET = 16
+const STDIN_DATA_BYTES = 64 * 1024   // max line length the SAB carries (64KB)
 
-// Feed a line the user typed in the terminal to the worker's stdin queue (buffered until the worker
-// is alive). The worker shifts it on the next input() call.
-export function feedStdin(text) {
-  if (worker) {
-    try { worker.postMessage(stdinMessage(text)) } catch { /* ignore */ }
-  } else {
-    preStdin.push(text == null ? '' : String(text))
+let stdinSAB = null            // SharedArrayBuffer (or null → queue fallback)
+let stdinCtrl = null           // Int32Array control view
+let stdinData = null           // Uint8Array data view
+let stdinEncoder = null
+let blockingAvailable = false  // cross-origin isolated + SAB supported
+let preStdin = []              // lines typed before the worker exists (queue fallback seed)
+
+// Allocate the SAB once if the environment supports it (cross-origin isolated). Safe to call
+// repeatedly. Returns whether blocking input is available.
+export function registerStdinSW() {
+  // (Name kept for the component's call site.) Initialise the SAB-backed blocking-input channel.
+  if (stdinSAB || blockingAvailable) return Promise.resolve(blockingAvailable)
+  try {
+    const isolated = typeof self !== 'undefined' ? self.crossOriginIsolated : (typeof window !== 'undefined' && window.crossOriginIsolated)
+    if (isolated && typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined') {
+      stdinSAB = new SharedArrayBuffer(STDIN_DATA_OFFSET + STDIN_DATA_BYTES)
+      stdinCtrl = new Int32Array(stdinSAB, 0, 4)
+      stdinData = new Uint8Array(stdinSAB, STDIN_DATA_OFFSET)
+      stdinEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null
+      Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE)
+      blockingAvailable = true
+    }
+  } catch { blockingAvailable = false; stdinSAB = null }
+  return Promise.resolve(blockingAvailable)
+}
+
+// True if blocking input() (SAB) is available.
+export function stdinBlockingAvailable() { return blockingAvailable }
+
+// Hand the SAB to a freshly-spawned worker (once) so its input() can block on it.
+function sendStdinBufferToWorker() {
+  if (worker && stdinSAB) {
+    try { worker.postMessage({ type: 'stdinBuffer', buffer: stdinSAB }) } catch { /* ignore */ }
   }
 }
 
+// Write a line into the SAB and wake the blocked worker (READY), so the program's input() returns.
+function deliverStdinLine(line) {
+  if (!stdinSAB || !stdinCtrl) return false
+  const bytes = stdinEncoder ? stdinEncoder.encode(line) : new Uint8Array([...line].map(c => c.charCodeAt(0) & 0xff))
+  const n = Math.min(bytes.length, stdinData.length)
+  stdinData.set(bytes.subarray(0, n))
+  Atomics.store(stdinCtrl, CTRL_LEN, n)
+  Atomics.store(stdinCtrl, CTRL_STATE, ST_READY)
+  Atomics.notify(stdinCtrl, CTRL_STATE)
+  return true
+}
 
-// Back-compat no-ops: the old main-thread runner exposed these to wire a window.prompt fallback +
-// echo and to clear a JS-side queue. The queue now lives in the worker, so these are inert; kept so
-// existing call sites (and tests) don't break.
-export function setStdinHandlers() { /* queue lives in the worker now */ }
-export function clearStdin() { /* queue is reset per run inside the worker */ }
+// Feed a line the user typed in the terminal. In blocking mode it goes through the SAB (resuming the
+// paused program); otherwise it's buffered for the queue fallback (or posted live to the worker).
+export function feedStdin(text) {
+  const line = text == null ? '' : String(text)
+  if (blockingAvailable && stdinSAB) {
+    if (Atomics.load(stdinCtrl, CTRL_STATE) === ST_WAITING) deliverStdinLine(line)
+    else preStdin.push(line) // typed before input() asked — replay on the next WAITING (see drain)
+    return
+  }
+  if (worker) {
+    try { worker.postMessage(stdinMessage(line)) } catch { /* ignore */ }
+  } else {
+    preStdin.push(line)
+  }
+}
+
+// Signal EOF to a program currently blocked on input() (clean EOFError). Blocking mode only.
+export function endStdin() {
+  if (blockingAvailable && stdinSAB && Atomics.load(stdinCtrl, CTRL_STATE) === ST_WAITING) {
+    Atomics.store(stdinCtrl, CTRL_STATE, ST_EOF)
+    Atomics.notify(stdinCtrl, CTRL_STATE)
+  }
+}
+
+// Back-compat no-ops kept so existing call sites/tests don't break.
+export function setStdinHandlers() { /* stdin handled via the SAB / worker queue now */ }
+export function clearStdin() { /* reset per run inside the worker */ }
 
 // ---- public: run -------------------------------------------------------------------------
 // Run the active file of a multi-file project. Streams stdout/stderr via the callbacks (already
@@ -216,23 +300,18 @@ export function runPython(codeOrProject, { onStdout, onStderr, onStatus, onProgr
     entry = 'main.py'
   }
 
-  const w = getWorker()
-  // Carry any lines the user pre-typed (before the worker existed) INTO the run request so they seed
-  // the stdin queue after the worker resets it for this run. Lines typed during the run go via live
-  // stdin messages (which append, not reset).
+  // Make sure the blocking-input SAB is allocated (idempotent; no-op if not isolated).
+  registerStdinSW()
+  // Pre-typed lines: in blocking mode keep them in preStdin so they're delivered when input() first
+  // WAITs (see the 'input' handler); in fallback mode they seed the worker's queue via the request.
   const seedStdin = preStdin
-  preStdin = []
   const id = ++runSeq
   currentProgressHandler = onProgress || null
 
   return new Promise((resolve, reject) => {
-    pending.set(id, {
-      onStdout,
-      onStderr,
-      onInput,
-      resolve: (v) => { currentProgressHandler = null; resolve(v) },
-      reject: (e) => { currentProgressHandler = null; reject(e) },
-    })
+    const finishResolve = (v) => { currentProgressHandler = null; resolve(v) }
+    const finishReject = (e) => { currentProgressHandler = null; reject(e) }
+    pending.set(id, { onStdout, onStderr, onInput, resolve: finishResolve, reject: finishReject })
     // Bridge the worker's coarse status into the caller's onStatus (download/init).
     if (onStatus) {
       const off = onRuntimeStatus(({ phase }) => {
@@ -244,12 +323,22 @@ export function runPython(codeOrProject, { onStdout, onStderr, onStatus, onProgr
       h.resolve = (v) => { off(); wrap(v) }
       h.reject = (e) => { off(); wrapR(e) }
     }
+    let w
+    try { w = getWorker() } catch (err) { pending.delete(id); finishReject(err); return }
+    if (blockingAvailable && stdinSAB) {
+      // Reset the SAB control word so a stale state can't make input() return immediately.
+      Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE)
+      preStdin = seedStdin.slice() // delivered on the next WAITING
+    } else {
+      preStdin = []
+    }
     try {
-      w.postMessage(runRequest(id, { ...files }, entry, proxyBase, seedStdin))
+      // In fallback mode seedStdin feeds the worker queue; in blocking mode it's held in preStdin
+      // (passed as [] here), and `swStdin` (= blockingAvailable) tells the worker to use the SAB.
+      w.postMessage(runRequest(id, { ...files }, entry, proxyBase, blockingAvailable ? [] : seedStdin, blockingAvailable))
     } catch (err) {
       pending.delete(id)
-      currentProgressHandler = null
-      reject(err)
+      finishReject(err)
     }
   })
 }
@@ -340,4 +429,6 @@ export function _resetRunner() {
   pending.clear()
   statusSubs.clear()
   currentProgressHandler = null
+  preStdin = []
+  if (blockingAvailable && stdinCtrl) { try { Atomics.store(stdinCtrl, CTRL_STATE, ST_IDLE) } catch { /* ignore */ } }
 }

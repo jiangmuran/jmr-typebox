@@ -48,9 +48,10 @@ export const MSG = {
 
 // A run request the main thread posts to the worker. `id` ties streamed chunks + the final result
 // back to one run so a late message from a terminated run can be ignored. `stdin` carries any lines
-// the user pre-typed before pressing Run so they seed the queue AFTER the worker resets it for the
-// run (a separate stdin message would be wiped by that reset).
-export function runRequest(id, files, entry, proxyBase = '', stdin = []) {
+// the user pre-typed before pressing Run (queue-fed fallback only — wiped by the run reset otherwise,
+// so they're seeded here). `blockStdin` flags that BLOCKING input() (SharedArrayBuffer + Atomics) is
+// in use; the worker also infers this from the SAB it was handed, so the flag is informational.
+export function runRequest(id, files, entry, proxyBase = '', stdin = [], blockStdin = false) {
   return {
     type: MSG.RUN,
     id,
@@ -58,6 +59,7 @@ export function runRequest(id, files, entry, proxyBase = '', stdin = []) {
     entry: entry || 'main.py',
     proxyBase: String(proxyBase || ''),
     stdin: Array.isArray(stdin) ? stdin : [],
+    blockStdin: !!blockStdin,
   }
 }
 

@@ -16,13 +16,18 @@ import { MEDIA_CONVERTERS, mimeForFormat } from './mediaHelpers'
 
 const Converter = () => import('./MediaPage.vue')
 const Subtitle = () => import('./SubtitlePage.vue')
+const Player = () => import('./PlayerPage.vue')
 
 export default {
   components: {
     // Universal converter (generic landing page).
     '/media/convert': Converter,
+    // Audio editor view — the same workbench, opened on its Edit tab (deep-linked sub-tool).
+    '/media/edit': Converter,
     // Subtitle tool.
     '/media/subtitles': Subtitle,
+    // Music player mode — local/uploaded audio: library, playlists, lyrics, metadata, MediaSession.
+    '/media/player': Player,
     // Named, SEO-friendly converter routes (all render the same universal converter, prefilled).
     ...Object.fromEntries(MEDIA_CONVERTERS.map(c => [c.route, Converter])),
   },
@@ -111,6 +116,91 @@ export default {
       // ⌘K commands
       'media.cmd.convert': 'Convert audio / extract from video',
       'media.cmd.subtitles': 'Add subtitles to video',
+      'media.cmd.player': 'Music player (play your own audio)',
+
+      // Audio hub sub-nav
+      'media.nav.convert': 'Convert',
+      'media.nav.edit': 'Edit',
+      'media.nav.subtitles': 'Subtitles',
+      'media.nav.player': 'Player',
+
+      // Add-to-player (shown on the converter / editor / subtitle pages)
+      'media.addToPlayer': 'Add to player',
+      'media.addedToPlayer': 'Added to your player library',
+
+      // ===== Player mode =====
+      'media.player.title': 'Music Player',
+      'media.player.sub': 'Play audio you own — private and offline. Tracks and playlists are saved in your browser; nothing is uploaded.',
+      'media.player.nowPlaying': 'Now Playing',
+      'media.player.lyrics': 'Lyrics',
+      'media.player.nothingPlaying': 'Nothing playing — add a track to begin',
+      // Library
+      'media.player.allTracks': 'All tracks',
+      'media.player.add': 'Add music',
+      'media.player.search': 'Search title, artist, album…',
+      'media.player.emptyTitle': 'Your library is empty',
+      'media.player.emptySub': 'Drop audio files here, or click Add music. They stay on your device.',
+      'media.player.noMatch': 'No tracks match your search.',
+      'media.player.play': 'Play',
+      'media.player.more': 'More',
+      'media.player.addTo': 'Add to playlist',
+      'media.player.remove': 'Remove from library',
+      'media.player.newPlaylist': 'New playlist',
+      'media.player.playlistName': 'Playlist name',
+      'media.player.deletePlaylist': 'Delete playlist',
+      'media.player.addedToPlaylist': 'Added to playlist',
+      // Cache
+      'media.player.stored': 'Stored',
+      'media.player.clearCache': 'Clear cache',
+      'media.player.clearConfirm': 'Remove all stored tracks from this browser? Playlists are kept but emptied.',
+      'media.player.cacheCleared': 'Library cleared',
+      'media.player.cacheFull': 'Storage cap reached — clear some tracks first',
+      // Now-Playing transport
+      'media.player.prev': 'Previous',
+      'media.player.pause': 'Pause',
+      'media.player.next': 'Next',
+      'media.player.shuffle': 'Shuffle',
+      'media.player.repeat': 'Repeat',
+      'media.player.abRepeat': 'A–B repeat',
+      'media.player.toggleArt': 'Toggle artwork / waveform',
+      'media.player.editTags': 'Edit metadata',
+      'media.player.sendEdit': 'Send to Edit',
+      'media.player.sendConvert': 'Send to Convert',
+      // Mobile deck
+      'media.player.swipeHint': 'Swipe to switch',
+      'media.player.swipeLyrics': 'Swipe left for lyrics →',
+      'media.player.swipeBack': '← Swipe back',
+      // Tag editor
+      'media.player.fieldTitle': 'Title',
+      'media.player.fieldArtist': 'Artist',
+      'media.player.fieldAlbum': 'Album',
+      'media.player.exportNote': 'Saving updates the title in your library. “Export tagged file” writes the tags into a downloadable copy (no re-encode).',
+      'media.player.exportTagged': 'Export tagged file',
+      'media.player.tagsSaved': 'Metadata saved',
+      // Lyrics panel
+      'media.lyrics.none': 'No lyrics yet',
+      'media.lyrics.addHint': 'Drop or paste a .lrc file for synced lyrics, or plain text.',
+      'media.lyrics.paste': 'Add lyrics',
+      'media.lyrics.dropHere': 'Drop .lrc or .txt to add lyrics',
+      'media.lyrics.edit': 'Edit lyrics',
+      'media.lyrics.save': 'Save',
+      'media.lyrics.cancel': 'Cancel',
+      'media.lyrics.plainNote': 'Plain text (no timing). Paste an .lrc for synced, scrolling lyrics.',
+      'media.lyrics.placeholder': 'Paste .lrc (e.g. [00:12.34]line) or plain lyrics…',
+
+      // ===== Online (official-embed) source =====
+      'media.online.tabFiles': 'Files',
+      'media.online.tabOnline': 'Online',
+      'media.online.paste': 'Paste a NetEase / Bilibili / YouTube link…',
+      'media.online.addBtn': 'Add',
+      'media.online.hint': 'Plays the platform’s OWN embedded player in-page — official playback, not a download. NetEase Cloud Music, Bilibili, and YouTube links are supported.',
+      'media.online.unsupported': 'Unsupported link — paste a NetEase, Bilibili, or YouTube URL',
+      'media.online.emptyTitle': 'No online items yet',
+      'media.online.emptySub': 'Paste a share link to play it via the platform’s official embed.',
+      'media.online.embedTag': 'official embed',
+      'media.online.officialBadge': 'Official embed · in-page playback',
+      'media.online.playbackNote': 'This is the platform’s own embedded player (playback only). Online items can’t be edited, tagged, converted, or cached as files — they’re live embeds. Availability and region limits are set by the platform.',
+      'media.online.badUrl': 'This embed URL is not allowed.',
     },
     zh: {
       'media.drop': '拖入音频或视频文件',
@@ -191,6 +281,91 @@ export default {
 
       'media.cmd.convert': '转换音频 / 从视频提取',
       'media.cmd.subtitles': '为视频添加字幕',
+      'media.cmd.player': '音乐播放器(播放你自己的音频)',
+
+      // 音频中心子导航
+      'media.nav.convert': '转换',
+      'media.nav.edit': '编辑',
+      'media.nav.subtitles': '字幕',
+      'media.nav.player': '播放器',
+
+      // 加入播放器(显示在转换 / 编辑 / 字幕页面)
+      'media.addToPlayer': '加入播放器',
+      'media.addedToPlayer': '已加入播放器曲库',
+
+      // ===== 播放器模式 =====
+      'media.player.title': '音乐播放器',
+      'media.player.sub': '播放你自己的音频 —— 私密、离线。曲目与歌单保存在你的浏览器中,绝不上传。',
+      'media.player.nowPlaying': '正在播放',
+      'media.player.lyrics': '歌词',
+      'media.player.nothingPlaying': '暂无播放 —— 添加一首曲目开始',
+      // 曲库
+      'media.player.allTracks': '全部曲目',
+      'media.player.add': '添加音乐',
+      'media.player.search': '搜索标题、艺术家、专辑…',
+      'media.player.emptyTitle': '曲库还是空的',
+      'media.player.emptySub': '把音频文件拖到这里,或点击「添加音乐」。文件只保存在你的设备上。',
+      'media.player.noMatch': '没有匹配的曲目。',
+      'media.player.play': '播放',
+      'media.player.more': '更多',
+      'media.player.addTo': '加入歌单',
+      'media.player.remove': '从曲库移除',
+      'media.player.newPlaylist': '新建歌单',
+      'media.player.playlistName': '歌单名称',
+      'media.player.deletePlaylist': '删除歌单',
+      'media.player.addedToPlaylist': '已加入歌单',
+      // 缓存
+      'media.player.stored': '已存储',
+      'media.player.clearCache': '清除缓存',
+      'media.player.clearConfirm': '从此浏览器移除所有已存储的曲目?歌单会保留但被清空。',
+      'media.player.cacheCleared': '曲库已清空',
+      'media.player.cacheFull': '已达存储上限 —— 请先清理部分曲目',
+      // 正在播放 / 传输控制
+      'media.player.prev': '上一首',
+      'media.player.pause': '暂停',
+      'media.player.next': '下一首',
+      'media.player.shuffle': '随机播放',
+      'media.player.repeat': '循环',
+      'media.player.abRepeat': 'A–B 循环',
+      'media.player.toggleArt': '切换封面 / 波形',
+      'media.player.editTags': '编辑元数据',
+      'media.player.sendEdit': '发送到编辑',
+      'media.player.sendConvert': '发送到转换',
+      // 移动端滑动
+      'media.player.swipeHint': '滑动切换',
+      'media.player.swipeLyrics': '左滑查看歌词 →',
+      'media.player.swipeBack': '← 向右滑返回',
+      // 标签编辑
+      'media.player.fieldTitle': '标题',
+      'media.player.fieldArtist': '艺术家',
+      'media.player.fieldAlbum': '专辑',
+      'media.player.exportNote': '保存会更新曲库中的标题。「导出带标签文件」会把标签写入一个可下载的副本(不重新编码)。',
+      'media.player.exportTagged': '导出带标签文件',
+      'media.player.tagsSaved': '元数据已保存',
+      // 歌词面板
+      'media.lyrics.none': '暂无歌词',
+      'media.lyrics.addHint': '拖入或粘贴 .lrc 文件以获得同步歌词,或粘贴纯文本。',
+      'media.lyrics.paste': '添加歌词',
+      'media.lyrics.dropHere': '拖入 .lrc 或 .txt 添加歌词',
+      'media.lyrics.edit': '编辑歌词',
+      'media.lyrics.save': '保存',
+      'media.lyrics.cancel': '取消',
+      'media.lyrics.plainNote': '纯文本(无时间轴)。粘贴 .lrc 可获得同步滚动歌词。',
+      'media.lyrics.placeholder': '粘贴 .lrc(例如 [00:12.34]歌词)或纯文本歌词…',
+
+      // ===== 在线(官方嵌入)来源 =====
+      'media.online.tabFiles': '文件',
+      'media.online.tabOnline': '在线',
+      'media.online.paste': '粘贴网易云 / 哔哩哔哩 / YouTube 链接…',
+      'media.online.addBtn': '添加',
+      'media.online.hint': '在页面内播放平台「自己的」嵌入式播放器 —— 官方播放,并非下载。支持网易云音乐、哔哩哔哩和 YouTube 链接。',
+      'media.online.unsupported': '不支持的链接 —— 请粘贴网易云、哔哩哔哩或 YouTube 网址',
+      'media.online.emptyTitle': '还没有在线项目',
+      'media.online.emptySub': '粘贴一个分享链接,通过平台官方嵌入播放。',
+      'media.online.embedTag': '官方嵌入',
+      'media.online.officialBadge': '官方嵌入 · 页面内播放',
+      'media.online.playbackNote': '这是平台自带的嵌入式播放器(仅播放)。在线项目无法被编辑、写标签、转换或作为文件缓存 —— 它们是实时嵌入。可用性与地区限制由平台决定。',
+      'media.online.badUrl': '该嵌入网址不被允许。',
     },
   },
 
@@ -231,6 +406,14 @@ export default {
       keywords: 'subtitle subtitles srt ass burn hardsub softsub mux caption video 字幕 烧录 软字幕 硬字幕 视频',
       needsBackend: false,
       run: () => go('/media/subtitles'),
+    })
+    registerCommand({
+      id: 'media-player',
+      title: 'Music Player',
+      group: 'Audio',
+      keywords: 'music player play audio playlist lyrics lrc id3 tags local offline 音乐 播放器 播放 歌单 歌词 本地',
+      needsBackend: false,
+      run: () => go('/media/player'),
     })
   },
 }

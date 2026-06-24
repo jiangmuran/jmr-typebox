@@ -104,11 +104,14 @@ function onDocClick(e) {
     clearPreview()
   }
 }
+function onKeydown(e) {
+  if (e.key === 'Escape') { open.value = false; clearPreview() }
+}
 watch(open, (v) => {
-  if (v) document.addEventListener('mousedown', onDocClick)
-  else document.removeEventListener('mousedown', onDocClick)
+  if (v) { document.addEventListener('mousedown', onDocClick); document.addEventListener('keydown', onKeydown) }
+  else { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKeydown) }
 })
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+onBeforeUnmount(() => { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKeydown) })
 </script>
 
 <template>

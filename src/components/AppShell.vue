@@ -172,11 +172,11 @@ function openSettings() { settingsOpen.value = true }
 .app-content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 @media (max-width: 768px) {
-  .topbar { padding: 4px 6px; height: 42px; gap: 3px; }
-  .topbar-btn { width: 28px; height: 28px; }
+  .topbar { padding: 4px 6px; height: 46px; gap: 3px; }
+  .topbar-btn { width: 34px; height: 34px; }
   .topbar-btn svg { width: 14px; height: 14px; }
   .tab-text { display: none; }
-  .tool-tabs a { padding: 5px 8px; }
+  .tool-tabs a { padding: 8px 8px; }
   .tool-tabs a svg { width: 14px; height: 14px; }
 }
 @media (max-width: 420px) { .logo-name { display: none; } }
