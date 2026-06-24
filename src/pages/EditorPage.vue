@@ -21,7 +21,7 @@ import StatusBar from '../components/StatusBar.vue'
 import StartPanel from '../components/StartPanel.vue'
 import EditorContextMenu from '../components/EditorContextMenu.vue'
 import AiPanel from '../components/AiPanel.vue'
-import AiInlineActions from '../components/AiInlineActions.vue'
+import AiIcon from '../components/AiIcon.vue'
 import { useAiActions } from '../composables/useAiActions'
 import { useAiComplete } from '../composables/useAiComplete'
 
@@ -59,22 +59,14 @@ const ctxY = ref(0)
 function onEditorMounted(el) {
   editorRef.value = el
   el.addEventListener('contextmenu', onCtx)
-  // Drive the floating AI toolbar from selection changes.
-  el.addEventListener('mouseup', scheduleAiSelection)
+  // Cursor moves / clicks dismiss the inline ghost completion.
   el.addEventListener('mouseup', () => aiComplete.clear())
   el.addEventListener('keyup', e => {
-    if (e.shiftKey || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)) scheduleAiSelection()
-    // Cursor moves dismiss the inline ghost.
     if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key)) aiComplete.clear()
   })
-  el.addEventListener('select', scheduleAiSelection)
-  el.addEventListener('blur', () => {
-    clearTimeout(aiSelTimer); aiSelTimer = setTimeout(() => { aiSelection.value = null }, 150)
-    aiComplete.clear()
-  })
-  el.addEventListener('scroll', () => { if (aiSelection.value) refreshAiSelection() })
-  // On input: drop the old surfaces and (re)schedule an inline ghost after the idle debounce.
-  el.addEventListener('input', () => { aiSelection.value = null; ghost.value = null; aiComplete.schedule() })
+  el.addEventListener('blur', () => aiComplete.clear())
+  // On input: drop the pending ghost and (re)schedule an inline ghost after the idle debounce.
+  el.addEventListener('input', () => { ghost.value = null; aiComplete.schedule() })
 }
 function onCtx(e) {
   e.preventDefault()
@@ -82,9 +74,12 @@ function onCtx(e) {
   ctxY.value = e.clientY
   ctxShow.value = true
 }
+// `apply` fires for both text plugins (payload = plugin) and AI replace-in-place actions
+// (no payload — the menu already streamed the result into the textarea, just flush state).
 async function applyPlugin(plugin) {
   ctxShow.value = false
   const el = editorRef.value; if (!el) return
+  if (!plugin || (!plugin.fn && !plugin.asyncFn)) { updateContent(el.value); return }
   let s = el.selectionStart, e = el.selectionEnd
   if (e <= s) { s = 0; e = el.value.length }
   const target = el.value.substring(s, e)
@@ -97,83 +92,16 @@ async function applyPlugin(plugin) {
 }
 
 // ---- AI integration ----
+// Selection AI actions (improve/polish/rewrite/translate/explain/…) now live entirely in the
+// right-click EditorContextMenu, which snapshots the selection on open and reuses useAiActions.
 const ai = useAiActions()
 const aiPanelOpen = ref(false)
 const aiMenuOpen = ref(false)
-// Floating selection toolbar state: {x, y, text} in screen coords, or null.
-const aiSelection = ref(null)
-let aiSelTimer = null
 
-// AI right-click submenu actions (run on the live selection or whole doc).
-async function applyAiCtx(action) {
-  ctxShow.value = false
-  const el = editorRef.value; if (!el) return
-  if (!ai.ready.value) { showToast(t('ai.notConfigured')); aiPanelOpenWithSettings(); return }
-  try {
-    if (action.scope === 'doc') {
-      await ai.runDocAction(action.id)
-      showToast(t('ai.done'))
-    } else {
-      const r = await ai.runSelectionAction(el, action.id, action.input)
-      if (!r.ok && r.reason === 'no-selection') { showToast(t('ai.selectFirst')); return }
-      if (r.replaced) showToast(t('ai.done'))
-      else if (r.text) { showToast(t('ai.done')) }
-    }
-  } catch (err) { showToast(err?.message || t('ai.error')) }
-}
-
-function aiPanelOpenWithSettings() {
-  // AI isn't configured yet — open the chat panel (its empty-state guides to Settings).
-  aiPanelOpen.value = true
-}
 // Open the Settings drawer at the AI section (SettingsPanel listens for this global event).
 function openAiSettings() {
   aiPanelOpen.value = false
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tb-open-settings', { detail: { section: 'ai' } }))
-}
-
-// Update the floating toolbar position from the textarea selection.
-function refreshAiSelection() {
-  const el = editorRef.value
-  if (!el) { aiSelection.value = null; return }
-  const s = el.selectionStart, e = el.selectionEnd
-  if (e <= s || !settings.aiEnabled) { aiSelection.value = null; return }
-  const text = el.value.substring(s, e)
-  if (!text.trim()) { aiSelection.value = null; return }
-  // Anchor the toolbar above the start of the selection using a mirror measurement; fall back
-  // to the textarea's caret rect via a lightweight approximation (top-center of the textarea
-  // viewport near the selection line).
-  const rect = el.getBoundingClientRect()
-  const pos = caretCoordinates(el, s)
-  const x = rect.left + Math.min(Math.max(pos.left, 40), rect.width - 40)
-  const y = rect.top + pos.top - el.scrollTop
-  aiSelection.value = { x, y: Math.max(rect.top + 4, y), text }
-}
-
-function scheduleAiSelection() {
-  clearTimeout(aiSelTimer)
-  aiSelTimer = setTimeout(refreshAiSelection, 120)
-}
-
-// Approximate caret pixel coordinates inside a textarea using a hidden mirror div.
-function caretCoordinates(el, position) {
-  if (typeof document === 'undefined') return { top: 0, left: 0 }
-  const div = document.createElement('div')
-  const style = window.getComputedStyle(el)
-  const props = ['boxSizing','width','paddingTop','paddingRight','paddingBottom','paddingLeft','borderWidth','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','whiteSpace','wordWrap','textTransform']
-  for (const p of props) div.style[p] = style[p]
-  div.style.position = 'absolute'; div.style.visibility = 'hidden'; div.style.whiteSpace = 'pre-wrap'; div.style.wordWrap = 'break-word'
-  div.style.top = '0'; div.style.left = '-9999px'; div.style.height = 'auto'
-  div.style.width = el.clientWidth + 'px'
-  const text = el.value.substring(0, position)
-  div.textContent = text
-  const span = document.createElement('span'); span.textContent = el.value.substring(position) || '.'
-  div.appendChild(span)
-  document.body.appendChild(div)
-  const top = span.offsetTop + parseInt(style.borderTopWidth || '0', 10)
-  const left = span.offsetLeft + parseInt(style.borderLeftWidth || '0', 10)
-  document.body.removeChild(div)
-  return { top, left }
 }
 
 // Copilot-style inline ghost-text autocomplete (automatic, on idle). Distinct from the manual
@@ -455,7 +383,6 @@ function onKeydown(e) {
       ghost.value = null
     }
     if (ai.busy.value) ai.abort()
-    aiSelection.value = null
     if (zenMode.value) { zenMode.value = false; document.fullscreenElement && document.exitFullscreen?.() }
   } else if (e.key === 'F11') { e.preventDefault(); toggleZen() }
 }
@@ -523,7 +450,7 @@ onUnmounted(() => {
         <!-- AI: whole-document actions menu (hidden entirely until AI is configured) -->
         <div v-if="ai.ready.value" class="dd-wrap">
           <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg>
+            <AiIcon :size="16" />
           </button>
           <Transition name="dd">
             <div v-if="aiMenuOpen" class="dd-menu ai-menu">
@@ -598,14 +525,12 @@ onUnmounted(() => {
         </div>
       </Transition>
 
-      <EditorContextMenu :show="ctxShow" :x="ctxX" :y="ctxY" :ai-enabled="settings.aiEnabled" @apply="applyPlugin" @apply-ai="applyAiCtx" @close="ctxShow = false" />
+      <EditorContextMenu :show="ctxShow" :x="ctxX" :y="ctxY" :ai-enabled="settings.aiEnabled" :editor-ref="editorRef" @apply="applyPlugin" @close="ctxShow = false" />
 
-      <!-- Floating AI toolbar over the current selection -->
-      <AiInlineActions :editor-ref="editorRef" :selection="aiSelection" @changed="aiSelection = null" @dismiss="aiSelection = null" />
-
-      <!-- Streaming progress chip for whole-document AI actions -->
+      <!-- Streaming progress chip for whole-document AI actions (selection actions show their own
+           inline spinner inside the context menu / explain popup). -->
       <Transition name="fade">
-        <div v-if="ai.busy.value && !aiSelection" class="ai-progress">
+        <div v-if="ai.busy.value && !ctxShow" class="ai-progress">
           <span class="ai-progress-spin"></span>
           <span>{{ t('ai.working') }}</span>
           <button @click="ai.abort()">{{ t('ai.stop') }}</button>

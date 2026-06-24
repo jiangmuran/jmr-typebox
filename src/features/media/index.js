@@ -17,6 +17,7 @@ import { MEDIA_CONVERTERS, mimeForFormat } from './mediaHelpers'
 const Converter = () => import('./MediaPage.vue')
 const Subtitle = () => import('./SubtitlePage.vue')
 const Player = () => import('./PlayerPage.vue')
+const Metadata = () => import('./MetadataPage.vue')
 
 export default {
   components: {
@@ -26,6 +27,8 @@ export default {
     '/media/edit': Converter,
     // Subtitle tool.
     '/media/subtitles': Subtitle,
+    // Metadata editor — view & edit ALL tags + cover art of any audio file (no re-encode export).
+    '/media/metadata': Metadata,
     // Music player mode — local/uploaded audio: library, playlists, lyrics, metadata, MediaSession.
     '/media/player': Player,
     // Named, SEO-friendly converter routes (all render the same universal converter, prefilled).
@@ -116,13 +119,78 @@ export default {
       // ⌘K commands
       'media.cmd.convert': 'Convert audio / extract from video',
       'media.cmd.subtitles': 'Add subtitles to video',
+      'media.cmd.metadata': 'Edit audio metadata / tags',
       'media.cmd.player': 'Music player (play your own audio)',
 
       // Audio hub sub-nav
       'media.nav.convert': 'Convert',
       'media.nav.edit': 'Edit',
       'media.nav.subtitles': 'Subtitles',
+      'media.nav.metadata': 'Metadata',
       'media.nav.player': 'Player',
+
+      // ===== Metadata editor =====
+      'media.meta.title': 'Audio Metadata Editor',
+      'media.meta.sub': 'View and edit every tag in your audio file — title, artist, album, cover art, and any custom field. Reads all metadata with ffmpeg and exports without re-encoding the audio. Private, nothing uploaded.',
+      'media.meta.drop': 'Drop an audio file here',
+      'media.meta.browse': 'Click, drop, or paste · MP3, FLAC, M4A, OGG, Opus, WAV…',
+      'media.meta.reading': 'Reading metadata…',
+      'media.meta.readFailed': 'Could not read this file',
+      'media.meta.noTags': 'No metadata tags found in this file.',
+      // Technical / stream info
+      'media.meta.info': 'File info',
+      'media.meta.codec': 'Codec',
+      'media.meta.duration': 'Duration',
+      'media.meta.bitrate': 'Bitrate',
+      'media.meta.sampleRate': 'Sample rate',
+      'media.meta.channels': 'Channels',
+      'media.meta.size': 'Size',
+      'media.meta.format': 'Format',
+      // Cover art
+      'media.meta.cover': 'Cover art',
+      'media.meta.noCover': 'No cover art',
+      'media.meta.replaceCover': 'Replace',
+      'media.meta.removeCover': 'Remove',
+      'media.meta.coverHint': 'JPG or PNG recommended',
+      // Tag sections
+      'media.meta.common': 'Common tags',
+      'media.meta.custom': 'Other / custom tags',
+      'media.meta.addTag': 'Add tag',
+      'media.meta.keyPlaceholder': 'key (e.g. mood)',
+      'media.meta.valuePlaceholder': 'value',
+      'media.meta.removeTag': 'Remove tag',
+      'media.meta.dupKey': 'That tag key already exists',
+      'media.meta.needKey': 'Enter a tag name first',
+      // Common field labels
+      'media.meta.f.title': 'Title',
+      'media.meta.f.artist': 'Artist',
+      'media.meta.f.album': 'Album',
+      'media.meta.f.album_artist': 'Album artist',
+      'media.meta.f.composer': 'Composer',
+      'media.meta.f.genre': 'Genre',
+      'media.meta.f.date': 'Year / date',
+      'media.meta.f.track': 'Track',
+      'media.meta.f.disc': 'Disc',
+      'media.meta.f.comment': 'Comment',
+      'media.meta.f.lyrics': 'Lyrics',
+      'media.meta.f.publisher': 'Publisher',
+      'media.meta.f.copyright': 'Copyright',
+      'media.meta.f.language': 'Language',
+      'media.meta.f.encoded_by': 'Encoded by',
+      'media.meta.f.grouping': 'Grouping',
+      // Actions
+      'media.meta.export': 'Export with metadata',
+      'media.meta.exporting': 'Writing…',
+      'media.meta.strip': 'Strip all metadata',
+      'media.meta.stripped': 'All metadata removed',
+      'media.meta.exported': 'Metadata written',
+      'media.meta.exportFailed': 'Failed to write metadata',
+      'media.meta.noChange': 'No changes to write',
+      'media.meta.before': 'Before',
+      'media.meta.after': 'After',
+      'media.meta.download': 'Download',
+      'media.meta.copyNote': 'Exports a tagged copy without re-encoding the audio (-c copy) — fast and lossless.',
+      'media.meta.limitedNote': 'This container (e.g. WAV) supports only a small, fixed set of tags — custom or uncommon keys may not be saved.',
 
       // Add-to-player (shown on the converter / editor / subtitle pages)
       'media.addToPlayer': 'Add to player',
@@ -282,13 +350,78 @@ export default {
 
       'media.cmd.convert': '转换音频 / 从视频提取',
       'media.cmd.subtitles': '为视频添加字幕',
+      'media.cmd.metadata': '编辑音频元信息 / 标签',
       'media.cmd.player': '音乐播放器(播放你自己的音频)',
 
       // 音频中心子导航
       'media.nav.convert': '转换',
       'media.nav.edit': '编辑',
       'media.nav.subtitles': '字幕',
+      'media.nav.metadata': '元信息',
       'media.nav.player': '播放器',
+
+      // ===== 元信息编辑器 =====
+      'media.meta.title': '音频元信息编辑器',
+      'media.meta.sub': '查看并编辑音频文件中的每一个标签 —— 标题、艺术家、专辑、封面以及任意自定义字段。使用 ffmpeg 读取全部元信息,导出时不重新编码音频。私密,绝不上传。',
+      'media.meta.drop': '拖入一个音频文件',
+      'media.meta.browse': '点击、拖入或粘贴 · 支持 MP3、FLAC、M4A、OGG、Opus、WAV…',
+      'media.meta.reading': '正在读取元信息…',
+      'media.meta.readFailed': '无法读取该文件',
+      'media.meta.noTags': '该文件中未找到元信息标签。',
+      // 技术 / 流信息
+      'media.meta.info': '文件信息',
+      'media.meta.codec': '编码',
+      'media.meta.duration': '时长',
+      'media.meta.bitrate': '比特率',
+      'media.meta.sampleRate': '采样率',
+      'media.meta.channels': '声道',
+      'media.meta.size': '大小',
+      'media.meta.format': '格式',
+      // 封面
+      'media.meta.cover': '封面',
+      'media.meta.noCover': '无封面',
+      'media.meta.replaceCover': '替换',
+      'media.meta.removeCover': '移除',
+      'media.meta.coverHint': '建议使用 JPG 或 PNG',
+      // 标签分区
+      'media.meta.common': '常用标签',
+      'media.meta.custom': '其他 / 自定义标签',
+      'media.meta.addTag': '添加标签',
+      'media.meta.keyPlaceholder': '键(如 mood)',
+      'media.meta.valuePlaceholder': '值',
+      'media.meta.removeTag': '删除标签',
+      'media.meta.dupKey': '该标签键已存在',
+      'media.meta.needKey': '请先输入标签名',
+      // 常用字段标签
+      'media.meta.f.title': '标题',
+      'media.meta.f.artist': '艺术家',
+      'media.meta.f.album': '专辑',
+      'media.meta.f.album_artist': '专辑艺术家',
+      'media.meta.f.composer': '作曲',
+      'media.meta.f.genre': '流派',
+      'media.meta.f.date': '年份 / 日期',
+      'media.meta.f.track': '音轨号',
+      'media.meta.f.disc': '碟片号',
+      'media.meta.f.comment': '注释',
+      'media.meta.f.lyrics': '歌词',
+      'media.meta.f.publisher': '发行方',
+      'media.meta.f.copyright': '版权',
+      'media.meta.f.language': '语言',
+      'media.meta.f.encoded_by': '编码者',
+      'media.meta.f.grouping': '分组',
+      // 操作
+      'media.meta.export': '导出并写入元信息',
+      'media.meta.exporting': '写入中…',
+      'media.meta.strip': '清除全部元信息',
+      'media.meta.stripped': '已移除全部元信息',
+      'media.meta.exported': '元信息已写入',
+      'media.meta.exportFailed': '写入元信息失败',
+      'media.meta.noChange': '没有可写入的更改',
+      'media.meta.before': '之前',
+      'media.meta.after': '之后',
+      'media.meta.download': '下载',
+      'media.meta.copyNote': '导出带标签的副本,不重新编码音频(-c copy)—— 快速且无损。',
+      'media.meta.limitedNote': '该容器(如 WAV)仅支持一小组固定标签 —— 自定义或不常见的键可能无法保存。',
 
       // 加入播放器(显示在转换 / 编辑 / 字幕页面)
       'media.addToPlayer': '加入播放器',
@@ -408,6 +541,14 @@ export default {
       keywords: 'subtitle subtitles srt ass burn hardsub softsub mux caption video 字幕 烧录 软字幕 硬字幕 视频',
       needsBackend: false,
       run: () => go('/media/subtitles'),
+    })
+    registerCommand({
+      id: 'media-metadata',
+      title: 'Audio Metadata Editor',
+      group: 'Audio',
+      keywords: 'metadata tags id3 vorbis tag editor title artist album cover art album art edit tags strip metadata 元信息 元数据 标签 编辑标签 封面 专辑封面',
+      needsBackend: false,
+      run: () => go('/media/metadata'),
     })
     registerCommand({
       id: 'media-player',

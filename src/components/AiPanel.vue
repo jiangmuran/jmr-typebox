@@ -12,6 +12,7 @@ import { TOOLS, TOOL_MAP, toolSpecs, dispatchTool } from '../ai/tools'
 import { parseToolArguments } from '../ai/stream'
 import { agentSystemPrompt } from '../ai/prompts'
 import { THEMES, isThemeId } from '../themes/registry'
+import AiIcon from './AiIcon.vue'
 
 const props = defineProps({
   editorEl: { type: Object, default: null }, // editor <textarea> (for cursor inserts)
@@ -234,7 +235,7 @@ function useSuggestion(id) {
       <aside class="aip" role="dialog" aria-modal="true" :aria-label="t('ai.panelTitle')">
         <header class="aip-head">
           <div class="aip-title">
-            <span class="aip-dot"></span>
+            <span class="aip-brand"><AiIcon :size="16" /></span>
             <h2>{{ t('ai.panelTitle') }}</h2>
           </div>
           <div class="aip-head-actions">
@@ -249,7 +250,7 @@ function useSuggestion(id) {
 
         <!-- not configured -->
         <div v-if="!ready" class="aip-empty">
-          <div class="aip-empty-ic"><svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg></div>
+          <div class="aip-empty-ic"><AiIcon :size="40" /></div>
           <p class="aip-empty-title">{{ t('ai.empty.title') }}</p>
           <p class="aip-empty-sub">{{ t('ai.empty.sub') }}</p>
           <button class="aip-cta" @click="$emit('open-settings')">{{ t('ai.empty.cta') }}</button>
@@ -258,7 +259,7 @@ function useSuggestion(id) {
         <template v-else>
           <div ref="scrollEl" class="aip-body">
             <div v-if="!messages.length" class="aip-intro">
-              <div class="aip-intro-ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.4 4.2 1.8 5.6 6 6-4.2.4-5.6 1.8-6 6-.4-4.2-1.8-5.6-6-6 4.2-.4 5.6-1.8 6-6z"/><path d="M19 13.5c.2 2.1.9 2.8 3 3-2.1.2-2.8.9-3 3-.2-2.1-.9-2.8-3-3 2.1-.2 2.8-.9 3-3z"/></svg></div>
+              <div class="aip-intro-ic"><AiIcon :size="28" /></div>
               <p class="aip-intro-title">{{ t('ai.intro.title') }}</p>
               <p class="aip-intro-sub">{{ t('ai.intro.sub') }}</p>
               <div class="aip-suggest">
@@ -314,9 +315,9 @@ function useSuggestion(id) {
 .aip { position: absolute; top: 0; right: 0; height: 100%; width: 400px; max-width: 94vw; background: var(--surface); border-left: 1px solid var(--border-light); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
 
 .aip-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
-.aip-title { display: flex; align-items: center; gap: 8px; }
+.aip-title { display: flex; align-items: center; gap: 7px; }
 .aip-title h2 { font-size: 15px; font-weight: 700; }
-.aip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.aip-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
 .aip-head-actions { display: flex; gap: 2px; }
 .aip-icon { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .aip-icon:hover { background: var(--surface-hover); color: var(--text); }
@@ -324,14 +325,14 @@ function useSuggestion(id) {
 .aip-icon svg { width: 15px; height: 15px; }
 
 .aip-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 6px; }
-.aip-empty-ic { font-size: 30px; margin-bottom: 6px; }
+.aip-empty-ic { display: flex; align-items: center; justify-content: center; color: var(--accent); margin-bottom: 6px; opacity: 0.9; }
 .aip-empty-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .aip-empty-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 260px; }
 .aip-cta { margin-top: 12px; padding: 8px 18px; border: none; border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
 
 .aip-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .aip-intro { margin: auto; text-align: center; padding: 20px; }
-.aip-intro-ic { font-size: 26px; }
+.aip-intro-ic { display: flex; align-items: center; justify-content: center; color: var(--accent); }
 .aip-intro-title { font-size: 14px; font-weight: 600; margin-top: 8px; }
 .aip-intro-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
 .aip-suggest { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }

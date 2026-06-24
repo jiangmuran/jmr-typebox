@@ -8,6 +8,7 @@ const TOOLS = [
   { id: 'convert', to: '/media/convert', icon: 'convert' },
   { id: 'edit', to: '/media/edit', icon: 'edit' },
   { id: 'subtitles', to: '/media/subtitles', icon: 'subtitle' },
+  { id: 'metadata', to: '/media/metadata', icon: 'metadata' },
   { id: 'player', to: '/media/player', icon: 'player' },
 ]
 </script>
@@ -18,6 +19,7 @@ const TOOLS = [
       <svg v-if="tool.icon === 'convert'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h9l-2.5-2.5M14 11H5l2.5 2.5"/></svg>
       <svg v-else-if="tool.icon === 'edit'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
       <svg v-else-if="tool.icon === 'subtitle'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><line x1="4.5" y1="9.5" x2="8" y2="9.5"/><line x1="9.5" y1="9.5" x2="11.5" y2="9.5"/></svg>
+      <svg v-else-if="tool.icon === 'metadata'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 2H3.5A1.5 1.5 0 002 3.5v4.7a1 1 0 00.3.7l5.3 5.3a1 1 0 001.4 0l4.7-4.7a1 1 0 000-1.4L8.9 2.3A1 1 0 008.2 2z"/><circle cx="5.3" cy="5.3" r="0.9" fill="currentColor" stroke="none"/></svg>
       <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
       <span>{{ t('media.nav.' + tool.id) }}</span>
     </router-link>

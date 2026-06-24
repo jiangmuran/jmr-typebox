@@ -24,6 +24,28 @@ describe('media engine modules are SSG/node-safe at import', () => {
     expect(typeof mod.muxSubtitles).toBe('function')
     expect(typeof mod.editAudio).toBe('function')
     expect(typeof mod.runCustomCommand).toBe('function')
+    // Metadata editor operations (read all tags / write edited tags / strip all).
+    expect(typeof mod.readAllMetadata).toBe('function')
+    expect(typeof mod.writeAllMetadata).toBe('function')
+    expect(typeof mod.stripAllMetadata).toBe('function')
+  })
+
+  it('ffmetadata helper module is pure/SSG-safe at import and exposes its API', async () => {
+    const mod = await import('../ffmetadata')
+    expect(typeof mod.parseFFMetadata).toBe('function')
+    expect(typeof mod.serializeFFMetadata).toBe('function')
+    expect(typeof mod.buildWriteMetadataArgs).toBe('function')
+    expect(typeof mod.buildStripMetadataArgs).toBe('function')
+    expect(typeof mod.splitTags).toBe('function')
+    expect(typeof mod.buildEntries).toBe('function')
+    expect(Array.isArray(mod.COMMON_TAG_KEYS)).toBe(true)
+    // Pure round-trip works with no globals.
+    expect(mod.parseFFMetadata(';FFMETADATA1\ntitle=X').tags.title).toBe('X')
+  })
+
+  it('probeMetadata is exposed by ffmpegRunner (metadata read path)', async () => {
+    const mod = await import('../ffmpegRunner')
+    expect(typeof mod.probeMetadata).toBe('function')
   })
 
   it('waveform module imports without creating an AudioContext at top level', async () => {

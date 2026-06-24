@@ -41,6 +41,12 @@ export const ROUTE_META = {
     h1: 'Edit & Annotate Images',
     keywords: 'image annotator, draw on image, add text to image, blur image, mosaic, redact',
   },
+  '/image/metadata': {
+    title: 'Image Metadata Viewer & Editor — EXIF, GPS, IPTC, XMP — TypeBox',
+    description: 'View and edit all image metadata — EXIF, GPS location, IPTC, XMP, and PNG text — in your browser. Edit camera, artist, copyright, and dates, or strip metadata for privacy. Private, nothing uploaded.',
+    h1: 'Image Metadata Viewer & Editor',
+    keywords: 'exif viewer, exif editor, image metadata, gps location, remove exif, strip metadata, iptc, xmp, png text, edit exif, view metadata, 图片元信息, EXIF 查看, 删除 EXIF, GPS 位置',
+  },
 
   // ---- Convert ----
   '/convert/markdown-to-pdf': {
@@ -96,6 +102,14 @@ export const ROUTE_META = {
     description: 'Trim, fade, adjust volume, and normalize loudness of your audio in the browser with ffmpeg. Private, nothing uploaded — part of the TypeBox audio suite.',
     h1: 'Audio Editor',
     keywords: 'audio editor, trim audio, fade audio, normalize audio, cut mp3, edit audio online, 音频编辑, 剪辑音频',
+  },
+  // Audio METADATA editor — view AND edit every format-level tag (read via ffmpeg's ffmetadata dump),
+  // common + custom keys, cover art, and stream/technical info. Export without re-encoding (-c copy).
+  '/media/metadata': {
+    title: 'Audio Metadata Editor — Edit ID3 / Vorbis / MP4 Tags — TypeBox',
+    description: 'View and edit ALL metadata of any audio file (MP3, FLAC, M4A, OGG, Opus, WAV) — title, artist, album, cover art, and any custom tag. Exports without re-encoding the audio. Private, in-browser, nothing uploaded.',
+    h1: 'Audio Metadata Editor',
+    keywords: 'audio metadata editor, edit id3 tags, mp3 tag editor, flac tags, vorbis comments, m4a tags, cover art, album art, strip metadata, 音频元信息, 标签编辑, 元数据',
   },
   // Music PLAYER mode — a private, offline player for audio you own/upload. Library + playlists in
   // IndexedDB, ID3 metadata, synced .lrc lyrics, waveform seek, MediaSession lock-screen controls.

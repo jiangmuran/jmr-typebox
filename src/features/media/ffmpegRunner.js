@@ -385,6 +385,39 @@ export async function runFFmpeg({ files = [], args, outName, outMime = 'applicat
   }
 }
 
+// Run a metadata-PROBE job: write the input, exec the args (e.g. `-f ffmetadata meta.txt`), and read
+// back a TEXT output file as a utf8 string while capturing the full ffmpeg LOG (for stream/technical
+// info parsing). Unlike runFFmpeg this returns text + log rather than a Blob, and tolerates a
+// non-zero exit code AS LONG AS the requested text file was produced (ffmpeg sometimes returns
+// non-zero when there is "nothing to write" yet still emits a valid ffmetadata file).
+//   probeMetadata({ files, args, textOut }) -> { text, log }
+export async function probeMetadata({ files = [], args, textOut = 'meta.txt' } = {}) {
+  const ffmpeg = await loadFFmpeg()
+  const { fetchFile } = await import('@ffmpeg/util')
+
+  const logLines = []
+  const offLog = onEngineEvent((e) => { if (e.type === 'log' && typeof e.message === 'string') logLines.push(e.message) })
+
+  const written = []
+  try {
+    for (const f of files) {
+      const raw = f.data instanceof Uint8Array ? f.data : await fetchFile(f.data)
+      // Copy: writeFile transfers (detaches) the buffer; keep the caller's bytes reusable.
+      await ffmpeg.writeFile(f.name, raw.slice())
+      written.push(f.name)
+    }
+    // Ignore the exit code: a valid ffmetadata file can be produced even on a non-zero return.
+    await ffmpeg.exec(args)
+    let text = ''
+    try { text = await ffmpeg.readFile(textOut, 'utf8') } catch { text = '' }
+    return { text: typeof text === 'string' ? text : '', log: logLines.join('\n') }
+  } finally {
+    offLog()
+    for (const name of written) { try { await ffmpeg.deleteFile(name) } catch { /* ignore */ } }
+    try { await ffmpeg.deleteFile(textOut) } catch { /* ignore */ }
+  }
+}
+
 // Test/teardown hook.
 export function _resetEngine() {
   try { _ffmpeg?.terminate?.() } catch { /* ignore */ }

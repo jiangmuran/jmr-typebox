@@ -4,8 +4,8 @@ import feature from '../index.js'
 // Guards the feature contract: the module must be importable with no browser globals and
 // expose lazy component thunks for every image route plus matched en/zh i18n keys.
 describe('image feature module', () => {
-  it('declares lazy thunks for all four routes', () => {
-    const routes = ['/image/compress', '/image/convert', '/image/watermark', '/image/edit']
+  it('declares lazy thunks for all image routes', () => {
+    const routes = ['/image/compress', '/image/convert', '/image/watermark', '/image/edit', '/image/metadata']
     for (const r of routes) {
       expect(typeof feature.components[r]).toBe('function')
     }
