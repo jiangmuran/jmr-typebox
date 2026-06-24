@@ -6,7 +6,7 @@ import { useToast } from '../../composables/useToast'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
 import { useImageSource } from './useImageSource'
-import { canvasToBlob, downloadBlob } from './canvasUtils'
+import { canvasToBlob, downloadBlob, copyImageToClipboard } from './canvasUtils'
 import { pixelate, boxBlur, normalizeRect } from './redact'
 import { withExtension, formatSize, clamp } from './imageHelpers'
 
@@ -264,6 +264,15 @@ async function exportPng() {
   downloadBlob(blob, withExtension(src.name.value, 'png'))
   showToast(`${formatSize(blob.size)} · PNG`)
 }
+async function copyPng() {
+  if (textBox.active) commitTextBox()
+  const c = canvasRef.value
+  if (!c) return
+  const blob = await canvasToBlob(c, 'image/png')
+  if (!blob) { showToast(t('img2.unsupported')); return }
+  try { await copyImageToClipboard(blob); showToast(t('img2.copied')) }
+  catch { showToast(t('img2.copyUnsupported')) }
+}
 
 function reset() {
   cancelTextBox()
@@ -385,6 +394,10 @@ const hintText = computed(() =>
         <button class="btn primary" @click="exportPng">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M14 10v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V10"/><polyline points="5 7 8 10 11 7"/><line x1="8" y1="10" x2="8" y2="2"/></svg>
           {{ t('img2.download') }}
+        </button>
+        <button class="btn" @click="copyPng">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>
+          {{ t('img2.copy') }}
         </button>
       </div>
     </div>

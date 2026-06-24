@@ -6,7 +6,7 @@ import { useToast } from '../../composables/useToast'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
 import {
-  loadImageFromBlob, drawToCanvas, encodeCanvas, downloadBlob,
+  loadImageFromBlob, drawToCanvas, encodeCanvas, downloadBlob, copyImageToClipboard,
   pickImageFiles, imageFilesFromEvent, imageFileFromEvent, supportsOutputMime,
 } from './canvasUtils'
 import { formatSize, withExtension, mimeForFormat, BASE_FORMATS } from './imageHelpers'
@@ -86,6 +86,15 @@ async function downloadOne(item) {
     showToast(`${formatSize(enc.blob.size)} · ${format.value.toUpperCase()}`)
   } finally { busy.value = false }
 }
+async function copyItem(item) {
+  busy.value = true
+  try {
+    const enc = await encodeItem(item)
+    if (!enc) { showToast(t('img2.unsupported')); return }
+    try { await copyImageToClipboard(enc.blob); showToast(t('img2.copied')) }
+    catch { showToast(t('img2.copyUnsupported')) }
+  } finally { busy.value = false }
+}
 
 async function downloadAll() {
   if (!items.value.length) return
@@ -135,6 +144,9 @@ const isLossyFmt = (f) => mimeForFormat(f) !== 'image/png'
           </div>
           <button class="icon-btn" :title="t('img2.download')" :disabled="busy" @click="downloadOne(item)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M14 10v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V10"/><polyline points="5 7 8 10 11 7"/><line x1="8" y1="10" x2="8" y2="2"/></svg>
+          </button>
+          <button class="icon-btn" :title="t('img2.copy')" :disabled="busy" @click="copyItem(item)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>
           </button>
           <button class="icon-btn" :title="t('img2.remove')" @click="removeItem(item.id)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>

@@ -32,6 +32,20 @@ export function canvasToBlob(canvas, mime, quality) {
   })
 }
 
+// Copy an image to the clipboard. Clipboards only reliably accept image/png, so a non-PNG blob
+// is re-encoded to PNG first. Throws if the Clipboard API / ClipboardItem is unavailable.
+export async function copyImageToClipboard(blob) {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) throw new Error('clipboard-unsupported')
+  let png = blob
+  if (!blob || blob.type !== 'image/png') {
+    const img = await loadImageFromBlob(blob)
+    const c = makeCanvas(img.naturalWidth, img.naturalHeight)
+    c.getContext('2d').drawImage(img, 0, 0)
+    png = await canvasToBlob(c, 'image/png')
+  }
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+}
+
 // Create a 2D canvas of the given size (offscreen, not attached to the DOM).
 export function makeCanvas(width, height) {
   const canvas = document.createElement('canvas')

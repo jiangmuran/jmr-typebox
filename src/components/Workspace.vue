@@ -175,6 +175,7 @@ async function uploadOne(file) {
     replacePlaceholder(id, '') // pull the placeholder back out
     if (e instanceof ImageUploadError && e.code === 'size') showToast(t('upload.tooBig'))
     else if (e instanceof ImageUploadError && e.code === 'type') showToast(t('upload.notImage'))
+    else if (e instanceof ImageUploadError && e.code === 'backend') showToast(t('upload.backendOff'))
     else showToast(t('upload.failed'))
   } finally {
     uploads.value = uploads.value.filter(x => x.id !== id)

@@ -126,6 +126,11 @@ export function useImageUpload() {
   async function uploadImage(file, { onProgress, signal } = {}) {
     validateImageFile(file)
     const { url, direct, key } = resolveEndpoint(settings)
+    // The default path uses our same-origin /api/upload proxy — that's "the backend". When the
+    // master backend toggle is off (and no custom host is set), uploading is unavailable.
+    if (!direct && !settings.backendEnabled) {
+      throw new ImageUploadError('Backend is disabled', { code: 'backend' })
+    }
     return xhrUpload(file, { url, direct, key, onProgress, signal })
   }
 

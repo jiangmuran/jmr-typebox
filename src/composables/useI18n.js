@@ -200,6 +200,7 @@ const dict = {
     'upload.uploading': 'Uploading image…',
     'upload.done': 'Image uploaded',
     'upload.failed': 'Image upload failed',
+    'upload.backendOff': 'Image upload needs the backend on (Settings → Backend) or a custom host',
     'upload.tooBig': 'Image is larger than 5 MB',
     'upload.notImage': 'Only images can be uploaded here',
 
@@ -490,6 +491,7 @@ const dict = {
     'upload.uploading': '正在上传图片…',
     'upload.done': '图片已上传',
     'upload.failed': '图片上传失败',
+    'upload.backendOff': '图片上传需要开启后端(设置→后端)或配置自定义图床',
     'upload.tooBig': '图片大于 5 MB',
     'upload.notImage': '此处只能上传图片',
 

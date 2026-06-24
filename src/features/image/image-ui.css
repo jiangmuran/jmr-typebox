@@ -139,6 +139,8 @@
 .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
 .btn.primary:hover { opacity: 0.9; background: var(--text); }
 .btn.block { width: 100%; }
+.dl-row { display: flex; gap: 8px; margin-top: 12px; }
+.dl-row .btn { flex: 1; }
 .btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 
 .link-btn { border: none; background: none; color: var(--accent); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 2px; }

@@ -34,6 +34,7 @@ const isAudioWidget = computed(() => props.entry?.platform === 'netease')
         :src="safeSrc"
         :title="entry.title"
         frameborder="0"
+        credentialless
         :height="isAudioWidget ? 86 : undefined"
         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
         allowfullscreen
@@ -44,7 +45,10 @@ const isAudioWidget = computed(() => props.entry?.platform === 'netease')
     </div>
     <div v-else class="embed-bad">{{ t('media.online.badUrl') }}</div>
 
-    <p class="embed-note">{{ t('media.online.playbackNote') }}</p>
+    <p class="embed-note">
+      {{ t('media.online.playbackNote') }}
+      <a v-if="safeSrc" class="embed-open" :href="safeSrc" target="_blank" rel="noopener noreferrer">{{ t('media.online.openTab') }}</a>
+    </p>
   </div>
 </template>
 
@@ -63,6 +67,8 @@ const isAudioWidget = computed(() => props.entry?.platform === 'netease')
 
 .embed-bad { padding: 30px; text-align: center; color: var(--text-tertiary); font-size: 13px; border: 1px dashed var(--border); border-radius: 12px; }
 .embed-note { font-size: 11px; color: var(--text-tertiary); line-height: 1.5; }
+.embed-open { color: var(--accent); text-decoration: none; white-space: nowrap; margin-left: 6px; }
+.embed-open:hover { text-decoration: underline; }
 
 @media (max-width: 768px) {
   .embed-frame:not(.audio) { border-radius: 12px; }

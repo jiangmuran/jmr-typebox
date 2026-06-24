@@ -200,6 +200,7 @@ export default {
       'media.online.embedTag': 'official embed',
       'media.online.officialBadge': 'Official embed · in-page playback',
       'media.online.playbackNote': 'This is the platform’s own embedded player (playback only). Online items can’t be edited, tagged, converted, or cached as files — they’re live embeds. Availability and region limits are set by the platform.',
+      'media.online.openTab': 'Open in a new tab',
       'media.online.badUrl': 'This embed URL is not allowed.',
     },
     zh: {
@@ -365,6 +366,7 @@ export default {
       'media.online.embedTag': '官方嵌入',
       'media.online.officialBadge': '官方嵌入 · 页面内播放',
       'media.online.playbackNote': '这是平台自带的嵌入式播放器(仅播放)。在线项目无法被编辑、写标签、转换或作为文件缓存 —— 它们是实时嵌入。可用性与地区限制由平台决定。',
+      'media.online.openTab': '在新标签打开',
       'media.online.badUrl': '该嵌入网址不被允许。',
     },
   },

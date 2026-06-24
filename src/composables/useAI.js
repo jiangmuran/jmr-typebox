@@ -26,7 +26,9 @@ export function useAI() {
     !!settings.aiEnabled &&
     !!(settings.aiKey || '').trim() &&
     !!(settings.aiBaseUrl || '').trim() &&
-    !!(settings.aiModel || '').trim()
+    !!(settings.aiModel || '').trim() &&
+    // Proxy mode needs our backend; direct mode calls the endpoint straight from the browser.
+    (!!settings.aiDirect || !!settings.backendEnabled)
   )
 
   // Build the request body for /chat/completions.
