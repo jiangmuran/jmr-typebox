@@ -42,11 +42,18 @@ const showAsrKey = ref(false)
 // Image host: same reveal toggle for the custom-host upload key.
 const showImgKey = ref(false)
 
+// The heavy Integrations sections are collapsible <details>, collapsed by default so the
+// drawer isn't one endless scroll. An already-configured integration opens itself so its
+// settings stay visible; an untouched one stays tidy and closed.
+const aiOpen = ref(!!settings.aiEnabled)
+const asrOpen = ref(!!settings.asrModel?.trim())
+const imgOpen = ref(!!settings.imageHostUrl?.trim())
+
 // Allow any part of the app (e.g. the AI panel's "Open Settings" CTA) to open this drawer
 // and focus the AI section via a global event, without prop-drilling.
 function onOpenRequest(e) {
   open.value = true
-  if (e?.detail?.section === 'ai') setSetting('aiEnabled', settings.aiEnabled) // no-op; ensures section renders
+  if (e?.detail?.section === 'ai') aiOpen.value = true // expand the AI integration so it's visible
 }
 onMounted(() => { if (typeof window !== 'undefined') window.addEventListener('tb-open-settings', onOpenRequest) })
 onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListener('tb-open-settings', onOpenRequest) })
@@ -65,6 +72,9 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
         </header>
 
         <div class="drawer-body">
+          <!-- ===================== GENERAL ===================== -->
+          <p class="group-head">{{ t('settings.group.general') }}</p>
+
           <!-- Appearance -->
           <section>
             <h3>{{ t('settings.appearance') }}</h3>
@@ -122,6 +132,18 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
             </label>
           </section>
 
+          <!-- Language -->
+          <section>
+            <h3>{{ t('settings.language') }}</h3>
+            <div class="seg">
+              <button :class="{on: locale==='en'}" @click="setLocale('en')">English</button>
+              <button :class="{on: locale==='zh'}" @click="setLocale('zh')">中文</button>
+            </div>
+          </section>
+
+          <!-- ===================== INTEGRATIONS ===================== -->
+          <p class="group-head">{{ t('settings.group.integrations') }}</p>
+
           <!-- Backend -->
           <section>
             <h3>{{ t('settings.backend') }}</h3>
@@ -130,9 +152,9 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
             </label>
           </section>
 
-          <!-- AI assistant -->
-          <section>
-            <h3><span class="lbl">{{ t('settings.ai') }} <AiInfo /></span></h3>
+          <!-- AI assistant (collapsible) -->
+          <details class="sect-fold" :open="aiOpen" @toggle="aiOpen = $event.target.open">
+            <summary><span class="lbl">{{ t('settings.ai') }} <AiInfo /></span><svg class="fold-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></summary>
             <label class="row"><span class="lbl">{{ t('settings.aiEnabled') }}</span>
               <input type="checkbox" :checked="settings.aiEnabled" @change="setSetting('aiEnabled', $event.target.checked)">
             </label>
@@ -163,11 +185,11 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
               </label>
               <p class="ai-hint">{{ settings.aiDirect ? t('settings.aiDirectHint') : t('settings.aiProxyHint') }}</p>
             </template>
-          </section>
+          </details>
 
-          <!-- Speech-to-text (ASR) — powers the Transcribe tool -->
-          <section>
-            <h3>{{ t('settings.asr') }}</h3>
+          <!-- Speech-to-text (ASR) — powers the Transcribe tool (collapsible) -->
+          <details class="sect-fold" :open="asrOpen" @toggle="asrOpen = $event.target.open">
+            <summary>{{ t('settings.asr') }}<svg class="fold-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></summary>
             <p class="ai-hint hint-lead">{{ t('settings.asrLead') }}</p>
             <label class="row col">{{ t('settings.asrModel') }}
               <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.asrModel" placeholder="whisper-1" @input="setSetting('asrModel', $event.target.value)">
@@ -191,11 +213,11 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
               </label>
               <p class="ai-hint">{{ settings.asrDirect ? t('settings.asrDirectHint') : t('settings.asrProxyHint') }}</p>
             </template>
-          </section>
+          </details>
 
-          <!-- Image host (图床) -->
-          <section>
-            <h3>{{ t('settings.imageHost') }}</h3>
+          <!-- Image host (图床) (collapsible) -->
+          <details class="sect-fold" :open="imgOpen" @toggle="imgOpen = $event.target.open">
+            <summary>{{ t('settings.imageHost') }}<svg class="fold-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></summary>
             <p class="ai-hint hint-lead">{{ t('settings.imageHostHint') }}</p>
             <label class="row col">{{ t('settings.imageHostUrl') }}
               <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.imageHostUrl" placeholder="https://files.example.com/api/upload" @input="setSetting('imageHostUrl', $event.target.value)">
@@ -211,16 +233,10 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
             </label>
             <p class="ai-hint">{{ t('settings.imageHostDefaultHint') }}</p>
             <a class="ghost about-link img-repo" href="https://github.com/jiangmuran/user_files" target="_blank" rel="noopener">{{ t('settings.imageHostRepo') }} →</a>
-          </section>
+          </details>
 
-          <!-- Language -->
-          <section>
-            <h3>{{ t('settings.language') }}</h3>
-            <div class="seg">
-              <button :class="{on: locale==='en'}" @click="setLocale('en')">English</button>
-              <button :class="{on: locale==='zh'}" @click="setLocale('zh')">中文</button>
-            </div>
-          </section>
+          <!-- ===================== ABOUT & DATA ===================== -->
+          <p class="group-head">{{ t('settings.group.about') }}</p>
 
           <!-- About -->
           <section>
@@ -258,12 +274,30 @@ section { padding: 14px 0; border-bottom: 1px solid var(--border-light); }
 section:last-child { border-bottom: none; }
 h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-tertiary); margin-bottom: 12px; }
 h3.danger { color: #ff453a; }
+
+/* Group heading — the three top-level buckets (General · Integrations · About & Data). */
+.group-head { font-size: 11px; font-weight: 700; letter-spacing: 0.3px; color: var(--text-secondary); padding: 18px 0 2px; }
+.drawer-body > .group-head:first-child { padding-top: 6px; }
+
+/* Collapsible Integration section — a <details> that reads like the other sections. */
+.sect-fold { padding: 14px 0; border-bottom: 1px solid var(--border-light); }
+.sect-fold:last-child { border-bottom: none; }
+.sect-fold > summary {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; user-select: none;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-tertiary);
+}
+.sect-fold > summary::-webkit-details-marker { display: none; }
+.sect-fold > summary .lbl { text-transform: uppercase; }
+.fold-chev { width: 13px; height: 13px; margin-left: auto; color: var(--text-tertiary); transition: transform 0.2s var(--ease-out); flex-shrink: 0; }
+.sect-fold[open] > summary .fold-chev { transform: rotate(180deg); }
+.sect-fold[open] > summary { margin-bottom: 12px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text); margin-bottom: 12px; }
 .row:last-child { margin-bottom: 0; }
 .row.col { flex-direction: column; align-items: stretch; gap: 8px; }
 .lbl { display: inline-flex; align-items: center; gap: 6px; }
-.seg { display: flex; gap: 1px; background: var(--surface-hover); border-radius: 7px; padding: 2px; }
-.seg button { flex: 1; padding: 7px 8px; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+.seg { display: flex; gap: 3px; background: var(--surface-hover); border-radius: 10px; padding: 3px; }
+.seg button { flex: 1; padding: 7px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+.seg button:hover { color: var(--text); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-light); cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--surface-hover); }

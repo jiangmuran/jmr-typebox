@@ -87,11 +87,11 @@ const truncated = computed(() => sheet.value?.truncated)
         </div>
       </div>
       <div class="sv-actions">
-        <button class="sv-btn ghost" @click="emit('change-file')">
+        <button class="btn small sv-btn" @click="emit('change-file')">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4"/><polyline points="12 1 12.5 4 9.5 4"/><polyline points="4 15 3.5 12 6.5 12"/></svg>
           {{ t('office.openAnother') }}
         </button>
-        <button class="sv-btn primary" @click="download">
+        <button class="btn cta small sv-btn" @click="download">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8"/><polyline points="5 7 8 10 11 7"/><path d="M3 13h10"/></svg>
           {{ t('office.downloadXlsx') }}
         </button>
@@ -173,17 +173,14 @@ export default {
 .sv-ext { color: var(--text-tertiary); font-weight: 500; }
 .sv-sub { font-size: 11px; color: var(--text-secondary); }
 .sv-actions { display: flex; align-items: center; gap: 8px; }
-.sv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); transition: all 0.15s; }
+/* Buttons inherit the global kit (.btn / .btn.cta / .btn.small); only the
+   compact 14px icon size is local. */
 .sv-btn svg { width: 14px; height: 14px; }
-.sv-btn.ghost { color: var(--text-secondary); }
-.sv-btn.ghost:hover { background: var(--surface-hover); color: var(--text); }
-.sv-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.sv-btn.primary:hover { opacity: 0.92; }
 
 .sv-tabs { display: flex; gap: 2px; padding: 6px 12px 0; overflow-x: auto; border-bottom: 1px solid var(--border-light); flex-shrink: 0; }
 .sv-tab { padding: 7px 13px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-tertiary); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
 .sv-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
-.sv-tab.on { color: var(--text); background: var(--surface); border-color: var(--border-light); }
+.sv-tab.on { color: var(--text); background: var(--surface); border-color: var(--border-light); box-shadow: var(--shadow-xs); }
 
 .sv-note { display: flex; align-items: center; gap: 7px; margin: 10px 16px 0; font-size: 12px; color: var(--text-secondary); }
 .sv-note svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-tertiary); }

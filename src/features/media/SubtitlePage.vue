@@ -207,7 +207,7 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
             </div>
           </template>
 
-          <button class="convert-btn" :disabled="!canRun" @click="run">
+          <button class="btn primary convert-btn" :disabled="!canRun" @click="run">
             {{ busy ? (phase === 'loading' ? t('media.loadingRuntime') : t('media.converting')) : t('media.sub.run') }}
           </button>
 
@@ -235,7 +235,7 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
               <span class="result-size">{{ formatSize(result.size) }}</span>
             </div>
             <video class="player video" :src="result.url" controls preload="metadata"></video>
-            <button class="download-btn" @click="download">{{ t('media.download') }}</button>
+            <button class="btn cta download-btn" @click="download">{{ t('media.download') }}</button>
           </div>
         </div>
         </main>
@@ -247,10 +247,10 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
 <style scoped>
 .route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.media-navwrap { max-width: 640px; margin: 0 auto; width: 100%; padding: 22px 24px 0; }
+.media-navwrap { max-width: var(--page-narrow); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
 @media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 20px 24px 40px; max-width: 640px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 40px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 20px; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
@@ -259,8 +259,8 @@ const dlPct = computed(() => dl.value?.total ? Math.max(0, Math.min(100, Math.ro
 .panel { display: flex; flex-direction: column; gap: 14px; }
 .control { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .control-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
-.seg { display: flex; background: var(--surface-hover); border-radius: var(--radius-sm); padding: 2px; gap: 2px; }
-.seg button { padding: 6px 12px; border: none; border-radius: 5px; font-size: 12px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
+.seg { display: flex; background: var(--surface-hover); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .seg button:disabled { opacity: 0.5; cursor: default; }
 input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
@@ -270,7 +270,7 @@ input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .runtime-hint { display: flex; align-items: center; gap: 6px; }
 .runtime-hint svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-tertiary); }
 
-.file-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+.file-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .file-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .file-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -286,10 +286,7 @@ input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .sub-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sub-name.muted { color: var(--text-secondary); font-weight: 500; }
 
-.convert-btn { padding: 11px 16px; border: none; border-radius: 11px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
-.convert-btn:hover:not(:disabled) { opacity: 0.9; }
-.convert-btn:active:not(:disabled) { transform: scale(0.99); }
-.convert-btn:disabled { opacity: 0.6; cursor: default; }
+/* .convert-btn → dark fill from .btn.primary */
 
 .progress { display: flex; align-items: center; gap: 10px; }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
@@ -297,14 +294,13 @@ input[type="range"] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .bar-fill.indet { min-width: 12%; }
 .progress-pct { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
 
-.result { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); animation: tbIn 0.25s var(--ease-out); }
+.result { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); animation: tbIn 0.25s var(--ease-out); }
 .result-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .result-name { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; }
 .result-size { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 .player { width: 100%; height: 40px; }
 .player.video { height: auto; max-height: 360px; border-radius: 8px; background: #000; }
-.download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
-.download-btn:hover { opacity: 0.9; }
+.download-btn { align-self: flex-start; }
 
 @media (max-width: 560px) { .media { padding: 20px 16px 48px; } .control { flex-direction: column; align-items: stretch; gap: 6px; } input[type="range"] { max-width: 100%; } .seg button { padding: 10px 12px; font-size: 12.5px; } }
 </style>

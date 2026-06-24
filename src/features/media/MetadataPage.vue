@@ -415,7 +415,7 @@ const infoRows = computed(() => {
 
               <!-- Actions -->
               <div class="actions">
-                <button class="convert-btn" :disabled="busy" @click="exportFile">
+                <button class="btn primary convert-btn" :disabled="busy" @click="exportFile">
                   <svg v-if="!busy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 13h10"/></svg>
                   {{ busy ? (phase === 'loading' ? t('media.loadingRuntime') : t('media.meta.exporting')) : t('media.meta.export') }}
                 </button>
@@ -450,7 +450,7 @@ const infoRows = computed(() => {
                   </span>
                 </div>
                 <component :is="isVid ? 'video' : 'audio'" class="player" :class="{ video: isVid }" :src="result.url" controls preload="metadata" />
-                <button class="download-btn" @click="download">
+                <button class="btn cta download-btn" @click="download">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 13h10"/></svg>
                   {{ t('media.meta.download') }}
                 </button>
@@ -466,17 +466,17 @@ const infoRows = computed(() => {
 <style scoped>
 .route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.media-navwrap { max-width: 680px; margin: 0 auto; width: 100%; padding: 22px 24px 0; }
+.media-navwrap { max-width: var(--page-narrow); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
 @media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: 680px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 0; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .media-sub { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 
 /* File card */
-.file-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+.file-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .file-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .file-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -498,7 +498,7 @@ const infoRows = computed(() => {
 
 /* Info + cover grid */
 .grid2 { display: grid; grid-template-columns: 1fr 200px; gap: 14px; align-items: start; }
-.info-card, .cover-card { padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+.info-card, .cover-card { padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .info-list { display: flex; flex-direction: column; gap: 0; }
 .info-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-light); }
 .info-item:last-child { border-bottom: none; }
@@ -549,10 +549,7 @@ const infoRows = computed(() => {
 
 /* Actions */
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.convert-btn { flex: 1; min-width: 200px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 16px; border: none; border-radius: 11px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
-.convert-btn:hover:not(:disabled) { opacity: 0.9; }
-.convert-btn:active:not(:disabled) { transform: scale(0.99); }
-.convert-btn:disabled { opacity: 0.6; cursor: default; }
+.convert-btn { flex: 1; min-width: 200px; }
 .convert-btn svg { width: 15px; height: 15px; }
 .strip-btn { padding: 11px 16px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); color: var(--text-secondary); font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
 .strip-btn:hover:not(:disabled) { color: var(--danger, #d23); border-color: var(--danger, #d23); }
@@ -565,14 +562,13 @@ const infoRows = computed(() => {
 .progress-pct { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
 
 /* Result */
-.result { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-bg); animation: tbIn 0.25s var(--ease-out); }
+.result { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-bg); animation: tbIn 0.25s var(--ease-out); }
 .result-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .result-name { font-size: 13px; font-weight: 650; color: var(--text); word-break: break-all; }
 .size-delta { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .size-delta .muted { color: var(--text-secondary); font-weight: 500; }
 .size-delta svg { width: 13px; height: 13px; color: var(--accent); }
-.download-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border: none; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
-.download-btn:hover { opacity: 0.9; }
+.download-btn { align-self: flex-start; }
 .download-btn svg { width: 14px; height: 14px; }
 
 @media (max-width: 640px) {

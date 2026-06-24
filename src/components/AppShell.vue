@@ -121,7 +121,7 @@ function openSettings() { settingsOpen.value = true }
 .logo-t { stroke: var(--bg); transition: stroke 0.5s var(--ease-out); }
 .logo-name { font-weight: 750; font-size: 14px; letter-spacing: -0.4px; }
 
-.tool-tabs { display: flex; gap: 1px; background: var(--surface-hover); border-radius: 8px; padding: 3px; flex-shrink: 0; overflow-x: auto; }
+.tool-tabs { display: flex; gap: 2px; background: var(--surface-hover); border-radius: 10px; padding: 3px; flex-shrink: 0; overflow-x: auto; }
 .tool-tabs a {
   display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: none; border-radius: 6px;
   background: transparent; color: var(--text-tertiary); font-size: 12px; font-weight: 500; cursor: pointer;

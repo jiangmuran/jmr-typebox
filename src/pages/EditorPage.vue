@@ -41,6 +41,7 @@ function exportThemeId() { return (exportTheme.value && exportTheme.value !== 'd
 const editorRef = ref(null)
 const searchOpen = ref(false)
 const exportOpen = ref(false)
+const moreOpen = ref(false)
 const viewMode = ref(load('view', 'split'))
 const isMobile = ref(false)
 const isMac = ref(false)
@@ -396,7 +397,7 @@ function onKeydown(e) {
     const modes = isMobile.value ? ['editor', 'preview'] : ['editor', 'split', 'preview']
     setViewMode(modes[(modes.indexOf(viewMode.value) + 1) % modes.length])
   } else if (e.key === 'Escape') {
-    searchOpen.value = false; exportOpen.value = false; ctxShow.value = false; aiMenuOpen.value = false
+    searchOpen.value = false; exportOpen.value = false; ctxShow.value = false; aiMenuOpen.value = false; moreOpen.value = false
     // Esc dismisses the inline ghost-text suggestion (it was never inserted).
     aiComplete.clear()
     // Esc reverts a just-streamed ghost completion (remove the inserted text).
@@ -441,20 +442,16 @@ onUnmounted(() => {
     <h1 class="sr-only">{{ m.h1 }}</h1>
 
     <ClientOnly>
-      <!-- Document tabs -->
-      <div v-show="!zenMode" class="doc-tabs">
-        <button v-for="d in docs" :key="d.id" class="doc-tab" :class="{ active: d.id === activeId }" @click="openDoc(d.id)">
-          <span class="doc-tab-name">{{ d.name || 'untitled' }}</span>
-          <span class="doc-tab-x" :title="t('doc.close')" @click.stop="closeDoc(d.id)">×</span>
-        </button>
-        <button class="doc-tab-new" :title="t('menu.new')" @click="handleNew">+</button>
-      </div>
-
-      <!-- Editor control row -->
+      <!-- Editor control row — ONE bar: doc tabs (left) + the high-frequency controls
+           (view-seg · Export · AI) and a ⋯ overflow (right). Open / Find / Zen and the
+           writing-theme picker + filename live in the overflow to keep the bar quiet. -->
       <div v-show="!zenMode" class="editor-controls">
-        <div class="ec-file">
-          <input :value="filename" @input="updateFilename($event.target.value)" spellcheck="false" :placeholder="t('file.placeholder')">
-          <span class="file-ext">.md</span>
+        <div class="doc-tabs">
+          <button v-for="d in docs" :key="d.id" class="doc-tab" :class="{ active: d.id === activeId }" @click="openDoc(d.id)">
+            <span class="doc-tab-name">{{ d.name || 'untitled' }}</span>
+            <span class="doc-tab-x" :title="t('doc.close')" @click.stop="closeDoc(d.id)">×</span>
+          </button>
+          <button class="doc-tab-new" :title="t('menu.new')" @click="handleNew">+</button>
         </div>
         <div class="ec-spacer"></div>
         <div class="view-seg">
@@ -468,13 +465,6 @@ onUnmounted(() => {
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
           </button>
         </div>
-        <ThemePicker v-model="writingTheme" :preview-markdown="content" class="ec-theme" />
-        <button class="ec-btn" @click="openFilePicker" :title="t('menu.open')">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 13.5V4a1 1 0 0 1 1-1h3.6l1.4 2H13a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>
-        </button>
-        <button class="ec-btn" @click="searchOpen = !searchOpen" :title="t('menu.find')">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg>
-        </button>
 
         <!-- AI: whole-document actions menu (hidden entirely until AI is configured) -->
         <div v-if="ai.ready.value" class="dd-wrap">
@@ -527,13 +517,36 @@ onUnmounted(() => {
             </div>
           </Transition>
         </div>
-        <button class="ec-btn" @click="toggleZen" :title="t('menu.zen')">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 5.5V3a.5.5 0 0 1 .5-.5h2.5M10.5 2.5H13a.5.5 0 0 1 .5.5v2.5M13.5 10.5V13a.5.5 0 0 1-.5.5h-2.5M5.5 13.5H3a.5.5 0 0 1-.5-.5v-2.5"/></svg>
-        </button>
+
+        <!-- ⋯ overflow: filename, Open, Find, writing theme, Zen — the lower-frequency actions. -->
+        <div class="dd-wrap">
+          <button class="ec-btn ec-more" :class="{ on: moreOpen }" @click="moreOpen = !moreOpen" :title="t('menu.more')">
+            <svg viewBox="0 0 16 16" fill="currentColor" stroke="none"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg>
+          </button>
+          <Transition name="dd">
+            <div v-if="moreOpen" class="dd-menu more-menu">
+              <div class="dd-label">{{ t('file.name') }}</div>
+              <div class="dd-file">
+                <input :value="filename" @input="updateFilename($event.target.value)" spellcheck="false" :placeholder="t('file.placeholder')">
+                <span class="file-ext">.md</span>
+              </div>
+              <div class="dd-sep"></div>
+              <div class="dd-theme">
+                <span class="dd-theme-lbl">{{ t('settings.writingTheme') }}</span>
+                <ThemePicker v-model="writingTheme" :preview-markdown="content" />
+              </div>
+              <div class="dd-sep"></div>
+              <button @click="moreOpen = false; openFilePicker()"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 13.5V4a1 1 0 0 1 1-1h3.6l1.4 2H13a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg></span>{{ t('menu.open') }}</button>
+              <button @click="moreOpen = false; searchOpen = true"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><line x1="10.2" y1="10.2" x2="14" y2="14"/></svg></span>{{ t('menu.find') }}<kbd>{{ modLabel }}F</kbd></button>
+              <button @click="moreOpen = false; toggleZen()"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 5.5V3a.5.5 0 0 1 .5-.5h2.5M10.5 2.5H13a.5.5 0 0 1 .5.5v2.5M13.5 10.5V13a.5.5 0 0 1-.5.5h-2.5M5.5 13.5H3a.5.5 0 0 1-.5-.5v-2.5"/></svg></span>{{ t('menu.zen') }}<kbd>F11</kbd></button>
+            </div>
+          </Transition>
+        </div>
       </div>
 
       <div v-if="exportOpen" class="click-away" @click="exportOpen = false"></div>
       <div v-if="aiMenuOpen" class="click-away" @click="aiMenuOpen = false"></div>
+      <div v-if="moreOpen" class="click-away" @click="moreOpen = false"></div>
 
       <div class="editor-body">
         <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
@@ -578,30 +591,32 @@ onUnmounted(() => {
 .start-overlay { position: absolute; inset: 0; z-index: 30; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
-/* Document tabs */
-.doc-tabs { display: flex; align-items: stretch; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--border-light); overflow-x: auto; flex-shrink: 0; }
-.doc-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 6px 8px 6px 11px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-tertiary); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
+/* Single merged chrome bar: doc tabs (left, scrollable) + controls (right). */
+.editor-controls { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; flex-wrap: nowrap; }
+.ec-spacer { flex: 1; min-width: 8px; }
+
+/* Document tabs — now live inline in the bar as rounded pills. */
+.doc-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.doc-tabs::-webkit-scrollbar { display: none; }
+.doc-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 6px 8px 6px 11px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-tertiary); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
 .doc-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
-.doc-tab.active { color: var(--text); background: var(--surface); border-color: var(--border-light); }
+.doc-tab.active { color: var(--text); background: var(--surface-hover); }
 .doc-tab-name { overflow: hidden; text-overflow: ellipsis; }
 .doc-tab-x { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 4px; font-size: 14px; line-height: 1; color: var(--text-tertiary); }
 .doc-tab-x:hover { background: var(--surface-active); color: var(--text); }
-.doc-tab-new { width: 26px; flex-shrink: 0; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
+.doc-tab-new { width: 26px; height: 26px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
 .doc-tab-new:hover { background: var(--surface-hover); color: var(--text); }
 
-.editor-controls { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; flex-wrap: wrap; }
 .ec-theme { flex-shrink: 0; }
 .ec-theme :deep(.tp-trigger) { height: 30px; }
-@media (max-width: 768px) { .ec-theme :deep(.tp-trigger-label) { display: none; } }
-.ec-file { display: flex; align-items: center; }
-.ec-file input { border: none; background: transparent; font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); outline: none; width: 120px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s; }
-.ec-file input:hover { background: var(--surface-hover); }
-.ec-file input:focus { background: var(--surface-hover); color: var(--text); width: 160px; }
-.file-ext { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
-.ec-spacer { flex: 1; }
+/* Filename + writing theme moved into the ⋯ overflow menu. */
+.dd-file { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; }
+.dd-file input { flex: 1; min-width: 0; border: 1px solid var(--border-light); background: var(--surface-hover); font-size: 12px; font-family: var(--font-mono); color: var(--text); outline: none; padding: 6px 8px; border-radius: var(--radius-sm); transition: border-color 0.15s; }
+.dd-file input:focus { border-color: var(--accent); }
+.file-ext { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); flex-shrink: 0; }
 
-.view-seg { display: flex; gap: 1px; background: var(--surface-hover); border-radius: 6px; padding: 2px; margin-right: 4px; }
-.view-seg button { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: all 0.18s var(--ease-out); }
+.view-seg { display: flex; gap: 2px; background: var(--surface-hover); border-radius: 8px; padding: 3px; margin-right: 4px; }
+.view-seg button { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: all 0.18s var(--ease-out); }
 .view-seg button:hover { color: var(--text-secondary); }
 .view-seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .view-seg button svg { width: 13px; height: 13px; }
@@ -616,12 +631,15 @@ onUnmounted(() => {
 .ec-export-lbl { font-size: 12px; font-weight: 500; }
 .dd-theme { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 8px; }
 .dd-theme-lbl { font-size: 11px; color: var(--text-tertiary); }
+.more-menu { min-width: 230px; }
+.more-menu .ai-mi { width: 17px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px; color: var(--text-secondary); }
+.more-menu .ai-mi svg { width: 14px; height: 14px; }
 @media (max-width: 768px) {
   .ec-export-lbl { display: none; }
   .ec-btn { width: 38px; height: 38px; }
   .view-seg button { width: 34px; height: 34px; }
   .doc-tab-x { width: 22px; height: 22px; font-size: 16px; }
-  .doc-tab-new { width: 38px; height: 32px; }
+  .doc-tab-new { width: 38px; height: 38px; }
   .doc-tab { padding-top: 8px; padding-bottom: 8px; }
   /* The controls row wraps on phones, so a button-anchored dropdown (relative to .dd-wrap) can open
      off-screen — to the left when the button wrapped to the left edge, or to the right when it sits
@@ -661,7 +679,6 @@ onUnmounted(() => {
 .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.zen .editor-controls, .zen .doc-tabs { display: none; }
-@media (max-width: 768px) { .ec-file input { width: 80px; } .ec-file input:focus { width: 110px; } }
-@media print { .editor-controls, .doc-tabs, .click-away { display: none !important; } }
+.zen .editor-controls { display: none; }
+@media print { .editor-controls, .click-away { display: none !important; } }
 </style>

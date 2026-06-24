@@ -15,6 +15,12 @@ const { t, locale } = useI18n()
 const { showToast } = useToast()
 
 const def = computed(() => TOOL_DEFS[route.meta?.path] || { mode: 'transform', ops: [] })
+
+// Localized on-page title/subtitle, keyed by the tool's route path
+// (/tools/base64 → tool.base64.title). The English m.h1 stays as the SEO <h1>.
+const toolKey = computed(() => (route.meta?.path || route.path || '').replace('/tools/', ''))
+const pageTitle = computed(() => { const k = `tool.${toolKey.value}.title`; const v = t(k); return v === k ? m.h1 : v })
+const pageSub = computed(() => { const k = `tool.${toolKey.value}.sub`; const v = t(k); return v === k ? m.description : v })
 const input = ref('')
 const output = ref('')
 const passphrase = ref('')
@@ -65,9 +71,10 @@ function onDrop(e) {
 
 <template>
   <main class="toolbox" @dragover.prevent @drop.prevent="onDrop">
+    <h1 class="sr-only">{{ m.h1 }}</h1>
     <header class="tb-head">
-      <h1>{{ m.h1 }}</h1>
-      <p>{{ m.description }}</p>
+      <h2>{{ pageTitle }}</h2>
+      <p>{{ pageSub }}</p>
     </header>
 
     <div class="tb-io">
@@ -89,11 +96,11 @@ function onDrop(e) {
       <!-- Operation buttons -->
       <div class="tb-ops">
         <template v-if="def.mode === 'transform'">
-          <button v-for="(op, i) in def.ops" :key="i" class="op" @click="runOp(op)">{{ opLabel(op) }}</button>
+          <button v-for="(op, i) in def.ops" :key="i" class="btn op" @click="runOp(op)">{{ opLabel(op) }}</button>
         </template>
         <template v-else-if="def.mode === 'aes'">
-          <button class="op primary" @click="runAes('enc')">{{ t('tool.encrypt') }}</button>
-          <button class="op" @click="runAes('dec')">{{ t('tool.decrypt') }}</button>
+          <button class="btn primary op" @click="runAes('enc')">{{ t('tool.encrypt') }}</button>
+          <button class="btn op" @click="runAes('dec')">{{ t('tool.decrypt') }}</button>
         </template>
       </div>
 
@@ -135,10 +142,11 @@ function onDrop(e) {
 </template>
 
 <style scoped>
-.toolbox { flex: 1; overflow-y: auto; padding: 32px 24px 56px; max-width: 760px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.toolbox { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .tb-head { margin-bottom: 20px; }
-.tb-head h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
+.tb-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .tb-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .tb-io { display: flex; flex-direction: column; gap: 12px; }
 .tb-pane { border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; background: var(--surface); }
@@ -150,10 +158,7 @@ function onDrop(e) {
 .tb-pass input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; outline: none; }
 .tb-pass input:focus { border-color: var(--accent); }
 .tb-ops { display: flex; flex-wrap: wrap; gap: 8px; }
-.op { padding: 8px 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 500; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
-.op:hover { background: var(--surface-hover); }
-.op:active { transform: scale(0.97); }
-.op.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+/* Operation buttons use the global .btn / .btn.primary kit. */
 .tb-result { display: flex; flex-direction: column; gap: 10px; }
 .hash-row { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); }
 .hash-name { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
@@ -168,9 +173,9 @@ function onDrop(e) {
 .stat span { font-size: 11px; color: var(--text-secondary); }
 @media (max-width: 560px) { .tb-stats { grid-template-columns: repeat(2, 1fr); } }
 
-/* Phones: grow the action/operation buttons to comfortable thumb targets (≥40px tall). */
+/* Phones: grow the input-pane action chips to comfortable thumb targets
+   (operation buttons use .btn, which already grows to 44px on mobile). */
 @media (max-width: 640px) {
   .tb-actions button { padding: 9px 13px; font-size: 12.5px; }
-  .op { padding: 11px 16px; font-size: 13px; }
 }
 </style>

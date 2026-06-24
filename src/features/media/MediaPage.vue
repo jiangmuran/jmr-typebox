@@ -24,7 +24,7 @@ const { meta: m } = useRouteHead()
 </template>
 
 <style scoped>
-.route-page { flex: 1; max-width: 1120px; margin: 0 auto; width: 100%; padding: 22px 24px 28px; }
+.route-page { flex: 1; max-width: var(--page-wide); margin: 0 auto; width: 100%; padding: 22px 24px 28px; }
 @media (max-width: 768px) { .route-page { padding: 16px 16px 22px; } }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style>

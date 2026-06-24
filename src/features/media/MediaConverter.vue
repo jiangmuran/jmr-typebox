@@ -454,7 +454,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
           <img v-else-if="result.name.endsWith('.gif')" class="player gifimg" :src="result.url" alt="GIF preview" />
           <audio v-else class="player" :src="result.url" controls preload="metadata"></audio>
           <div class="result-actions">
-            <button class="download-btn" @click="download">{{ t('media.download') }}</button>
+            <button class="btn cta" @click="download">{{ t('media.download') }}</button>
             <button v-if="!result.isVideo && !result.name.endsWith('.gif')" class="add-player-btn" @click="addToPlayer('result')">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
               {{ t('media.addToPlayer') }}
@@ -640,7 +640,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
           </template>
 
           <!-- Run button (label adapts to active tab) -->
-          <button class="run-btn" :disabled="runDisabled" @click="runActive">{{ runLabel }}</button>
+          <button class="btn primary run-btn" :disabled="runDisabled" @click="runActive">{{ runLabel }}</button>
 
           <!-- Pre-run runtime hint: cached (instant) vs first-run download (~31MB). -->
           <p v-if="!busy && media.file.value" class="note small runtime-hint">
@@ -678,7 +678,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
-.card { padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+/* .card is provided by the global tool-kit (surface · 12px · border-light · 16px). */
 .file-card { display: flex; flex-direction: column; gap: 12px; }
 .file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .file-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -699,8 +699,10 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .mini-link, .ex-chip, .mini-link:focus { font-family: var(--font-sans); }
 .mini-link { border: none; background: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline; }
 
-.tabs { display: flex; gap: 2px; padding: 3px; background: var(--surface-hover); border-radius: var(--radius-sm); }
-.tabs button { flex: 1; padding: 7px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 650; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
+/* Workbench tabs — the shared segbar (container 10px · item 6px · subtle active). */
+.tabs { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border-radius: 10px; }
+.tabs button { flex: 1; min-height: 34px; padding: 6px 8px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
+.tabs button:hover:not(:disabled) { color: var(--text); }
 .tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .tabs button:disabled { opacity: 0.5; cursor: default; }
 
@@ -713,9 +715,12 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .num { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font-sans); outline: none; }
 .num:focus { border-color: var(--accent); }
 
-.seg { display: flex; background: var(--surface-hover); border-radius: var(--radius-sm); padding: 2px; gap: 2px; }
+/* Compact inline segmented pickers (output format / kind) — segbar tokens,
+   denser padding because several can sit in one control row and wrap. */
+.seg { display: flex; background: var(--surface-hover); border-radius: 10px; padding: 3px; gap: 3px; }
 .seg-wrap { flex-wrap: wrap; justify-content: flex-end; }
-.seg button { padding: 6px 10px; border: none; border-radius: 5px; font-size: 11px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
+.seg button { padding: 6px 11px; border: none; border-radius: 6px; font-size: 11.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); }
+.seg button:hover:not(:disabled) { color: var(--text); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .seg button:disabled { opacity: 0.5; cursor: default; }
 .select { padding: 7px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font-sans); outline: none; cursor: pointer; }
@@ -745,10 +750,8 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .ex-chip { border: 1px solid var(--border); background: var(--surface-hover); color: var(--text-secondary); font-size: 11px; padding: 4px 9px; border-radius: 7px; cursor: pointer; font-family: var(--font-mono, ui-monospace, monospace); }
 .ex-chip:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 
-.run-btn { padding: 11px 16px; border: none; border-radius: 11px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s, transform 0.1s; margin-top: 2px; }
-.run-btn:hover:not(:disabled) { opacity: 0.9; }
-.run-btn:active:not(:disabled) { transform: scale(0.99); }
-.run-btn:disabled { opacity: 0.55; cursor: default; }
+/* Run = shared dark primary button; just a touch of top spacing + full width here. */
+.run-btn { width: 100%; margin-top: 2px; }
 
 .progress { display: flex; align-items: center; gap: 10px; }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
@@ -763,8 +766,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .player { width: 100%; height: 40px; }
 .player.video { height: auto; max-height: 300px; border-radius: 8px; background: #000; }
 .player.gifimg { height: auto; max-height: 300px; border-radius: 8px; object-fit: contain; background: var(--surface-hover); }
-.download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
-.download-btn:hover { opacity: 0.9; }
+/* Download = shared gold CTA (.btn.cta). */
 
 /* ----- MOBILE: stack to a single column, bigger targets, convert flow first ----- */
 @media (max-width: 900px) {
@@ -773,8 +775,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
   /* Controls come first on mobile so the convert flow is front-and-center; source/waveform follow. */
   .col-controls { order: 1; }
   .col-source { order: 2; }
-  .tabs button { padding: 9px 8px; font-size: 13px; }
-  .run-btn { padding: 13px 16px; font-size: 15px; }
+  .tabs button { min-height: 40px; font-size: 13px; }
   .seg-wrap { justify-content: flex-start; }
   .control { flex-direction: column; align-items: stretch; gap: 6px; }
   .player.video { max-height: 240px; }

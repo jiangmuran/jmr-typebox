@@ -33,6 +33,10 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  /* Two canonical content widths — single source of truth so navigating tool→tool
+     never makes the column jump. Single-column tools use narrow; 2-col workbenches use wide. */
+  --page-narrow: 640px;
+  --page-wide: 1040px;
 }
 
 [data-theme="dark"] {

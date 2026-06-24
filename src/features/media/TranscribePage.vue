@@ -304,7 +304,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 
               <!-- Run / progress -->
               <div v-if="!hasResult" class="run-card">
-                <button v-if="!busy" class="run-btn" @click="run">
+                <button v-if="!busy" class="btn primary run-btn" @click="run">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="1.5" width="4" height="8" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 009 0"/><line x1="8" y1="12" x2="8" y2="14.5"/></svg>
                   {{ t('media.asr.run') }}
                 </button>
@@ -356,7 +356,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
                       <button v-for="f in ['srt', 'vtt', 'txt']" :key="f" :class="{ on: exportFmt === f }" @click="exportFmt = f">{{ f.toUpperCase() }}</button>
                     </div>
                     <button class="ghost-btn" @click="copyTranscript">{{ t('media.asr.copy') }}</button>
-                    <button class="download-btn" @click="exportFile">{{ ti('media.asr.export', { fmt: exportFmt.toUpperCase() }) }}</button>
+                    <button class="btn cta download-btn" @click="exportFile">{{ ti('media.asr.export', { fmt: exportFmt.toUpperCase() }) }}</button>
                     <SendToMenu :payload="handoffFile" :kind="handoffKind" from="/media/transcribe" />
                   </div>
                 </div>
@@ -382,16 +382,16 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 <style scoped>
 .route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.media-navwrap { max-width: 760px; margin: 0 auto; width: 100%; padding: 22px 24px 0; }
+.media-navwrap { max-width: var(--page-narrow); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
 @media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: 760px; margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 2px; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .media-sub { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; max-width: 72ch; }
 
-.card { padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+/* .card from global tool-kit */
 
 /* Empty state */
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 44px 28px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface); }
@@ -415,9 +415,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 
 /* Run card */
 .run-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
-.run-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border: none; border-radius: 11px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
-.run-btn:hover { opacity: 0.9; }
-.run-btn:active { transform: scale(0.99); }
+.run-btn { align-self: flex-start; }
 .run-btn svg { width: 15px; height: 15px; }
 
 .staged { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); }
@@ -458,8 +456,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 .fmt-seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .ghost-btn { padding: 8px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
 .ghost-btn:hover { background: var(--surface-hover); }
-.download-btn { padding: 8px 16px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
-.download-btn:hover { opacity: 0.9; }
+/* .download-btn → gold fill from .btn.cta */
 
 .segs { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 8px; max-height: 60vh; overflow-y: auto; }
 .seg-row { display: flex; gap: 12px; align-items: baseline; text-align: left; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); font-size: 13.5px; line-height: 1.55; cursor: pointer; font-family: var(--font-sans); transition: background 0.12s; }

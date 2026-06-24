@@ -95,7 +95,7 @@ async function pasteIn() {
 </template>
 
 <style scoped>
-.convert { flex: 1; overflow-y: auto; padding: 32px 24px 56px; max-width: 760px; margin: 0 auto; width: 100%; animation: cvIn 0.3s var(--ease-out); }
+.convert { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: cvIn 0.3s var(--ease-out); }
 @keyframes cvIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .cv-head { margin-bottom: 20px; }
 .cv-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }

@@ -1160,8 +1160,9 @@ onBeforeUnmount(() => {
 .caret svg { width: 9px; height: 9px; }
 .pc-caret { width: 13px; height: 13px; transition: transform 0.15s; }
 .pc-caret.up { transform: rotate(180deg); }
-.tb-btn.run { padding: 8px 15px; border: none; background: var(--accent); color: var(--accent-text); font-weight: 650; }
-.tb-btn.run:hover:not(:disabled) { background: var(--accent-hover); }
+/* Run = the primary build/run action → dark fill (gold is reserved for download/confirm CTAs). */
+.tb-btn.run { padding: 8px 15px; border: none; background: var(--text); color: var(--bg); font-weight: 650; }
+.tb-btn.run:hover:not(:disabled) { opacity: 0.9; }
 .tb-btn.run:active:not(:disabled) { transform: scale(0.98); }
 .tb-btn.run:disabled { opacity: 0.7; cursor: default; }
 .run-ico { display: inline-flex; }
@@ -1367,7 +1368,7 @@ onBeforeUnmount(() => {
 .m-editor .cm-host { position: relative; height: 100%; }
 
 .m-runrow { display: flex; }
-.m-run { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; min-height: 52px; }
+.m-run { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--text); color: var(--bg); font-size: 16px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; min-height: 52px; }
 .m-run:disabled { opacity: 0.7; cursor: default; }
 .m-run:active:not(:disabled) { transform: scale(0.99); }
 .m-run.stop { background: var(--danger, #e5484d); color: #fff; }

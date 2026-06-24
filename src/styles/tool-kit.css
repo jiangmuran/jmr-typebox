@@ -1,58 +1,78 @@
 /* ===========================================================================
-   Shared UI kit for the four image tools (Compress / Convert / Watermark / Edit).
+   TypeBox shared tool kit — the ONE component kit for every tool surface.
 
-   Every primitive lives under the `.img-ui` root class so these rules can be a
-   plain (non-scoped) stylesheet imported once by <ImageShell> without leaking
-   into the rest of the app. The four pages were originally built separately and
-   drifted (different paddings, radii, button styles, breakpoints); this file is
-   the single source of truth so they line up pixel-for-pixel.
+   Promoted from the image tools' former image-ui.css (the best-converged kit)
+   to a single GLOBAL stylesheet imported once in main.js. Every tool page —
+   image, text tools, convert, media, office, python — uses these same
+   primitives so the product reads as ONE thing instead of ~4 drifted copies.
 
-   Uses only the app's existing CSS variables (global.css) — clean + monochrome.
-   Mobile-first concerns are handled at the bottom: ≤768px = phone/tablet,
-   with comfortable tap targets (≥40px) for every control on a 390px screen.
+   Primitives: .card · .btn (+ .primary) · .segbar (+ items) · .ctrl · inputs ·
+   .icon-btn. Uses only global.css CSS variables (clean + monochrome, dark-gold
+   --accent). Mobile-first tap targets (≥40px desktop / ≥44px phone) live at the
+   bottom. Generic class names are intentional: a component that needs to opt out
+   simply keeps its own scoped rule (Vue adds [data-v-…], which out-specifies
+   these plain selectors).
+
+   Primary-button rule: dark-fill var(--text) for build/run/apply/convert
+   actions; reserve gold var(--accent) (.btn.cta) for the SINGLE download/confirm
+   call-to-action per screen.
    =========================================================================== */
 
-/* ---- Page shell ---------------------------------------------------------- */
-.img-ui.route-page {
+/* ---- Page shell (image-style single column) ----------------------------- */
+.route-page {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-.img-ui .sr-only {
+.sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-.img-wrap {
+/* Content-width wrapper. Two canonical widths via modifier:
+   default = narrow (single-column tools); .wide = 2-col workbenches. */
+.tool-wrap {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   width: 100%;
-  max-width: 600px;
+  max-width: var(--page-narrow);
   margin: 0 auto;
-  padding: 28px 20px 56px;
-  animation: imgIn 0.32s var(--ease-out);
+  padding: 28px 24px 56px;
+  animation: toolIn 0.32s var(--ease-out);
 }
-.img-wrap.wide { max-width: 980px; }
-@keyframes imgIn {
+.tool-wrap.wide { max-width: var(--page-wide); }
+@keyframes toolIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.img-head { margin-bottom: 18px; }
-.img-head h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; line-height: 1.2; }
-.img-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+/* Page header — converged target: 24px / 750 / -0.5px for all tool pages. */
+.tool-head { margin-bottom: 20px; }
+.tool-head h1, .tool-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; line-height: 1.2; }
+.tool-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 
-/* ---- Stack rhythm: the body lays out cards/sections with a consistent gap -- */
+/* Body stack rhythm: consistent gap between cards/sections. */
+.tool-body { display: flex; flex-direction: column; gap: 12px; }
+
+/* Image-shell aliases — the image pages still use .img-wrap / .img-head /
+   .img-body in their templates; these map onto the converged kit so they line
+   up with every other tool without touching each page. */
+.img-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; max-width: var(--page-narrow); margin: 0 auto; padding: 28px 24px 56px; animation: toolIn 0.32s var(--ease-out); }
+.img-wrap.wide { max-width: var(--page-wide); }
+.img-head { margin-bottom: 20px; }
+.img-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; line-height: 1.2; }
+.img-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .img-body { display: flex; flex-direction: column; gap: 12px; }
 
 /* ---- Cards & controls ---------------------------------------------------- */
+/* ONE card: surface bg, 12px radius, 1px border-light, 16px pad. */
 .card {
   background: var(--surface);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   padding: 16px;
 }
 .card + .card { margin-top: 0; }
@@ -73,21 +93,50 @@
 .ctrl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .ctrl-row.color-size { grid-template-columns: auto 1fr; align-items: end; }
 
-/* ---- Segmented buttons --------------------------------------------------- */
-.seg {
-  display: flex; background: var(--surface-hover);
-  border-radius: var(--radius-sm); padding: 3px; gap: 3px;
+/* ---- Segmented bar (the ONE pill/tab primitive) -------------------------- */
+/* Container 10px radius · item 6px · --surface-hover track ·
+   active = --surface + subtle shadow. Used for view-segments, settings,
+   sub-tool navs and workbench tabs across the whole app. */
+.segbar {
+  display: flex; align-items: stretch; gap: 3px;
+  background: var(--surface-hover);
+  border-radius: 10px; padding: 3px;
 }
-.seg button {
-  flex: 1; min-height: 32px; padding: 6px 10px; border: none; border-radius: 5px;
-  font-size: 12px; font-weight: 500; background: transparent; color: var(--text-secondary);
+.segbar-item {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 6px 12px; border: none; border-radius: 6px;
+  font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  background: transparent; color: var(--text-secondary);
   cursor: pointer; transition: all 0.15s; font-family: var(--font-sans);
+  text-decoration: none; text-align: center;
+}
+.segbar-item:hover { color: var(--text); }
+.segbar-item.on,
+.segbar-item.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
+.segbar-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* Back-compat alias: legacy `.seg` keeps working as a segbar so existing
+   markup (image kit, settings) lines up without churn. */
+.seg { display: flex; background: var(--surface-hover); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button {
+  flex: 1; min-height: 34px; padding: 6px 12px; border: none; border-radius: 6px;
+  font-size: 12.5px; font-weight: 500; background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); white-space: nowrap;
 }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 
+/* Sub-tool nav (image pages) — a segbar that sits above the page header. */
+.img-nav { display: flex; gap: 3px; margin-bottom: 18px; background: var(--surface-hover); padding: 3px; border-radius: 10px; overflow-x: auto; scrollbar-width: none; }
+.img-nav::-webkit-scrollbar { display: none; }
+.img-nav-item { flex: 1; text-align: center; white-space: nowrap; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+.img-nav-item:hover { color: var(--text); }
+.img-nav-item.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
+
 /* ---- Inputs -------------------------------------------------------------- */
-.img-ui input[type="range"] {
+.tool-wrap input[type="range"],
+.range-in {
   width: 100%; accent-color: var(--accent);
   height: 22px; /* enlarges the hit area so the thumb is grabbable on touch */
   cursor: pointer;
@@ -125,6 +174,9 @@
 .grid9 button.on span { background: var(--accent); }
 
 /* ---- Buttons ------------------------------------------------------------- */
+/* ONE button. Default = bordered surface. .primary = dark fill (build/run/
+   apply/convert). .cta = gold fill, reserved for the single download/confirm
+   action per screen. */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 10px 16px; border: 1px solid var(--border);
@@ -132,16 +184,18 @@
   font-size: 13px; font-weight: 500; font-family: var(--font-sans);
   cursor: pointer; transition: all 0.15s; white-space: nowrap;
 }
-.btn:hover { background: var(--surface-hover); }
-.btn:active { transform: scale(0.98); }
+.btn:hover:not(:disabled) { background: var(--surface-hover); }
+.btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn svg { width: 15px; height: 15px; }
-.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-.btn.primary:hover { opacity: 0.9; background: var(--text); }
+.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { opacity: 0.9; background: var(--text); }
+.btn.cta { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.btn.cta:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn.block { width: 100%; }
+.btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .dl-row { display: flex; gap: 8px; margin-top: 12px; }
 .dl-row .btn { flex: 1; }
-.btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 
 .link-btn { border: none; background: none; color: var(--accent); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 2px; }
 .link-btn:hover { text-decoration: underline; }
@@ -161,7 +215,7 @@
 .actions .btn { flex: 1; }
 
 /* ---- Single-image preview card (Compress) -------------------------------- */
-.preview-card { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; }
+.preview-card { background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; }
 .preview-card img { width: 100%; max-height: 280px; object-fit: contain; background: var(--code-bg); display: block; }
 .preview-meta {
   display: flex; align-items: center; gap: 8px; padding: 9px 12px;
@@ -171,16 +225,16 @@
 
 /* ---- Before/after stats (Compress) --------------------------------------- */
 .stats { display: flex; align-items: center; gap: 14px; position: relative; }
-.stat { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stats .stat { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); }
-.stat strong { font-size: 18px; font-weight: 700; }
-.stat em { font-size: 11px; color: var(--text-secondary); font-style: normal; font-family: var(--font-mono); }
+.stats .stat strong { font-size: 18px; font-weight: 700; }
+.stats .stat em { font-size: 11px; color: var(--text-secondary); font-style: normal; font-family: var(--font-mono); }
 .stat-arrow { color: var(--text-tertiary); font-size: 16px; flex-shrink: 0; }
 .badge { position: absolute; top: 10px; right: 12px; font-size: 11px; font-weight: 700; color: var(--status-ok); background: var(--status-ok-bg); padding: 3px 8px; border-radius: 20px; }
 .badge.neg { color: var(--status-warn); background: var(--status-warn-bg); }
 
 /* ---- Batch list (Convert) ------------------------------------------------ */
-.file-list { display: flex; flex-direction: column; gap: 8px; border: 2px dashed transparent; border-radius: var(--radius-lg); transition: border-color 0.2s; padding: 2px; }
+.file-list { display: flex; flex-direction: column; gap: 8px; border: 2px dashed transparent; border-radius: 12px; transition: border-color 0.2s; padding: 2px; }
 .file-list.over { border-color: var(--accent); }
 .file-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius); }
 .file-row img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); background: var(--code-bg); flex-shrink: 0; }
@@ -189,40 +243,40 @@
 .file-row .row-sub { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
 
 /* ---- Canvas preview pane (Watermark / Edit) ------------------------------ */
-.canvas-pane { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; }
+.canvas-pane { background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; }
 .canvas-frame { background: var(--code-bg); display: flex; align-items: center; justify-content: center; padding: 14px; }
 .canvas-frame canvas { max-width: 100%; object-fit: contain; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); display: block; }
 
 /* ===========================================================================
-   Responsive — tablet & phone. The app frame already shrinks at 768px; the
-   image tools follow suit and become a single comfortable column on phones.
+   Responsive — tablet & phone. The app frame shrinks at 768px; the single
+   column collapses and tap targets grow on phones.
    =========================================================================== */
 @media (max-width: 768px) {
-  .img-wrap { padding: 18px 14px 64px; }
-  .img-wrap.wide { max-width: 600px; } /* collapse the desktop two-column workbench */
-  .img-head { margin-bottom: 14px; }
-  .img-head h2 { font-size: 19px; }
-  .img-head p { font-size: 12.5px; }
-
-  .card { padding: 14px; border-radius: var(--radius); }
+  .tool-wrap, .img-wrap { padding: 18px 14px 64px; }
+  .tool-wrap.wide, .img-wrap.wide { max-width: var(--page-narrow); } /* collapse the desktop two-column workbench */
+  .tool-head, .img-head { margin-bottom: 16px; }
+  .tool-head h1, .tool-head h2, .img-head h2 { font-size: 21px; }
+  .tool-head p, .img-head p { font-size: 12.5px; }
+  .img-nav { margin-bottom: 14px; }
+  .img-nav-item { padding: 10px 14px; font-size: 13px; }
 
   /* Stack paired controls so sliders get full width and stay grabbable. */
   .ctrl-row { grid-template-columns: 1fr; gap: 14px; }
   .ctrl-row.color-size { grid-template-columns: auto 1fr; }
 
   /* Comfortable tap targets on phones. */
-  .seg button { min-height: 38px; font-size: 12.5px; }
+  .segbar-item, .seg button { min-height: 40px; font-size: 12.5px; }
   .btn { min-height: 44px; }
   .icon-btn { width: 40px; height: 40px; }
   .color-input { width: 52px; height: 40px; }
   .grid9 button { min-height: 40px; }
-  .img-ui input[type="range"] { height: 28px; }
+  .tool-wrap input[type="range"], .range-in { height: 28px; }
 
   /* Action bars wrap to two-up rather than squishing. */
   .actions { flex-wrap: wrap; }
 }
 
 @media (max-width: 400px) {
-  .img-wrap { padding: 16px 12px 64px; }
-  .stat strong { font-size: 16px; }
+  .tool-wrap, .img-wrap { padding: 16px 12px 64px; }
+  .stats .stat strong { font-size: 16px; }
 }

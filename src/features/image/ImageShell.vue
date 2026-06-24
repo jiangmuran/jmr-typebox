@@ -6,12 +6,12 @@
 // single default slot for the interactive body (which therefore stays inside
 // <ClientOnly> — no window/Canvas access during SSG).
 //
-// The shared `.img-ui` stylesheet is imported here once; because the root
-// element carries the `img-ui` class, those (non-scoped) rules can only ever
-// match inside an image page.
+// Visual primitives (.card / .btn / .seg / .img-wrap …) now live in the global
+// tool-kit stylesheet (src/styles/tool-kit.css, imported in main.js) so every
+// tool surface shares one kit. The `img-ui` root class is kept only as a scoping
+// hook for a few page-specific scoped rules (Watermark / Metadata layout).
 import ClientOnly from '../../components/ClientOnly.vue'
 import ImageToolNav from './ImageToolNav.vue'
-import './image-ui.css'
 
 defineProps({
   h1: { type: String, default: '' },      // SEO heading (from route meta), rendered sr-only

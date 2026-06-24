@@ -71,7 +71,7 @@ onMounted(() => nextTick(revealActive))
 .media-nav::-webkit-scrollbar { display: none; }
 /* Thin separator marks the boundary between tool groups (Transform · Produce · Inspect). */
 .media-nav-sep { flex: 0 0 1px; align-self: center; width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-.media-nav-item { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 8px 13px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s; }
+.media-nav-item { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 8px 13px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s; }
 .media-nav-item svg { width: 14px; height: 14px; flex-shrink: 0; }
 .media-nav-item:hover { color: var(--text); }
 .media-nav-item.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }

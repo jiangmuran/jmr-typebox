@@ -5,6 +5,7 @@ import { registerFeatures } from './features/index.js'
 import { useSettings } from './composables/useSettings'
 import { load, save } from './utils/storage'
 import './styles/global.css'
+import './styles/tool-kit.css'
 
 // vite-ssg@28 auto-installs unhead (useHead:true) with @unhead/vue v2 (its bundled dep).
 // Pages call useHead()/useRouteHead() and share this head context. Do NOT call createHead() here.

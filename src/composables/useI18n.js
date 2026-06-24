@@ -42,6 +42,8 @@ const dict = {
 
     // Menu
     'menu.new': 'New Document',
+    'menu.more': 'More',
+    'file.name': 'File name',
     'menu.open': 'Open File...',
     'menu.openHint': '.txt .md .pdf',
     'menu.find': 'Find & Replace',
@@ -57,6 +59,9 @@ const dict = {
     // Settings
     'settings.title': 'Settings',
     'settings.open': 'Settings',
+    'settings.group.general': 'General',
+    'settings.group.integrations': 'Integrations',
+    'settings.group.about': 'About & Data',
     'settings.appearance': 'Appearance',
     'settings.theme': 'Theme',
     'settings.theme.light': 'Light',
@@ -144,6 +149,20 @@ const dict = {
     'tool.invalid': 'Invalid input',
     'tool.jwt.header': 'Header',
     'tool.jwt.payload': 'Payload',
+    // Localized on-page titles/subtitles for the /tools/* pages (English SEO
+    // strings stay in meta.js for <head> only).
+    'tool.word-count.title': 'Word Count',
+    'tool.word-count.sub': 'Words, characters, lines and reading time — live as you type.',
+    'tool.base64.title': 'Encode / Decode',
+    'tool.base64.sub': 'Base64, Hex, URL and HTML entities — instant and private.',
+    'tool.aes.title': 'AES Encrypt / Decrypt',
+    'tool.aes.sub': 'Encrypt and decrypt text with AES-GCM and a passphrase, in your browser.',
+    'tool.hash.title': 'Hash Generator',
+    'tool.hash.sub': 'SHA-1, SHA-256, SHA-384 and SHA-512 from text — computed locally.',
+    'tool.json.title': 'JSON Formatter',
+    'tool.json.sub': 'Format, minify and validate JSON. Nothing leaves your device.',
+    'tool.jwt.title': 'JWT Decoder',
+    'tool.jwt.sub': 'Decode a JSON Web Token’s header and payload locally.',
 
     // Editor
     'editor.placeholder': 'Start writing Markdown here...',
@@ -363,6 +382,8 @@ const dict = {
     'export.copyImage': '复制为图片',
 
     'menu.new': '新建文档',
+    'menu.more': '更多',
+    'file.name': '文件名',
     'menu.open': '打开文件...',
     'menu.openHint': '.txt .md .pdf',
     'menu.find': '查找与替换',
@@ -378,6 +399,9 @@ const dict = {
     // Settings
     'settings.title': '设置',
     'settings.open': '设置',
+    'settings.group.general': '通用',
+    'settings.group.integrations': '集成',
+    'settings.group.about': '关于与数据',
     'settings.appearance': '外观',
     'settings.theme': '主题',
     'settings.theme.light': '浅色',
@@ -465,6 +489,19 @@ const dict = {
     'tool.invalid': '输入无效',
     'tool.jwt.header': 'Header',
     'tool.jwt.payload': 'Payload',
+    // /tools/* 页面的本地化标题/副标题(英文 SEO 文案仍只用于 meta.js 的 <head>)。
+    'tool.word-count.title': '字数统计',
+    'tool.word-count.sub': '实时统计字数、字符、行数与预计阅读时间。',
+    'tool.base64.title': '编码 / 解码',
+    'tool.base64.sub': 'Base64、Hex、URL 与 HTML 实体——即时且私密。',
+    'tool.aes.title': 'AES 加密 / 解密',
+    'tool.aes.sub': '用 AES-GCM 与口令在浏览器中加密、解密文本。',
+    'tool.hash.title': '哈希生成',
+    'tool.hash.sub': '在本地从文本计算 SHA-1、SHA-256、SHA-384、SHA-512。',
+    'tool.json.title': 'JSON 格式化',
+    'tool.json.sub': '格式化、压缩并校验 JSON,数据不离开本机。',
+    'tool.jwt.title': 'JWT 解码',
+    'tool.jwt.sub': '在本地解码 JSON Web Token 的 Header 与 Payload。',
 
     'editor.placeholder': '在此输入 Markdown...',
 
