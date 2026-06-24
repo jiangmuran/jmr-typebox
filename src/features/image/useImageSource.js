@@ -3,8 +3,13 @@
 // touch happens inside handlers or onMounted, never at setup top-level, so it is SSG-safe.
 import { ref, shallowRef, onMounted, onBeforeUnmount } from 'vue'
 import { loadImageFromBlob, pickImageFiles, imageFileFromEvent } from './canvasUtils'
+import { useHandoff } from '../../composables/useHandoff'
 
 export function useImageSource(onLoaded) {
+  const handoff = useHandoff()
+  // Set true once a cross-module "send to" payload has been loaded on mount, so the page can
+  // toast handoff.received. A ref (not a return value) because the load is async.
+  const received = ref(false)
   const file = ref(null)
   const name = ref('')
   const size = ref(0)
@@ -17,6 +22,7 @@ export function useImageSource(onLoaded) {
   const dragOver = ref(false)
 
   async function setFile(f) {
+    // Handoff payloads can arrive as a bare Blob (no name); accept any image-typed Blob/File.
     if (!f || !f.type?.startsWith('image/')) return false
     loading.value = true
     try {
@@ -69,11 +75,22 @@ export function useImageSource(onLoaded) {
   }
 
   // Global paste so users can Ctrl/Cmd+V anywhere on the page.
-  onMounted(() => { window.addEventListener('paste', onPaste) })
+  onMounted(async () => {
+    window.addEventListener('paste', onPaste)
+    // Pick up a cross-module "send to" image (e.g. from another image tool's result), if one is
+    // staged. One-shot: take() clears it so a later navigation/refresh won't reload it.
+    const h = handoff.take('image')
+    if (h?.payload) {
+      let f = h.payload
+      // Give a bare Blob a filename so download/save names stay sensible downstream.
+      if (h.name && !f.name) { try { f = new File([f], h.name, { type: f.type }) } catch { f.name = h.name } }
+      if (await setFile(f)) received.value = true
+    }
+  })
   onBeforeUnmount(() => { window.removeEventListener('paste', onPaste); revoke() })
 
   return {
-    file, name, size, type, width, height, image, objectUrl, loading, dragOver,
+    file, name, size, type, width, height, image, objectUrl, loading, dragOver, received,
     setFile, openPicker, onDrop, onDragOver, onDragLeave, onPaste, reset,
   }
 }

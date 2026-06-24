@@ -28,6 +28,21 @@ describe('media engine modules are SSG/node-safe at import', () => {
     expect(typeof mod.readAllMetadata).toBe('function')
     expect(typeof mod.writeAllMetadata).toBe('function')
     expect(typeof mod.stripAllMetadata).toBe('function')
+    // Video + compression + ASR-extraction operations.
+    expect(typeof mod.convertVideo).toBe('function')
+    expect(typeof mod.compressMedia).toBe('function')
+    expect(typeof mod.extractAudioForAsr).toBe('function')
+  })
+
+  it('asrHelpers is pure/SSG-safe at import and exposes its API', async () => {
+    const mod = await import('../asrHelpers')
+    expect(typeof mod.segmentsToSRT).toBe('function')
+    expect(typeof mod.segmentsToVTT).toBe('function')
+    expect(typeof mod.serializeTranscript).toBe('function')
+    expect(typeof mod.stitchChunks).toBe('function')
+    expect(typeof mod.planChunks).toBe('function')
+    // Pure serialization works with no globals.
+    expect(mod.segmentsToSRT([{ start: 0, end: 1, text: 'hi' }])).toContain('00:00:00,000 --> 00:00:01,000')
   })
 
   it('ffmetadata helper module is pure/SSG-safe at import and exposes its API', async () => {

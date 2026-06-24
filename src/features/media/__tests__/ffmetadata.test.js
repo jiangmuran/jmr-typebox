@@ -5,7 +5,7 @@ import {
   parseFFMetadata, serializeFFMetadata,
   canonicalTagKey, isCommonTagKey, splitTags, buildEntries,
   buildWriteMetadataArgs, buildStripMetadataArgs,
-  parseDurationInfo, parseAudioStreamInfo, hasAttachedPicture, hasLimitedTagSupport,
+  parseDurationInfo, parseAudioStreamInfo, parseVideoStreamInfo, hasAttachedPicture, hasLimitedTagSupport,
   COMMON_TAG_KEYS,
 } from '../ffmetadata'
 
@@ -261,6 +261,25 @@ describe('ffmetadata — technical info parsing (view-only)', () => {
   it('hasAttachedPicture detects an embedded cover stream', () => {
     expect(hasAttachedPicture(log)).toBe(true)
     expect(hasAttachedPicture("  Stream #0:0: Audio: mp3, 44100 Hz, stereo")).toBe(false)
+  })
+
+  it('parseVideoStreamInfo reads resolution / codec / fps from a real video stream', () => {
+    const vlog = [
+      "Input #0, mov,mp4,m4a, from 'input.mp4':",
+      '  Duration: 00:00:30.00, start: 0.000000, bitrate: 4500 kb/s',
+      '  Stream #0:0(und): Video: h264 (High), yuv420p, 1920x1080 [SAR 1:1 DAR 16:9], 4000 kb/s, 30 fps, 30 tbr',
+      '  Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo, fltp, 192 kb/s',
+    ].join('\n')
+    const v = parseVideoStreamInfo(vlog)
+    expect(v.vcodec).toBe('h264')
+    expect(v.width).toBe(1920)
+    expect(v.height).toBe(1080)
+    expect(v.fps).toBe(30)
+  })
+
+  it('parseVideoStreamInfo ignores an attached-pic (cover) "video" stream', () => {
+    // The audio-file cover art is a Video stream marked "attached pic" — not a real video.
+    expect(parseVideoStreamInfo(log)).toEqual({})
   })
 
   it('hasLimitedTagSupport flags containers with a fixed tag set', () => {

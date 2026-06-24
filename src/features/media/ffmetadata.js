@@ -348,6 +348,26 @@ export function parseAudioStreamInfo(logText) {
   return out
 }
 
+// Parse the first VIDEO "Stream #…: Video: codec, yuv420p, 1920x1080, …, 30 fps" line into
+// { vcodec, width, height, fps }. Returns {} if there's no (non-attached-pic) video stream. Used so
+// the metadata tool can show resolution/codec/fps for a real video file (not just audio).
+export function parseVideoStreamInfo(logText) {
+  const text = String(logText || '')
+  const line = text.split('\n').find((l) => /Stream #\d+:\d+.*:\s*Video:/.test(l) && !/attached pic/i.test(l))
+  if (!line) return {}
+  const body = line.slice(line.indexOf('Video:') + 'Video:'.length).trim()
+  const parts = body.split(',').map((s) => s.trim())
+  const out = {}
+  if (parts[0]) out.vcodec = parts[0].split(/\s+/)[0]
+  for (const p of parts) {
+    const dim = /(\d{2,5})x(\d{2,5})/.exec(p)
+    if (dim && !out.width) { out.width = parseInt(dim[1], 10); out.height = parseInt(dim[2], 10); continue }
+    const fps = /^([\d.]+)\s*fps$/i.exec(p)
+    if (fps) { out.fps = Math.round(parseFloat(fps[1])); continue }
+  }
+  return out
+}
+
 // Has the input got an embedded cover/attached picture? (a Video stream marked "attached pic", or
 // any "Stream …: Video:" line in an audio container's log).
 export function hasAttachedPicture(logText) {

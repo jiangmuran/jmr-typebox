@@ -18,16 +18,22 @@ const Converter = () => import('./MediaPage.vue')
 const Subtitle = () => import('./SubtitlePage.vue')
 const Player = () => import('./PlayerPage.vue')
 const Metadata = () => import('./MetadataPage.vue')
+const Compress = () => import('./CompressPage.vue')
+const Transcribe = () => import('./TranscribePage.vue')
 
 export default {
   components: {
-    // Universal converter (generic landing page).
+    // Universal converter (generic landing page) — audio + VIDEO conversion / extraction.
     '/media/convert': Converter,
     // Audio editor view — the same workbench, opened on its Edit tab (deep-linked sub-tool).
     '/media/edit': Converter,
+    // Compression tool — shrink a video (CRF/scale/fps/codec) or audio (bitrate), with size estimate.
+    '/media/compress': Compress,
     // Subtitle tool.
     '/media/subtitles': Subtitle,
-    // Metadata editor — view & edit ALL tags + cover art of any audio file (no re-encode export).
+    // Online ASR transcription — audio/video → text + SRT/VTT (via the configured provider).
+    '/media/transcribe': Transcribe,
+    // Metadata editor — view & edit ALL tags + cover art of any audio/video file (no re-encode export).
     '/media/metadata': Metadata,
     // Music player mode — local/uploaded audio: library, playlists, lyrics, metadata, MediaSession.
     '/media/player': Player,
@@ -95,8 +101,8 @@ export default {
       'media.adv.failed': 'Command failed — check your ffmpeg arguments',
 
       // Converter page header
-      'media.conv.title': 'Audio Workbench',
-      'media.conv.sub': 'Convert, trim, fade, normalize, and visualize audio — or extract audio from video. Powered by ffmpeg, fully in your browser. Private, nothing uploaded.',
+      'media.conv.title': 'Audio & Video Workbench',
+      'media.conv.sub': 'Convert audio and video, change resolution, trim, fade, normalize — or extract audio from video and even export a GIF. Powered by ffmpeg, fully in your browser. Private, nothing uploaded.',
 
       // Subtitle tool
       'media.sub.title': 'Subtitle Tool',
@@ -117,29 +123,112 @@ export default {
       'media.sub.needSub': 'Please choose a subtitle file (.srt / .ass / .vtt)',
 
       // ⌘K commands
-      'media.cmd.convert': 'Convert audio / extract from video',
+      'media.cmd.convert': 'Convert audio & video / extract audio',
+      'media.cmd.compress': 'Compress video or audio',
       'media.cmd.subtitles': 'Add subtitles to video',
+      'media.cmd.transcribe': 'Transcribe audio / video to text',
       'media.cmd.metadata': 'Edit audio metadata / tags',
       'media.cmd.player': 'Music player (play your own audio)',
 
-      // Audio hub sub-nav
+      // Audio/Video hub sub-nav
       'media.nav.convert': 'Convert',
+      'media.nav.compress': 'Compress',
       'media.nav.edit': 'Edit',
       'media.nav.subtitles': 'Subtitles',
+      'media.nav.transcribe': 'Transcribe',
       'media.nav.metadata': 'Metadata',
       'media.nav.player': 'Player',
 
+      // Video output (converter)
+      'media.outputKind': 'Output',
+      'media.kindVideo': 'Video',
+      'media.kindAudio': 'Audio only',
+      'media.gifNote': 'Exports a silent animated GIF (lower fps + smaller size keep it light).',
+
+      // ===== Compression tool =====
+      'media.cmp.title': 'Compress Audio & Video',
+      'media.cmp.sub': 'Shrink a video (resolution, quality, frame rate, codec) or audio (bitrate) with a live size estimate. Runs in your browser with ffmpeg — private, nothing uploaded.',
+      'media.cmp.drop': 'Drop a video or audio file here',
+      'media.cmp.browse': 'Click, drop, or paste · video & audio supported',
+      'media.cmp.quality': 'Quality',
+      'media.cmp.better': 'Better quality',
+      'media.cmp.smaller': 'Smaller file',
+      'media.cmp.qHigh': 'High quality',
+      'media.cmp.qBalanced': 'Balanced',
+      'media.cmp.qSmall': 'Small',
+      'media.cmp.qTiny': 'Tiny',
+      'media.cmp.resolution': 'Resolution',
+      'media.cmp.codec': 'Codec',
+      'media.cmp.fps': 'Frame rate',
+      'media.cmp.audioBitrate': 'Audio bitrate',
+      'media.cmp.maxBitrate': 'Max bitrate',
+      'media.cmp.maxBitratePh': 'e.g. 2000k',
+      'media.cmp.maxBitrateHint': 'Optional hard ceiling on the video bitrate (kbps). Leave blank to let quality (CRF) decide.',
+      'media.cmp.audioHint': 'Re-encodes to MP3 at the chosen bitrate. Lower bitrate = smaller file.',
+      'media.cmp.original': 'Original',
+      'media.cmp.estimate': 'Estimated',
+      'media.cmp.estimateNote': 'An estimate — the real size is shown after compressing.',
+      'media.cmp.estimatePending': 'Play or load the file to read its length for an estimate.',
+      'media.cmp.run': 'Compress',
+      'media.cmp.working': 'Compressing…',
+      'media.cmp.done': 'Compressed',
+      'media.cmp.failed': 'Compression failed',
+
+      // ===== Transcription (ASR) tool =====
+      'media.asr.title': 'Transcribe Audio & Video',
+      'media.asr.sub': 'Turn speech in an audio or video file into text with timestamps, then export TXT, SRT, or VTT. Uses the speech-to-text model configured in Settings.',
+      'media.asr.drop': 'Drop an audio or video file here',
+      'media.asr.browse': 'Click, drop, or paste · audio & video supported',
+      'media.asr.videoNote': 'video — audio will be extracted',
+      'media.asr.usingModel': 'Using model',
+      'media.asr.run': 'Transcribe',
+      'media.asr.runHint': 'Audio is sent to your configured provider for transcription. Video and large files are downsampled first.',
+      'media.asr.cancel': 'Cancel',
+      'media.asr.canceled': 'Canceled.',
+      'media.asr.done': 'Transcription complete',
+      'media.asr.again': 'Transcribe another file',
+      // Stages
+      'media.asr.stageExtract': 'Extracting audio…',
+      'media.asr.stageTranscribe': 'Transcribing…',
+      'media.asr.stageTranscribeN': 'Transcribing chunk {i} of {n}…',
+      'media.asr.stageStitch': 'Assembling transcript…',
+      // Log lines
+      'media.asr.logChunking': 'Long audio — splitting into {n} chunks of ~{win} min and stitching with time offsets.',
+      'media.asr.logExtract': 'Extracting + downsampling audio (16 kHz mono) for upload…',
+      'media.asr.logExtractChunk': 'Extracting chunk {i} of {n}…',
+      // Result
+      'media.asr.transcript': 'Transcript',
+      'media.asr.segments': 'segments',
+      'media.asr.words': 'words',
+      'media.asr.copy': 'Copy',
+      'media.asr.copied': 'Copied to clipboard',
+      'media.asr.export': 'Export {fmt}',
+      // Errors
+      'media.asr.errNotConfigured': 'Transcription is not configured. Open Settings → AI and set an ASR model.',
+      'media.asr.errTooBig': 'The audio is too large for the provider. Try a shorter clip — long files are auto-chunked, but a single window may still exceed the limit.',
+      'media.asr.errNetwork': 'Could not reach the transcription service. Check your connection (and that the backend is enabled, or turn on "Call provider directly").',
+      'media.asr.errProvider': 'The transcription provider returned an error',
+      'media.asr.errEmpty': 'No speech was transcribed from this file.',
+      'media.asr.retry': 'Retry',
+      // Empty state
+      'media.asr.emptyTitle': 'Transcription needs a speech-to-text model',
+      'media.asr.emptySub': 'This tool sends audio to an OpenAI-compatible /audio/transcriptions endpoint (e.g. whisper-1) and renders the result with timestamps.',
+      'media.asr.emptySteps': 'Open Settings (gear icon, top right) → AI, then set an ASR model (and a key/endpoint if different from chat).',
+
       // ===== Metadata editor =====
-      'media.meta.title': 'Audio Metadata Editor',
-      'media.meta.sub': 'View and edit every tag in your audio file — title, artist, album, cover art, and any custom field. Reads all metadata with ffmpeg and exports without re-encoding the audio. Private, nothing uploaded.',
-      'media.meta.drop': 'Drop an audio file here',
-      'media.meta.browse': 'Click, drop, or paste · MP3, FLAC, M4A, OGG, Opus, WAV…',
+      'media.meta.title': 'Audio & Video Metadata Editor',
+      'media.meta.sub': 'View and edit every tag in your audio or video file — title, artist, album, cover art, and any custom field. Reads all metadata with ffmpeg and exports without re-encoding. Private, nothing uploaded.',
+      'media.meta.drop': 'Drop an audio or video file here',
+      'media.meta.browse': 'Click, drop, or paste · MP3, FLAC, M4A, MP4, MOV, MKV…',
       'media.meta.reading': 'Reading metadata…',
       'media.meta.readFailed': 'Could not read this file',
       'media.meta.noTags': 'No metadata tags found in this file.',
       // Technical / stream info
       'media.meta.info': 'File info',
       'media.meta.codec': 'Codec',
+      'media.meta.videoCodec': 'Video codec',
+      'media.meta.resolution': 'Resolution',
+      'media.meta.fps': 'Frame rate',
       'media.meta.duration': 'Duration',
       'media.meta.bitrate': 'Bitrate',
       'media.meta.sampleRate': 'Sample rate',
@@ -328,8 +417,8 @@ export default {
       'media.adv.run': '运行命令',
       'media.adv.failed': '命令执行失败 —— 请检查你的 ffmpeg 参数',
 
-      'media.conv.title': '音频工作台',
-      'media.conv.sub': '转换、裁剪、淡入淡出、响度归一并可视化音频,或从视频中提取音频。由 ffmpeg 驱动,完全在浏览器中处理,私密、绝不上传。',
+      'media.conv.title': '音视频工作台',
+      'media.conv.sub': '转换音频与视频、调整分辨率、裁剪、淡入淡出、响度归一,或从视频提取音频,甚至导出 GIF。由 ffmpeg 驱动,完全在浏览器中处理,私密、绝不上传。',
 
       'media.sub.title': '字幕工具',
       'media.sub.sub': '将字幕烧录进视频,或从 .srt / .ass 文件添加可切换的软字幕轨道。',
@@ -348,29 +437,112 @@ export default {
       'media.sub.needVideo': '请选择一个视频文件',
       'media.sub.needSub': '请选择一个字幕文件(.srt / .ass / .vtt)',
 
-      'media.cmd.convert': '转换音频 / 从视频提取',
+      'media.cmd.convert': '转换音视频 / 提取音频',
+      'media.cmd.compress': '压缩视频或音频',
       'media.cmd.subtitles': '为视频添加字幕',
+      'media.cmd.transcribe': '将音视频转录为文字',
       'media.cmd.metadata': '编辑音频元信息 / 标签',
       'media.cmd.player': '音乐播放器(播放你自己的音频)',
 
-      // 音频中心子导航
+      // 音视频中心子导航
       'media.nav.convert': '转换',
+      'media.nav.compress': '压缩',
       'media.nav.edit': '编辑',
       'media.nav.subtitles': '字幕',
+      'media.nav.transcribe': '转录',
       'media.nav.metadata': '元信息',
       'media.nav.player': '播放器',
 
+      // 视频输出(转换器)
+      'media.outputKind': '输出',
+      'media.kindVideo': '视频',
+      'media.kindAudio': '仅音频',
+      'media.gifNote': '导出为无声的动态 GIF(更低帧率与更小尺寸可让文件更轻)。',
+
+      // ===== 压缩工具 =====
+      'media.cmp.title': '压缩音视频',
+      'media.cmp.sub': '压缩视频(分辨率、画质、帧率、编码)或音频(比特率),并提供实时体积预估。由 ffmpeg 在浏览器中处理,私密、绝不上传。',
+      'media.cmp.drop': '拖入一个视频或音频文件',
+      'media.cmp.browse': '点击、拖入或粘贴 · 支持视频与音频',
+      'media.cmp.quality': '画质',
+      'media.cmp.better': '画质更好',
+      'media.cmp.smaller': '体积更小',
+      'media.cmp.qHigh': '高画质',
+      'media.cmp.qBalanced': '均衡',
+      'media.cmp.qSmall': '较小',
+      'media.cmp.qTiny': '极小',
+      'media.cmp.resolution': '分辨率',
+      'media.cmp.codec': '编码',
+      'media.cmp.fps': '帧率',
+      'media.cmp.audioBitrate': '音频比特率',
+      'media.cmp.maxBitrate': '最大比特率',
+      'media.cmp.maxBitratePh': '例如 2000k',
+      'media.cmp.maxBitrateHint': '可选的视频比特率上限(kbps)。留空则由画质(CRF)决定。',
+      'media.cmp.audioHint': '以所选比特率重新编码为 MP3。比特率越低,文件越小。',
+      'media.cmp.original': '原始',
+      'media.cmp.estimate': '预计',
+      'media.cmp.estimateNote': '这是预估值 —— 压缩后会显示真实体积。',
+      'media.cmp.estimatePending': '播放或载入文件以读取时长来进行预估。',
+      'media.cmp.run': '开始压缩',
+      'media.cmp.working': '压缩中…',
+      'media.cmp.done': '压缩完成',
+      'media.cmp.failed': '压缩失败',
+
+      // ===== 转录(ASR)工具 =====
+      'media.asr.title': '音视频转录',
+      'media.asr.sub': '将音频或视频中的语音转成带时间轴的文字,并可导出 TXT、SRT 或 VTT。使用在「设置」中配置的语音转文字模型。',
+      'media.asr.drop': '拖入一个音频或视频文件',
+      'media.asr.browse': '点击、拖入或粘贴 · 支持音频与视频',
+      'media.asr.videoNote': '视频 —— 将提取音频',
+      'media.asr.usingModel': '使用模型',
+      'media.asr.run': '开始转录',
+      'media.asr.runHint': '音频会被发送到你配置的服务进行转录。视频与较大文件会先被降采样。',
+      'media.asr.cancel': '取消',
+      'media.asr.canceled': '已取消。',
+      'media.asr.done': '转录完成',
+      'media.asr.again': '转录另一个文件',
+      // 阶段
+      'media.asr.stageExtract': '正在提取音频…',
+      'media.asr.stageTranscribe': '正在转录…',
+      'media.asr.stageTranscribeN': '正在转录第 {i} / {n} 段…',
+      'media.asr.stageStitch': '正在拼合文字…',
+      // 日志
+      'media.asr.logChunking': '音频较长 —— 拆分为 {n} 段(每段约 {win} 分钟),并按时间偏移拼合。',
+      'media.asr.logExtract': '正在提取并降采样音频(16 kHz 单声道)以便上传…',
+      'media.asr.logExtractChunk': '正在提取第 {i} / {n} 段…',
+      // 结果
+      'media.asr.transcript': '转录文本',
+      'media.asr.segments': '段',
+      'media.asr.words': '词',
+      'media.asr.copy': '复制',
+      'media.asr.copied': '已复制到剪贴板',
+      'media.asr.export': '导出 {fmt}',
+      // 错误
+      'media.asr.errNotConfigured': '尚未配置转录。请打开「设置 → AI」并设置一个 ASR 模型。',
+      'media.asr.errTooBig': '音频对服务来说过大。请尝试更短的片段 —— 长文件会自动分段,但单段窗口仍可能超出限制。',
+      'media.asr.errNetwork': '无法连接转录服务。请检查网络(以及后端是否已启用,或开启「直接调用服务商」)。',
+      'media.asr.errProvider': '转录服务返回了错误',
+      'media.asr.errEmpty': '未从该文件转录到任何语音。',
+      'media.asr.retry': '重试',
+      // 空状态
+      'media.asr.emptyTitle': '转录需要一个语音转文字模型',
+      'media.asr.emptySub': '此工具会将音频发送到兼容 OpenAI 的 /audio/transcriptions 接口(例如 whisper-1),并将结果按时间轴呈现。',
+      'media.asr.emptySteps': '打开「设置」(右上角齿轮图标)→ AI,然后设置一个 ASR 模型(如与聊天不同,再填写密钥/接口)。',
+
       // ===== 元信息编辑器 =====
-      'media.meta.title': '音频元信息编辑器',
-      'media.meta.sub': '查看并编辑音频文件中的每一个标签 —— 标题、艺术家、专辑、封面以及任意自定义字段。使用 ffmpeg 读取全部元信息,导出时不重新编码音频。私密,绝不上传。',
-      'media.meta.drop': '拖入一个音频文件',
-      'media.meta.browse': '点击、拖入或粘贴 · 支持 MP3、FLAC、M4A、OGG、Opus、WAV…',
+      'media.meta.title': '音视频元信息编辑器',
+      'media.meta.sub': '查看并编辑音频或视频文件中的每一个标签 —— 标题、艺术家、专辑、封面以及任意自定义字段。使用 ffmpeg 读取全部元信息,导出时不重新编码。私密,绝不上传。',
+      'media.meta.drop': '拖入一个音频或视频文件',
+      'media.meta.browse': '点击、拖入或粘贴 · 支持 MP3、FLAC、M4A、MP4、MOV、MKV…',
       'media.meta.reading': '正在读取元信息…',
       'media.meta.readFailed': '无法读取该文件',
       'media.meta.noTags': '该文件中未找到元信息标签。',
       // 技术 / 流信息
       'media.meta.info': '文件信息',
       'media.meta.codec': '编码',
+      'media.meta.videoCodec': '视频编码',
+      'media.meta.resolution': '分辨率',
+      'media.meta.fps': '帧率',
       'media.meta.duration': '时长',
       'media.meta.bitrate': '比特率',
       'media.meta.sampleRate': '采样率',
@@ -530,9 +702,25 @@ export default {
       id: 'media-convert',
       title: 'Media Converter',
       group: 'Audio',
-      keywords: 'audio video convert mp3 wav flac ogg opus aac m4a extract sound 音频 视频 转换 提取 转码',
+      keywords: 'audio video convert mp3 wav flac ogg opus aac m4a mp4 webm mov mkv gif extract sound resolution 音频 视频 转换 提取 转码 分辨率',
       needsBackend: false,
       run: () => go('/media/convert'),
+    })
+    registerCommand({
+      id: 'media-compress',
+      title: 'Compress Video / Audio',
+      group: 'Audio',
+      keywords: 'compress shrink reduce size video audio bitrate crf resolution downscale smaller mp4 压缩 缩小 体积 视频 音频 比特率 分辨率',
+      needsBackend: false,
+      run: () => go('/media/compress'),
+    })
+    registerCommand({
+      id: 'media-transcribe',
+      title: 'Transcribe Audio / Video',
+      group: 'Audio',
+      keywords: 'transcribe transcription speech to text asr whisper subtitles srt vtt captions stt audio video 转录 语音转文字 字幕 听写',
+      needsBackend: false,
+      run: () => go('/media/transcribe'),
     })
     registerCommand({
       id: 'media-subtitles',

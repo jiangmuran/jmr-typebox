@@ -1,10 +1,11 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
+import SendToMenu from '../../components/SendToMenu.vue'
 import { useImageSource } from './useImageSource'
 import { canvasToBlob, downloadBlob, copyImageToClipboard } from './canvasUtils'
 import { pixelate, boxBlur, normalizeRect } from './redact'
@@ -15,6 +16,21 @@ const { t } = useI18n()
 const { showToast } = useToast()
 
 const src = useImageSource(onImageLoaded)
+// Toast when an image arrived from another tool's "Send to →".
+watch(src.received, v => { if (v) showToast(t('handoff.received')) })
+
+// A current PNG blob of the edited canvas, refreshed (debounced) after each committed change, so
+// "Send to →" can hand off the live edit without re-encoding on every stroke.
+const resultBlob = ref(null)
+let blobTimer = null
+function scheduleResultBlob() {
+  clearTimeout(blobTimer)
+  blobTimer = setTimeout(async () => {
+    const c = canvasRef.value
+    if (!c || !src.image.value) { resultBlob.value = null; return }
+    try { resultBlob.value = await canvasToBlob(c, 'image/png') } catch { /* keep previous */ }
+  }, 200)
+}
 
 const canvasRef = ref(null)       // committed bitmap (base + baked annotations)
 const overlayRef = ref(null)      // transient stroke/marquee preview
@@ -87,6 +103,7 @@ function pushSnapshot() {
   undoStack.value.push(c.toDataURL('image/png'))
   if (undoStack.value.length > 40) undoStack.value.shift()
   redoStack.value = []
+  scheduleResultBlob()
 }
 
 function restore(dataUrl) {
@@ -96,6 +113,7 @@ function restore(dataUrl) {
       const c = canvasRef.value
       ctx.clearRect(0, 0, c.width, c.height)
       ctx.drawImage(img, 0, 0)
+      scheduleResultBlob()
       resolve()
     }
     img.src = dataUrl
@@ -278,6 +296,7 @@ function reset() {
   cancelTextBox()
   undoStack.value = []
   redoStack.value = []
+  resultBlob.value = null
   src.reset()
 }
 
@@ -399,6 +418,7 @@ const hintText = computed(() =>
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>
           {{ t('img2.copy') }}
         </button>
+        <SendToMenu :payload="resultBlob" kind="image" from="/image/edit" />
       </div>
     </div>
   </ImageShell>

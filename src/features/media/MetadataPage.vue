@@ -66,6 +66,7 @@ const runtimeCached = ref(false)
 const result = ref(null)           // { blob, url, name, size, stripped }
 
 const fileExt = computed(() => extOf(media.name.value) || 'mp3')
+const isVid = computed(() => media.file.value && isVideoInput(media.name.value, media.file.value.type))
 
 // Common fields to render: only the ones present OR the universally-useful core, so the form is
 // helpful without being overwhelming. We always show the core few; others appear if they have a value.
@@ -281,6 +282,10 @@ const infoRows = computed(() => {
   const i = info.value || {}
   const rows = []
   rows.push({ label: t('media.meta.format'), value: (fileExt.value || '').toUpperCase() })
+  // Video stream info (only present for real video files; audio files skip these).
+  if (i.vcodec) rows.push({ label: t('media.meta.videoCodec'), value: i.vcodec.toUpperCase() })
+  if (i.width && i.height) rows.push({ label: t('media.meta.resolution'), value: `${i.width}×${i.height}` })
+  if (i.fps) rows.push({ label: t('media.meta.fps'), value: `${i.fps} fps` })
   if (i.codec) rows.push({ label: t('media.meta.codec'), value: i.codec.toUpperCase() })
   if (i.durationSec) rows.push({ label: t('media.meta.duration'), value: formatDuration(i.durationSec) })
   if (i.bitrateKbps) rows.push({ label: t('media.meta.bitrate'), value: `${i.bitrateKbps} kb/s` })
@@ -309,7 +314,7 @@ const infoRows = computed(() => {
             :title="t('media.meta.drop')"
             :hint="t('media.meta.browse')"
             :drag-over="media.dragOver.value"
-            icon="audio"
+            icon="video"
             @pick="pickFile"
             @drop="onDrop"
             @dragover="media.onDragOver"
@@ -326,7 +331,7 @@ const infoRows = computed(() => {
                 </div>
                 <button class="link-btn" :disabled="busy || reading" @click="resetFile">{{ t('media.change') }}</button>
               </div>
-              <audio class="player" :src="media.url.value" controls preload="metadata"></audio>
+              <component :is="isVid ? 'video' : 'audio'" class="player" :class="{ video: isVid }" :src="media.url.value" controls preload="metadata" />
             </div>
 
             <!-- Reading state -->
@@ -444,7 +449,7 @@ const infoRows = computed(() => {
                     <span>{{ t('media.meta.after') }} {{ formatSize(result.size) }}</span>
                   </span>
                 </div>
-                <audio class="player" :src="result.url" controls preload="metadata"></audio>
+                <component :is="isVid ? 'video' : 'audio'" class="player" :class="{ video: isVid }" :src="result.url" controls preload="metadata" />
                 <button class="download-btn" @click="download">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 13h10"/></svg>
                   {{ t('media.meta.download') }}
@@ -480,6 +485,7 @@ const infoRows = computed(() => {
 .link-btn:hover:not(:disabled) { color: var(--text); }
 .link-btn:disabled { opacity: 0.5; cursor: default; }
 .player { width: 100%; height: 40px; }
+.player.video { height: auto; max-height: 260px; border-radius: 8px; background: #000; }
 
 /* Reading */
 .reading { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-secondary); padding: 4px 2px; }

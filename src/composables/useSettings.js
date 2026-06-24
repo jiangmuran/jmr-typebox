@@ -30,6 +30,14 @@ export const DEFAULT_SETTINGS = {
   // locally only). https://github.com/jiangmuran/user_files
   imageHostUrl: '',         // '' = built-in proxy; otherwise a direct upload endpoint
   imageHostKey: '',         // Bearer key for a custom host (local only; password field)
+  // ASR / speech-to-text (OpenAI /audio/transcriptions-compatible). asrModel '' = transcription
+  // disabled. Empty base/key reuse the AI provider's (aiBaseUrl/aiKey); set them to use a DIFFERENT
+  // provider for ASR than for chat. Routed through the same-origin /api/asr proxy (gated on
+  // backendEnabled) unless asrDirect is on.
+  asrBaseUrl: '',
+  asrKey: '',
+  asrModel: '',             // e.g. 'whisper-1' | 'whisper-large-v3'
+  asrDirect: false,         // false = via /api/asr proxy (beats CORS); true = call provider directly
 }
 
 function hydrate() {

@@ -1,10 +1,12 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
+import { useHandoff } from '../../composables/useHandoff'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
+import SendToMenu from '../../components/SendToMenu.vue'
 import {
   loadImageFromBlob, drawToCanvas, encodeCanvas, downloadBlob, copyImageToClipboard,
   pickImageFiles, imageFilesFromEvent, imageFileFromEvent, supportsOutputMime,
@@ -14,10 +16,11 @@ import { formatSize, withExtension, mimeForFormat, BASE_FORMATS } from './imageH
 const { meta: m } = useRouteHead()
 const { t } = useI18n()
 const { showToast } = useToast()
+const handoff = useHandoff()
 
 const format = ref('png')
 const quality = ref(90)
-const items = ref([])        // [{ id, name, size, url, image, w, h }]
+const items = ref([])        // [{ id, name, size, url, image, w, h, outBlob }]
 const formats = ref([...BASE_FORMATS])
 const dragOver = ref(false)
 const busy = ref(false)
@@ -27,7 +30,27 @@ onMounted(async () => {
   window.addEventListener('paste', onPaste)
   // Feature-detect AVIF support and append it if encodable.
   if (await supportsOutputMime('image/avif')) formats.value = [...BASE_FORMATS, 'avif']
+  // Pick up a cross-module "send to" image, if one is staged.
+  const h = handoff.take('image')
+  if (h?.payload) {
+    let f = h.payload
+    if (h.name && !f.name) { try { f = new File([f], h.name, { type: f.type }) } catch { f.name = h.name } }
+    if (f.type?.startsWith('image/')) { await addFiles([f]); showToast(t('handoff.received')) }
+  }
 })
+
+// Keep a current converted blob per item (debounced) so each row's "Send to →" can hand off its
+// result in the chosen format without re-encoding on demand.
+let outTimer = null
+function scheduleOutBlobs() {
+  clearTimeout(outTimer)
+  outTimer = setTimeout(async () => {
+    for (const item of items.value) {
+      try { const enc = await encodeItem(item); item.outBlob = enc?.blob || null } catch { item.outBlob = null }
+    }
+  }, 220)
+}
+watch([format, quality, () => items.value.length], scheduleOutBlobs)
 onBeforeUnmount(() => {
   window.removeEventListener('paste', onPaste)
   items.value.forEach(i => URL.revokeObjectURL(i.url))
@@ -41,6 +64,7 @@ async function addFiles(files) {
       items.value.push({
         id: nextId++, name: f.name || 'image', size: f.size || 0,
         url: URL.createObjectURL(f), image, w: image.naturalWidth, h: image.naturalHeight,
+        outBlob: null,
       })
     } catch { /* skip undecodable */ }
   }
@@ -151,6 +175,7 @@ const isLossyFmt = (f) => mimeForFormat(f) !== 'image/png'
           <button class="icon-btn" :title="t('img2.remove')" @click="removeItem(item.id)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
           </button>
+          <SendToMenu :payload="item.outBlob" kind="image" from="/image/convert" class="row-sendto" />
         </div>
       </div>
 
@@ -179,3 +204,16 @@ const isLossyFmt = (f) => mimeForFormat(f) !== 'image/png'
     </div>
   </ImageShell>
 </template>
+
+<style scoped>
+/* The "Send to →" control rides at the end of each file row; let rows wrap so it drops to its own
+   line on narrow screens instead of overflowing. The send button shrinks to an icon on phones. */
+.file-row { flex-wrap: wrap; }
+.row-sendto { margin-left: auto; }
+.row-sendto :deep(.sendto-btn) { padding: 6px 10px; }
+@media (max-width: 480px) {
+  .row-sendto { margin-left: 0; }
+  .row-sendto :deep(.sendto-btn span) { display: none; }
+  .row-sendto :deep(.sendto-btn) { padding: 8px; }
+}
+</style>

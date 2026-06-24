@@ -84,10 +84,10 @@ export const ROUTE_META = {
   // Powered by ffmpeg.wasm (the ~31MB core loads from the official CDN on first use). All routes
   // render the universal converter / subtitle tool; the converter prefills its format from the path.
   '/media/convert': {
-    title: 'Audio & Video Converter — MP3, WAV, FLAC, OGG — TypeBox',
-    description: 'Convert audio between MP3, WAV, FLAC, OGG, Opus, AAC, and M4A — or extract audio from MP4/MOV/WebM/MKV video. Runs in your browser with ffmpeg, private and no upload.',
+    title: 'Audio & Video Converter — MP3, WAV, MP4, WebM, GIF — TypeBox',
+    description: 'Convert audio (MP3, WAV, FLAC, OGG, Opus, AAC, M4A) and video (MP4, WebM, MOV, MKV, GIF) — change resolution, or extract audio from video. Runs in your browser with ffmpeg, private and no upload.',
     h1: 'Media Converter',
-    keywords: 'audio converter, video to audio, extract audio, mp3, wav, flac, ogg, opus, aac, m4a, 音频转换, 视频提取音频',
+    keywords: 'audio converter, video converter, convert mp4, video to gif, video to audio, extract audio, change resolution, mp3, wav, flac, ogg, opus, aac, m4a, webm, mov, mkv, 音频转换, 视频转换, 视频提取音频',
   },
   '/media/subtitles': {
     title: 'Add Subtitles to Video — Burn or Mux SRT/ASS — TypeBox',
@@ -106,10 +106,10 @@ export const ROUTE_META = {
   // Audio METADATA editor — view AND edit every format-level tag (read via ffmpeg's ffmetadata dump),
   // common + custom keys, cover art, and stream/technical info. Export without re-encoding (-c copy).
   '/media/metadata': {
-    title: 'Audio Metadata Editor — Edit ID3 / Vorbis / MP4 Tags — TypeBox',
-    description: 'View and edit ALL metadata of any audio file (MP3, FLAC, M4A, OGG, Opus, WAV) — title, artist, album, cover art, and any custom tag. Exports without re-encoding the audio. Private, in-browser, nothing uploaded.',
-    h1: 'Audio Metadata Editor',
-    keywords: 'audio metadata editor, edit id3 tags, mp3 tag editor, flac tags, vorbis comments, m4a tags, cover art, album art, strip metadata, 音频元信息, 标签编辑, 元数据',
+    title: 'Audio & Video Metadata Editor — Edit ID3 / MP4 Tags — TypeBox',
+    description: 'View and edit ALL metadata of any audio or video file (MP3, FLAC, M4A, MP4, MOV, MKV) — title, artist, album, cover art, resolution, and any custom tag. Exports without re-encoding. Private, in-browser, nothing uploaded.',
+    h1: 'Audio & Video Metadata Editor',
+    keywords: 'audio metadata editor, video metadata, edit id3 tags, mp3 tag editor, mp4 tags, flac tags, vorbis comments, m4a tags, cover art, album art, strip metadata, 音视频元信息, 标签编辑, 元数据',
   },
   // Music PLAYER mode — a private, offline player for audio you own/upload. Library + playlists in
   // IndexedDB, ID3 metadata, synced .lrc lyrics, waveform seek, MediaSession lock-screen controls.
@@ -118,6 +118,20 @@ export const ROUTE_META = {
     description: 'A private, offline music player for files you own: playlists saved in your browser, ID3 tags, synced .lrc lyrics, waveform seek, and lock-screen controls. Nothing is uploaded — local files only.',
     h1: 'Music Player',
     keywords: 'music player, local music player, offline player, lrc lyrics, synced lyrics, id3 tags, playlist, waveform, 音乐播放器, 本地播放器, 歌词',
+  },
+  // Compression tool — shrink a video (CRF/scale/fps/codec) or audio (bitrate), in-browser.
+  '/media/compress': {
+    title: 'Compress Video & Audio Online — Smaller MP4/MP3 — TypeBox',
+    description: 'Compress a video (resolution, quality/CRF, frame rate, H.264/VP9, audio bitrate) or audio (bitrate) with a live size estimate. In your browser with ffmpeg — private, nothing uploaded.',
+    h1: 'Compress Audio & Video',
+    keywords: 'compress video, compress audio, reduce video size, shrink mp4, video compressor, lower bitrate, crf, downscale resolution, 压缩视频, 压缩音频, 视频压缩, 缩小体积',
+  },
+  // Online ASR transcription — audio/video → text + SRT/VTT via a configured speech-to-text model.
+  '/media/transcribe': {
+    title: 'Transcribe Audio & Video to Text — SRT / VTT — TypeBox',
+    description: 'Transcribe speech from an audio or video file into text with timestamps and export TXT, SRT, or VTT. Uses your configured OpenAI-compatible speech-to-text model; long files are auto-chunked.',
+    h1: 'Transcribe Audio & Video',
+    keywords: 'transcribe audio, transcribe video, speech to text, audio to text, video to srt, generate subtitles, whisper, asr, captions, vtt, 转录, 语音转文字, 视频转字幕, 听写',
   },
   '/media/mp3-to-wav': {
     title: 'MP3 to WAV Converter — TypeBox',

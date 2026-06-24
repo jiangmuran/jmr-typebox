@@ -15,23 +15,33 @@ import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import { useMediaFile } from './useMediaFile'
 import { useMediaPool } from './useMediaPool'
+import { useHandoff } from '../../composables/useHandoff'
 import MediaDropZone from './MediaDropZone.vue'
 import MediaWaveform from './MediaWaveform.vue'
+import SendToMenu from '../../components/SendToMenu.vue'
 import {
   converterForRoute, buildOutputNameWithSuffix, isLossyFormat, isVideoInput, isMediaInput,
   formatSize, formatDuration, clampNum, AUDIO_FORMATS, AUDIO_OUTPUT_FORMATS, BITRATE_PRESETS,
-  DEFAULT_BITRATE, audioFormatDef,
+  DEFAULT_BITRATE, audioFormatDef, VIDEO_FORMATS, VIDEO_OUTPUT_FORMATS, VIDEO_SCALES, videoFormatDef,
 } from './mediaHelpers'
 
 const route = useRoute()
 const { t } = useI18n()
 const { showToast } = useToast()
 const pool = useMediaPool()
+const handoff = useHandoff()
 
 // Optional per-route preset (e.g. /media/mp4-to-mp3 prefills mp4→mp3); the universal /media/convert
 // route just defaults to mp3.
 const preset = computed(() => converterForRoute(route.meta?.path || route.path))
 const outFmt = ref(preset.value?.output || 'mp3')
+
+// Output KIND for a video input: 'audio' (extract — the original behavior) or 'video' (transcode to
+// another container). Audio inputs are always 'audio'. The format picker swaps catalogs by kind.
+const outKind = ref('audio')         // 'audio' | 'video'
+const videoFmt = ref('mp4')          // chosen video container when outKind==='video'
+const videoScale = ref('')           // '' = keep source; else target height
+const videoCrf = ref(23)             // visual quality for video output
 
 const bitrate = ref(DEFAULT_BITRATE)
 const sampleRate = ref('') // '' = keep source
@@ -78,8 +88,12 @@ const media = useMediaFile({
 
 const lossyOut = computed(() => isLossyFormat(outFmt.value))
 const inputIsVideo = computed(() => media.file.value && isVideoInput(media.name.value, media.file.value.type))
-const extracting = computed(() => inputIsVideo.value) // video input → we extract/strip to audio
+// Video → audio extraction happens only when the chosen output kind is audio.
+const extracting = computed(() => inputIsVideo.value && (tab.value !== 'convert' || outKind.value === 'audio'))
+// Are we producing a VIDEO file? (only possible from a video input, on the Convert tab, kind=video)
+const videoOut = computed(() => inputIsVideo.value && tab.value === 'convert' && outKind.value === 'video')
 const outDef = computed(() => audioFormatDef(outFmt.value) || {})
+const videoOutHasAudio = computed(() => !!videoFormatDef(videoFmt.value)?.hasAudio)
 
 // Effective duration for fade/trim math: prefer the decoded waveform duration, else player metadata.
 const effDuration = computed(() => wfDuration.value || 0)
@@ -94,6 +108,9 @@ const hasEdits = computed(() =>
 )
 
 const outputName = computed(() => {
+  if (videoOut.value) {
+    return buildOutputNameWithSuffix(media.name.value || 'video', videoFmt.value, '-converted')
+  }
   const suffix = tab.value === 'edit' && hasEdits.value ? '-edited' : (extracting.value ? '-audio' : '')
   return buildOutputNameWithSuffix(media.name.value || 'audio', outFmt.value, suffix)
 })
@@ -108,6 +125,13 @@ onMounted(async () => {
     pool.takePending()
     media.set(pending.file)
     if (pending.tab === 'edit') tab.value = 'edit'
+  }
+  // Cross-module handoff (Send to → Convert from compress/transcribe/etc).
+  const taken = handoff.take(['av', 'audio', 'video'])
+  if (taken?.payload) {
+    const f = taken.payload instanceof File ? taken.payload : new File([taken.payload], taken.name || 'media', { type: taken.payload?.type || '' })
+    media.set(f)
+    showToast(t('handoff.received'))
   }
   const { onEngineEvent, isRuntimeCached } = await import('./ffmpegRunner')
   unsubEngine = onEngineEvent((e) => {
@@ -138,6 +162,8 @@ watch(() => media.file.value, async (f) => {
   peaks.value = null
   wfDuration.value = 0
   playRatio.value = 0
+  // A video defaults to video→video conversion (most expected); audio stays audio.
+  outKind.value = (f && isVideoInput(f.name, f.type)) ? 'video' : 'audio'
   if (!f) return
   wfLoading.value = true
   try {
@@ -210,14 +236,16 @@ async function beforeRun() {
 }
 function afterRun() { busy.value = false; phase.value = '' }
 
-function setResult(blob, name) {
-  result.value = { blob, url: URL.createObjectURL(blob), name, size: blob.size, isVideo: false }
+function setResult(blob, name, isVideo = false) {
+  result.value = { blob, url: URL.createObjectURL(blob), name, size: blob.size, isVideo }
   progress.value = 1
   showToast(t('media.done'))
 }
 
 async function runConvert() {
   if (!media.file.value || busy.value) return
+  // VIDEO → VIDEO transcode path.
+  if (videoOut.value) return runVideoConvert()
   await beforeRun()
   try {
     const { convertAudio } = await import('./audioRunner')
@@ -234,6 +262,27 @@ async function runConvert() {
     setResult(blob, outputName.value)
   } catch (err) {
     console.error('[media] conversion failed:', err)
+    showToast(t('media.failed'))
+  } finally { afterRun() }
+}
+
+async function runVideoConvert() {
+  await beforeRun()
+  try {
+    const { convertVideo } = await import('./audioRunner')
+    const blob = await convertVideo(media.file.value, {
+      outputFormat: videoFmt.value,
+      options: {
+        height: videoScale.value ? parseInt(videoScale.value, 10) : undefined,
+        crf: Number(videoCrf.value),
+        audioBitrate: bitrate.value,
+        durationSec: effDuration.value || undefined,
+      },
+      onProgress,
+    })
+    setResult(blob, outputName.value, videoFmt.value !== 'gif')
+  } catch (err) {
+    console.error('[media] video conversion failed:', err)
     showToast(t('media.failed'))
   } finally { afterRun() }
 }
@@ -295,6 +344,10 @@ function download() {
   import('./mediaDom').then(({ downloadBlob }) => downloadBlob(result.value.blob, result.value.name))
 }
 
+// "Send to →" handoff for the converted result (video → other media tools; audio → compress/etc).
+const resultFile = computed(() => result.value ? new File([result.value.blob], result.value.name, { type: result.value.blob.type }) : null)
+const resultKind = computed(() => result.value?.isVideo ? 'video' : 'audio')
+
 // Clamp to 0..100 defensively so a bad ratio from the engine can never render nonsense (the old
 // "-604120800%" / ">100%" bug). progress is already 0..1, but we guard the display regardless.
 const progressPct = computed(() => Math.max(0, Math.min(100, Math.round(progress.value * 100))))
@@ -330,7 +383,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
       :title="t('media.drop')"
       :hint="t('media.browse')"
       :drag-over="media.dragOver.value"
-      icon="audio"
+      icon="video"
       @pick="media.openPicker"
       @drop="media.onDrop"
       @dragover="media.onDragOver"
@@ -397,13 +450,16 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
             <span class="result-name">{{ result.name }}</span>
             <span class="result-size">{{ formatSize(result.size) }}</span>
           </div>
-          <audio class="player" :src="result.url" controls preload="metadata"></audio>
+          <video v-if="result.isVideo" class="player video" :src="result.url" controls preload="metadata"></video>
+          <img v-else-if="result.name.endsWith('.gif')" class="player gifimg" :src="result.url" alt="GIF preview" />
+          <audio v-else class="player" :src="result.url" controls preload="metadata"></audio>
           <div class="result-actions">
             <button class="download-btn" @click="download">{{ t('media.download') }}</button>
-            <button class="add-player-btn" @click="addToPlayer('result')">
+            <button v-if="!result.isVideo && !result.name.endsWith('.gif')" class="add-player-btn" @click="addToPlayer('result')">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
               {{ t('media.addToPlayer') }}
             </button>
+            <SendToMenu :payload="resultFile" :kind="resultKind" from="/media/convert" />
           </div>
         </div>
       </section>
@@ -417,31 +473,69 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
         </div>
 
         <div class="card panel">
-          <!-- Output format (shared by convert + edit) -->
-          <div v-if="tab !== 'advanced'" class="control">
-            <label class="control-label">{{ t('media.to') }}</label>
-            <div class="seg seg-wrap">
-              <button
-                v-for="f in AUDIO_OUTPUT_FORMATS"
-                :key="f"
-                :class="{ on: outFmt === f }"
-                :disabled="busy"
-                @click="outFmt = f"
-              >{{ AUDIO_FORMATS[f].label.split(' ')[0] }}</button>
+          <!-- Video input on Convert tab: choose to keep it a VIDEO or extract its AUDIO. -->
+          <div v-if="tab === 'convert' && inputIsVideo" class="control">
+            <label class="control-label">{{ t('media.outputKind') }}</label>
+            <div class="seg">
+              <button :class="{ on: outKind === 'video' }" :disabled="busy" @click="outKind = 'video'">{{ t('media.kindVideo') }}</button>
+              <button :class="{ on: outKind === 'audio' }" :disabled="busy" @click="outKind = 'audio'">{{ t('media.kindAudio') }}</button>
             </div>
           </div>
-          <p v-if="tab !== 'advanced' && extracting" class="note">{{ t('media.extractNote') }}</p>
 
-          <!-- Lossy → bitrate (convert + edit) -->
-          <div v-if="tab !== 'advanced' && lossyOut" class="control">
-            <label class="control-label">{{ t('media.bitrate') }}</label>
-            <select v-model="bitrate" class="select" :disabled="busy">
-              <option v-for="b in BITRATE_PRESETS" :key="b" :value="b">{{ b.replace('k', '') }} kbps</option>
-            </select>
-          </div>
+          <!-- ===== VIDEO output controls (Convert tab, video kind) ===== -->
+          <template v-if="videoOut">
+            <div class="control">
+              <label class="control-label">{{ t('media.to') }}</label>
+              <div class="seg seg-wrap">
+                <button v-for="f in VIDEO_OUTPUT_FORMATS" :key="f" :class="{ on: videoFmt === f }" :disabled="busy" @click="videoFmt = f">{{ VIDEO_FORMATS[f].label }}</button>
+              </div>
+            </div>
+            <div class="control">
+              <label class="control-label">{{ t('media.cmp.resolution') }}</label>
+              <select v-model="videoScale" class="select" :disabled="busy">
+                <option v-for="s in VIDEO_SCALES" :key="s.id" :value="s.id">{{ s.id === '' ? t('media.keep') : s.label }}</option>
+              </select>
+            </div>
+            <div v-if="videoFmt !== 'gif'" class="field">
+              <label class="control-label">{{ t('media.cmp.quality') }} (CRF {{ videoCrf }})</label>
+              <input type="range" v-model.number="videoCrf" min="18" max="34" step="1" :disabled="busy" />
+            </div>
+            <div v-if="videoOutHasAudio" class="control">
+              <label class="control-label">{{ t('media.cmp.audioBitrate') }}</label>
+              <select v-model="bitrate" class="select" :disabled="busy">
+                <option v-for="b in BITRATE_PRESETS" :key="b" :value="b">{{ b.replace('k', '') }} kbps</option>
+              </select>
+            </div>
+            <p v-if="videoFmt === 'gif'" class="note small">{{ t('media.gifNote') }}</p>
+          </template>
 
-          <!-- ===== CONVERT tab: sample rate / channels ===== -->
-          <template v-if="tab === 'convert'">
+          <!-- ===== AUDIO output format (shared by convert-audio + edit) ===== -->
+          <template v-else>
+            <div v-if="tab !== 'advanced'" class="control">
+              <label class="control-label">{{ t('media.to') }}</label>
+              <div class="seg seg-wrap">
+                <button
+                  v-for="f in AUDIO_OUTPUT_FORMATS"
+                  :key="f"
+                  :class="{ on: outFmt === f }"
+                  :disabled="busy"
+                  @click="outFmt = f"
+                >{{ AUDIO_FORMATS[f].label.split(' ')[0] }}</button>
+              </div>
+            </div>
+            <p v-if="tab !== 'advanced' && extracting" class="note">{{ t('media.extractNote') }}</p>
+
+            <!-- Lossy → bitrate (convert + edit) -->
+            <div v-if="tab !== 'advanced' && lossyOut" class="control">
+              <label class="control-label">{{ t('media.bitrate') }}</label>
+              <select v-model="bitrate" class="select" :disabled="busy">
+                <option v-for="b in BITRATE_PRESETS" :key="b" :value="b">{{ b.replace('k', '') }} kbps</option>
+              </select>
+            </div>
+          </template>
+
+          <!-- ===== CONVERT tab (audio output): sample rate / channels ===== -->
+          <template v-if="tab === 'convert' && !videoOut">
             <div class="control">
               <label class="control-label">{{ t('media.sampleRate') }}</label>
               <select v-model="sampleRate" class="select" :disabled="busy">
@@ -668,6 +762,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 .result-size { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 .player { width: 100%; height: 40px; }
 .player.video { height: auto; max-height: 300px; border-radius: 8px; background: #000; }
+.player.gifimg { height: auto; max-height: 300px; border-radius: 8px; object-fit: contain; background: var(--surface-hover); }
 .download-btn { align-self: flex-start; padding: 9px 18px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 13px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: opacity 0.15s; }
 .download-btn:hover { opacity: 0.9; }
 

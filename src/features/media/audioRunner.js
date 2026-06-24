@@ -3,11 +3,12 @@
 // and is always reached through a dynamic import() from event handlers / converter run() calls.
 import {
   buildConvertArgs, buildHardSubArgs, buildSoftSubArgs, buildEditArgs, buildCustomArgs, buildTagArgs,
-  safeInputName, extForFormat, mimeForFormat, normalizeFormat, isVideoInput, extOf,
+  buildVideoConvertArgs, buildVideoCompressArgs, buildAudioCompressArgs, buildAsrExtractArgs,
+  safeInputName, extForFormat, mimeForFormat, normalizeFormat, isVideoInput, isVideoOutputFormat, extOf,
 } from './mediaHelpers'
 import {
   parseFFMetadata, serializeFFMetadata, splitTags, buildWriteMetadataArgs, buildStripMetadataArgs,
-  parseDurationInfo, parseAudioStreamInfo, hasAttachedPicture, hasLimitedTagSupport,
+  parseDurationInfo, parseAudioStreamInfo, parseVideoStreamInfo, hasAttachedPicture, hasLimitedTagSupport,
 } from './ffmetadata'
 import { runFFmpeg, probeMetadata } from './ffmpegRunner'
 
@@ -53,6 +54,106 @@ export async function convertAudio(file, { outputFormat, options = {}, onProgres
     outName,
     outMime: mimeForFormat(fmt),
     durationSec: options.durationSec,
+    onProgress,
+  })
+}
+
+// Convert a VIDEO input into another video container (mp4/webm/mov/mkv/gif) with optional scaling,
+// quality (CRF), fps, and bitrate caps. Re-encodes the video stream.
+//   convertVideo(file, { outputFormat, options:{ height, crf, fps, videoBitrate, audioBitrate, vcodec, durationSec }, onProgress }) -> Blob
+export async function convertVideo(file, { outputFormat, options = {}, onProgress } = {}) {
+  const fmt = normalizeFormat(outputFormat)
+  const inName = safeInputName(file?.name, 'mp4')
+  const outName = `output.${extForFormat(fmt)}`
+
+  const args = buildVideoConvertArgs({
+    input: inName,
+    output: outName,
+    format: fmt,
+    height: options.height,
+    crf: options.crf,
+    fps: options.fps,
+    videoBitrate: options.videoBitrate,
+    audioBitrate: options.audioBitrate,
+    vcodec: options.vcodec,
+  })
+
+  return runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName,
+    outMime: mimeForFormat(fmt),
+    durationSec: options.durationSec,
+    onProgress,
+  })
+}
+
+// Compress a VIDEO or AUDIO file. For video: CRF-driven quality + optional scale/fps/max-bitrate +
+// re-encoded audio. For audio: re-encode to a lossy format at a target bitrate. Output container is
+// mp4 (video) / the chosen audio format. Returns a Blob.
+//   compressMedia(file, { kind, format, options, onProgress }) -> Blob
+//     kind 'video': options { vcodec, crf, height, fps, maxBitrate, audioBitrate, durationSec }
+//     kind 'audio': options { bitrate, channels, sampleRate, durationSec }
+export async function compressMedia(file, { kind, format, options = {}, onProgress } = {}) {
+  const isVideo = kind === 'video'
+  const inName = safeInputName(file?.name, isVideo ? 'mp4' : 'mp3')
+  if (isVideo) {
+    const outFmt = normalizeFormat(format || 'mp4')
+    const outName = `output.${extForFormat(outFmt)}`
+    const args = buildVideoCompressArgs({
+      input: inName,
+      output: outName,
+      vcodec: options.vcodec,
+      crf: options.crf,
+      height: options.height,
+      fps: options.fps,
+      maxBitrate: options.maxBitrate,
+      audioBitrate: options.audioBitrate,
+    })
+    return runFFmpeg({
+      files: [{ name: inName, data: file }],
+      args,
+      outName,
+      outMime: mimeForFormat(outFmt),
+      durationSec: options.durationSec,
+      onProgress,
+    })
+  }
+  // Audio compression.
+  const outFmt = normalizeFormat(format || 'mp3')
+  const outName = `output.${extForFormat(outFmt)}`
+  const args = buildAudioCompressArgs({
+    input: inName,
+    output: outName,
+    format: outFmt,
+    bitrate: options.bitrate,
+    channels: options.channels,
+    sampleRate: options.sampleRate,
+  })
+  return runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName,
+    outMime: mimeForFormat(outFmt),
+    durationSec: options.durationSec,
+    onProgress,
+  })
+}
+
+// Extract + downsample an audio track for ASR upload (mono 16 kHz low-bitrate). Optionally a time
+// window [startSec, durSec) for chunked long-media transcription. Returns a Blob (small mp3/opus).
+//   extractAudioForAsr(file, { format, startSec, durSec, sampleRate, bitrate, durationSec, onProgress }) -> Blob
+export async function extractAudioForAsr(file, { format = 'mp3', startSec, durSec, sampleRate = 16000, bitrate = '48k', durationSec, onProgress } = {}) {
+  const fmt = normalizeFormat(format)
+  const inName = safeInputName(file?.name, isVideoInput(file?.name, file?.type) ? 'mp4' : 'mp3')
+  const outName = `asr.${extForFormat(fmt)}`
+  const args = buildAsrExtractArgs({ input: inName, output: outName, format: fmt, startSec, durSec, sampleRate, bitrate })
+  return runFFmpeg({
+    files: [{ name: inName, data: file }],
+    args,
+    outName,
+    outMime: mimeForFormat(fmt),
+    durationSec: durationSec || durSec,
     onProgress,
   })
 }
@@ -207,6 +308,7 @@ export async function readAllMetadata(file) {
   const info = {
     ...parseDurationInfo(log),
     ...parseAudioStreamInfo(log),
+    ...parseVideoStreamInfo(log), // resolution/codec/fps for real video files (no-op for audio)
     hasCover: hasAttachedPicture(log),
   }
 

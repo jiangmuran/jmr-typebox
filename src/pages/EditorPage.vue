@@ -10,6 +10,7 @@ import { convertersFor } from '../converters/registry'
 import { renderMarkdown } from '../utils/markdown'
 import { prerenderMermaid } from '../utils/mermaid'
 import { useSettings } from '../composables/useSettings'
+import { useHandoff } from '../composables/useHandoff'
 import { buildThemedHtml, THEMES } from '../themes/registry'
 import ThemePicker from '../themes/ThemePicker.vue'
 import { load, save } from '../utils/storage'
@@ -32,6 +33,7 @@ const { showToast } = useToast()
 const { t } = useI18n()
 const { theme } = useTheme()
 const { settings, setSetting } = useSettings()
+const handoff = useHandoff()
 const writingTheme = computed({ get: () => settings.writingTheme, set: v => setSetting('writingTheme', v) })
 const exportTheme = computed({ get: () => settings.exportTheme, set: v => setSetting('exportTheme', v) })
 function exportThemeId() { return (exportTheme.value && exportTheme.value !== 'default') ? exportTheme.value : 'inkwell' }
@@ -343,6 +345,31 @@ function handleNew() {
   nextTick(() => editorRef.value?.focus())
 }
 
+// Cross-module handoff: another tool (e.g. the ASR transcribe tool) can stage a text/markdown
+// payload and route here. Open it as a NEW document tab so existing docs are untouched. Accepts a
+// plain string or a text/markdown Blob/File. One-shot (take() clears the staged payload).
+async function receiveHandoff() {
+  const h = handoff.take('text')
+  if (!h?.payload) return
+  let text = null
+  let name = h.name || ''
+  const p = h.payload
+  if (typeof p === 'string') {
+    text = p
+  } else if (p && typeof p.text === 'function' && /^text\/|markdown/i.test(p.type || '')) {
+    // Blob/File of text or markdown.
+    try { text = await p.text() } catch { text = null }
+    name = name || p.name || ''
+  }
+  if (text == null) return
+  // Strip a file extension from the staged name for the doc title (loadFile names the tab).
+  const title = (name ? name.replace(/\.\w+$/, '') : '') || 'untitled'
+  loadFile(text, title)
+  startDismissed.value = true
+  showToast(t('handoff.received'))
+  nextTick(() => editorRef.value?.focus())
+}
+
 function onKeydown(e) {
   const mod = isMac.value ? e.metaKey : e.ctrlKey
   // Ctrl+Space → continue writing (works on any platform; Ctrl, not Cmd).
@@ -400,6 +427,8 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) zenMode.value = false })
+  // Pick up a text/markdown payload handed off from another module (e.g. an ASR transcript).
+  receiveHandoff()
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)

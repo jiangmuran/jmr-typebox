@@ -25,6 +25,28 @@ export const AUDIO_FORMATS = {
 
 export const AUDIO_OUTPUT_FORMATS = Object.keys(AUDIO_FORMATS)
 
+// Output VIDEO formats the converter can produce. Each knows its container extension, MIME, the
+// default video + audio codecs we use with the single-threaded core, and whether it carries audio
+// (gif is silent). h264/aac in mp4 is the universal default; webm uses vp9/opus; mkv is a flexible
+// container; mov mirrors mp4; gif is an animated still (no audio, palette-based).
+export const VIDEO_FORMATS = {
+  mp4:  { ext: 'mp4',  mime: 'video/mp4',          vcodec: 'libx264', acodec: 'aac',     hasAudio: true,  label: 'MP4' },
+  webm: { ext: 'webm', mime: 'video/webm',         vcodec: 'libvpx-vp9', acodec: 'libopus', hasAudio: true, label: 'WebM' },
+  mov:  { ext: 'mov',  mime: 'video/quicktime',    vcodec: 'libx264', acodec: 'aac',     hasAudio: true,  label: 'MOV' },
+  mkv:  { ext: 'mkv',  mime: 'video/x-matroska',   vcodec: 'libx264', acodec: 'aac',     hasAudio: true,  label: 'MKV' },
+  gif:  { ext: 'gif',  mime: 'image/gif',          vcodec: 'gif',     acodec: null,      hasAudio: false, label: 'GIF' },
+}
+
+export const VIDEO_OUTPUT_FORMATS = Object.keys(VIDEO_FORMATS)
+
+export function videoFormatDef(format) {
+  return VIDEO_FORMATS[normalizeFormat(format)] || null
+}
+
+export function isVideoOutputFormat(format) {
+  return !!videoFormatDef(format)
+}
+
 // Extensions we accept as *input*. ffmpeg decodes far more than this, but the picker/validator
 // uses this list (plus a generic audio/* or video/* MIME check) to give friendly feedback.
 export const AUDIO_INPUT_EXTS = [
@@ -59,11 +81,11 @@ export function audioFormatDef(format) {
 }
 
 export function mimeForFormat(format) {
-  return audioFormatDef(format)?.mime || 'application/octet-stream'
+  return audioFormatDef(format)?.mime || videoFormatDef(format)?.mime || 'application/octet-stream'
 }
 
 export function extForFormat(format) {
-  const def = audioFormatDef(format)
+  const def = audioFormatDef(format) || videoFormatDef(format)
   return def ? def.ext : normalizeFormat(format) || 'bin'
 }
 
@@ -114,6 +136,20 @@ export function normalizeBitrate(b, fallback = DEFAULT_BITRATE) {
   if (!Number.isFinite(n) || n <= 0) return fallback
   // Heuristic: bare numbers below 1000 are kbps, otherwise raw bps.
   return n < 1000 ? `${n}k` : `${n}`
+}
+
+// Normalize a VIDEO bitrate, where values are commonly in the thousands of kbps (e.g. 2000k). A
+// trailing 'k'/'m' is kept; a bare number is always treated as kbps (so '2000' → '2000k', not raw
+// bps). Returns '' for blank/invalid so callers can omit the flag.
+export function normalizeVideoBitrate(b) {
+  const s = String(b ?? '').trim().toLowerCase()
+  if (!s) return ''
+  const m = /^(\d+(?:\.\d+)?)\s*([km]?)$/.exec(s)
+  if (!m) return ''
+  const n = parseFloat(m[1])
+  if (!Number.isFinite(n) || n <= 0) return ''
+  const suffix = m[2] || 'k' // bare number → kbps
+  return `${m[1]}${suffix}`
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +503,227 @@ export function buildCustomArgs({ raw, input = 'input.bin', defaultOutput = 'out
   if (!hasInput) tokens = ['-i', input, ...tokens]
   if (!output) { output = defaultOutput; tokens = [...tokens, output] }
   return { args: tokens, output }
+}
+
+// ---------------------------------------------------------------------------
+// VIDEO conversion + scaling (pure builders — the unit-tested core)
+// ---------------------------------------------------------------------------
+
+// Common output resolutions (target HEIGHT, width auto to preserve aspect). '' = keep source.
+export const VIDEO_SCALES = [
+  { id: '', label: 'Keep source', height: 0 },
+  { id: '2160', label: '2160p (4K)', height: 2160 },
+  { id: '1440', label: '1440p', height: 1440 },
+  { id: '1080', label: '1080p', height: 1080 },
+  { id: '720', label: '720p', height: 720 },
+  { id: '480', label: '480p', height: 480 },
+  { id: '360', label: '360p', height: 360 },
+]
+
+// Build a `scale=` filter value for a target height, keeping the aspect ratio and forcing even
+// dimensions (H.264/VP9 require even width/height). Returns '' when no scaling is requested.
+//   scaleFilter(720) -> 'scale=-2:720'
+export function scaleFilter(height) {
+  const h = Math.round(Number(height) || 0)
+  if (!Number.isFinite(h) || h <= 0) return ''
+  return `scale=-2:${h}`
+}
+
+// Build ffmpeg args for a VIDEO transcode → `format` (mp4/webm/mov/mkv/gif). Supports optional
+// scaling (target height), CRF/quality, max bitrate, fps, and an audio bitrate. GIF is special-cased
+// (palette filtergraph, no audio). Pure/string-only so it is fully unit-tested.
+//   buildVideoConvertArgs({ input, output, format, height, crf, fps, videoBitrate, audioBitrate, vcodec })
+export function buildVideoConvertArgs({
+  input = 'input.mp4',
+  output = 'output.mp4',
+  format,
+  height,
+  crf,
+  fps,
+  videoBitrate,
+  audioBitrate,
+  vcodec,
+} = {}) {
+  const def = videoFormatDef(format)
+  if (!def) throw new Error(`Unsupported video output format: ${format}`)
+
+  const fmt = normalizeFormat(format)
+  const args = ['-i', input]
+
+  // GIF: build a palette for clean colors; cap fps + scale via the filtergraph; never carry audio.
+  if (fmt === 'gif') {
+    const fpsN = clampNum(fps, 1, 50, 12)
+    const sc = scaleFilter(height)
+    const lavfi = [`fps=${Math.round(fpsN)}`, sc, 'split[s0][s1]', '[s0]palettegen[p]', '[s1][p]paletteuse']
+      .filter(Boolean).join(',')
+    args.push('-vf', lavfi, '-loop', '0', output)
+    return args
+  }
+
+  // Video filters: scale + (optional) fps.
+  const vf = []
+  const sc = scaleFilter(height)
+  if (sc) vf.push(sc)
+  if (Number.isFinite(Number(fps)) && Number(fps) > 0) args.push('-r', String(Math.round(Number(fps))))
+  if (vf.length) args.push('-vf', vf.join(','))
+
+  const vc = vcodec || def.vcodec
+  args.push('-c:v', vc)
+
+  // Quality: CRF for x264/VP9; VP9 also wants -b:v 0 for true constant-quality.
+  const c = Math.round(Number(crf))
+  if (Number.isFinite(c) && c >= 0) {
+    args.push('-crf', String(Math.max(0, Math.min(63, c))))
+    if (vc === 'libvpx-vp9') args.push('-b:v', '0')
+  }
+  if (vc === 'libx264') args.push('-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
+
+  // Optional hard cap on the video bitrate (useful for size targets).
+  if (videoBitrate) { const vb = normalizeVideoBitrate(videoBitrate); if (vb) args.push('-maxrate', vb, '-bufsize', vb) }
+
+  // Audio: re-encode with the container's codec at the chosen bitrate.
+  if (def.hasAudio) {
+    args.push('-c:a', def.acodec, '-b:a', normalizeBitrate(audioBitrate, '128k'))
+  }
+  args.push(output)
+  return args
+}
+
+// ---------------------------------------------------------------------------
+// COMPRESSION (video + audio) — pure builders + size ESTIMATE
+// ---------------------------------------------------------------------------
+
+export const COMPRESS_VCODECS = [
+  { id: 'h264', label: 'H.264', ff: 'libx264' },
+  { id: 'vp9', label: 'VP9', ff: 'libvpx-vp9' },
+]
+
+// CRF (constant rate factor) range exposed in the UI. Lower = higher quality / bigger file.
+export const CRF_RANGE = { min: 18, max: 34, default: 26 }
+
+// Build args to COMPRESS a video: CRF-driven quality, optional scale (height), fps cap, optional
+// max-bitrate ceiling, and a re-encoded audio track at `audioBitrate`. Codec is h264 (default) or
+// vp9. Mirrors buildVideoConvertArgs but always re-encodes for size, defaulting to an mp4 container.
+//   buildVideoCompressArgs({ input, output, vcodec, crf, height, fps, maxBitrate, audioBitrate })
+export function buildVideoCompressArgs({
+  input = 'input.mp4',
+  output = 'output.mp4',
+  vcodec = 'h264',
+  crf = CRF_RANGE.default,
+  height,
+  fps,
+  maxBitrate,
+  audioBitrate = '128k',
+} = {}) {
+  const codec = COMPRESS_VCODECS.find((c) => c.id === vcodec || c.ff === vcodec)?.ff || 'libx264'
+  const args = ['-i', input]
+
+  const vf = []
+  const sc = scaleFilter(height)
+  if (sc) vf.push(sc)
+  if (vf.length) args.push('-vf', vf.join(','))
+  if (Number.isFinite(Number(fps)) && Number(fps) > 0) args.push('-r', String(Math.round(Number(fps))))
+
+  args.push('-c:v', codec)
+  const c = clampNum(crf, 0, 63, CRF_RANGE.default)
+  args.push('-crf', String(Math.round(c)))
+  if (codec === 'libvpx-vp9') args.push('-b:v', '0')
+  if (codec === 'libx264') args.push('-preset', 'medium', '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
+
+  if (maxBitrate) {
+    const mb = normalizeVideoBitrate(maxBitrate)
+    if (mb) args.push('-maxrate', mb, '-bufsize', mb)
+  }
+
+  // Audio is always re-encoded (AAC for mp4/mov/mkv; opus only when the container is webm).
+  const isWebm = normalizeFormat(extOf(output)) === 'webm' || codec === 'libvpx-vp9'
+  args.push('-c:a', isWebm ? 'libopus' : 'aac', '-b:a', normalizeBitrate(audioBitrate, '128k'))
+  args.push(output)
+  return args
+}
+
+// Build args to COMPRESS audio: re-encode to a (lossy) format at a target bitrate, optionally
+// downmixing channels / resampling. Reuses the audio format catalog. Defaults to mp3.
+//   buildAudioCompressArgs({ input, output, format, bitrate, channels, sampleRate })
+export function buildAudioCompressArgs({
+  input = 'input.mp3',
+  output = 'output.mp3',
+  format = 'mp3',
+  bitrate = '128k',
+  channels,
+  sampleRate,
+} = {}) {
+  return buildConvertArgs({ input, output, format, bitrate, channels, sampleRate, stripVideo: true })
+}
+
+// Estimate the OUTPUT size (bytes) of a compression, from the target bitrates and duration. This is
+// the standard size≈bitrate×duration model: total kbps × seconds ÷ 8 → bytes. For CRF (quality-
+// based) video where there is no fixed bitrate, we approximate the per-pixel bitrate from the CRF +
+// resolution + fps so the UI can show a believable target before running. Always returns a finite,
+// non-negative number; 0 when it can't estimate.
+//   estimateVideoSize({ durationSec, crf, width, height, fps, audioBitrateKbps, maxBitrateKbps }) -> bytes
+export function estimateVideoSize({ durationSec, crf, width, height, fps = 30, audioBitrateKbps = 128, maxBitrateKbps = 0 } = {}) {
+  const dur = Number(durationSec)
+  if (!Number.isFinite(dur) || dur <= 0) return 0
+  const w = Math.max(1, Number(width) || 0)
+  const h = Math.max(1, Number(height) || 0)
+  const f = clampNum(fps, 1, 240, 30)
+  // bits-per-pixel heuristic for x264-class encoders: ~0.10 bpp at CRF 23, halving roughly every
+  // +6 CRF (and doubling every -6). Clamped to a sane band so extreme CRF doesn't explode/vanish.
+  const c = clampNum(crf, 0, 63, CRF_RANGE.default)
+  let bpp = 0.10 * Math.pow(2, (23 - c) / 6)
+  bpp = Math.max(0.005, Math.min(0.5, bpp))
+  let videoKbps = (w * h * f * bpp) / 1000
+  if (maxBitrateKbps > 0) videoKbps = Math.min(videoKbps, maxBitrateKbps)
+  const totalKbps = videoKbps + Math.max(0, Number(audioBitrateKbps) || 0)
+  return Math.round((totalKbps * 1000 * dur) / 8)
+}
+
+// Estimate compressed AUDIO size from bitrate × duration (lossy). bytes = kbps×1000×sec÷8.
+export function estimateAudioSize({ durationSec, bitrateKbps = 128 } = {}) {
+  const dur = Number(durationSec)
+  if (!Number.isFinite(dur) || dur <= 0) return 0
+  const kbps = Math.max(1, Number(bitrateKbps) || 128)
+  return Math.round((kbps * 1000 * dur) / 8)
+}
+
+// kbps number from a bitrate token ('128k' / '128' / 128) for the estimate math.
+export function bitrateKbps(b, fallback = 128) {
+  const s = String(b ?? '').trim().toLowerCase()
+  const n = parseInt(s, 10)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return n < 1000 ? n : Math.round(n / 1000)
+}
+
+// ---------------------------------------------------------------------------
+// ASR audio extraction (downsample audio for upload to a speech-to-text provider)
+// ---------------------------------------------------------------------------
+
+// Build args to EXTRACT + downsample an audio track to a small, ASR-friendly file: mono, 16 kHz,
+// low-bitrate (the rate Whisper-class models are trained on), dropping any video. mp3 by default
+// (broad provider support); opus is smaller if the provider accepts it. Optionally trims a time
+// window [startSec, durSec) for chunked transcription of long media.
+//   buildAsrExtractArgs({ input, output, format, startSec, durSec, sampleRate, bitrate }) -> string[]
+export function buildAsrExtractArgs({
+  input = 'input.mp4',
+  output = 'asr.mp3',
+  format = 'mp3',
+  startSec,
+  durSec,
+  sampleRate = 16000,
+  bitrate = '48k',
+} = {}) {
+  const args = []
+  const ss = Number(startSec)
+  if (Number.isFinite(ss) && ss > 0) args.push('-ss', secToFFTime(ss))
+  args.push('-i', input)
+  const d = Number(durSec)
+  if (Number.isFinite(d) && d > 0) args.push('-t', secToFFTime(d))
+  args.push('-vn', '-ac', '1', '-ar', String(Math.round(Number(sampleRate) || 16000)))
+  const def = audioFormatDef(format) || AUDIO_FORMATS.mp3
+  args.push('-c:a', def.codec, '-b:a', normalizeBitrate(bitrate, '48k'))
+  args.push(output)
+  return args
 }
 
 // ---------------------------------------------------------------------------

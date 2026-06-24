@@ -37,6 +37,8 @@ const REPO = 'https://github.com/jiangmuran/jmr-typebox'
 
 // AI: reveal the key field on demand (it's a password input otherwise).
 const showKey = ref(false)
+// ASR: same reveal toggle for the speech-to-text key.
+const showAsrKey = ref(false)
 // Image host: same reveal toggle for the custom-host upload key.
 const showImgKey = ref(false)
 
@@ -160,6 +162,34 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
                 <input type="checkbox" :checked="settings.aiDirect" @change="setSetting('aiDirect', $event.target.checked)">
               </label>
               <p class="ai-hint">{{ settings.aiDirect ? t('settings.aiDirectHint') : t('settings.aiProxyHint') }}</p>
+            </template>
+          </section>
+
+          <!-- Speech-to-text (ASR) — powers the Transcribe tool -->
+          <section>
+            <h3>{{ t('settings.asr') }}</h3>
+            <p class="ai-hint hint-lead">{{ t('settings.asrLead') }}</p>
+            <label class="row col">{{ t('settings.asrModel') }}
+              <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.asrModel" placeholder="whisper-1" @input="setSetting('asrModel', $event.target.value)">
+            </label>
+            <p class="ai-hint">{{ t('settings.asrModelHint') }}</p>
+            <template v-if="settings.asrModel.trim()">
+              <label class="row col">{{ t('settings.asrBaseUrl') }}
+                <input class="text-in" type="text" spellcheck="false" autocomplete="off" :value="settings.asrBaseUrl" :placeholder="t('settings.asrBaseUrlPlaceholder')" @input="setSetting('asrBaseUrl', $event.target.value)">
+              </label>
+              <label class="row col">{{ t('settings.asrKey') }}
+                <span class="key-wrap">
+                  <input class="text-in" :type="showAsrKey ? 'text' : 'password'" spellcheck="false" autocomplete="off" :value="settings.asrKey" :placeholder="t('settings.asrKeyPlaceholder')" @input="setSetting('asrKey', $event.target.value)">
+                  <button type="button" class="key-eye" :title="showAsrKey ? t('settings.aiKeyHide') : t('settings.aiKeyShow')" @click="showAsrKey = !showAsrKey">
+                    <svg v-if="showAsrKey" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2.5l11.5 11.5"/><path d="M6.3 6.4a2 2 0 0 0 2.8 2.8"/><path d="M5 3.6A6.6 6.6 0 0 1 8 3c3.6 0 5.9 3.2 6.5 5-.2.7-.7 1.6-1.5 2.4M3.2 5.2C2.1 6.1 1.6 7.2 1.5 8c.6 1.8 2.9 5 6.5 5 .8 0 1.6-.2 2.3-.5"/></svg>
+                    <svg v-else width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3 8 3s6.5 5 6.5 5-2.5 5-6.5 5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>
+                  </button>
+                </span>
+              </label>
+              <label class="row"><span class="lbl">{{ t('settings.asrDirect') }}</span>
+                <input type="checkbox" :checked="settings.asrDirect" @change="setSetting('asrDirect', $event.target.checked)">
+              </label>
+              <p class="ai-hint">{{ settings.asrDirect ? t('settings.asrDirectHint') : t('settings.asrProxyHint') }}</p>
             </template>
           </section>
 

@@ -6,12 +6,13 @@
 //
 // SSG-safe: no window/Image/exif access at setup top level; all of it lives in handlers, and
 // the interactive body renders inside <ClientOnly> (via ImageShell).
-import { ref, computed, reactive, shallowRef } from 'vue'
+import { ref, computed, reactive, shallowRef, watch } from 'vue'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
+import SendToMenu from '../../components/SendToMenu.vue'
 import { useImageSource } from './useImageSource'
 import { downloadBlob, copyImageToClipboard } from './canvasUtils'
 import { withExtension, formatSize } from './imageHelpers'
@@ -28,6 +29,8 @@ const { t } = useI18n()
 const { showToast } = useToast()
 
 const src = useImageSource(onLoaded)
+// Toast when an image arrived from another tool's "Send to →".
+watch(src.received, v => { if (v) showToast(t('handoff.received')) })
 
 const rawTags = shallowRef(null)         // last parsed-tags object from exifr
 const reading = ref(false)
@@ -255,6 +258,7 @@ function reset() { src.reset(); rawTags.value = null; produced.value = null }
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>
               {{ t('img2.copy') }}
             </button>
+            <SendToMenu :payload="produced.blob" kind="image" from="/image/metadata" />
           </div>
         </div>
       </div>
