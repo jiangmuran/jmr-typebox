@@ -44,7 +44,7 @@ import {
 
 const { t, locale } = useI18n()
 const { showToast } = useToast()
-const { resolvedTheme } = useSettings()
+const { settings, resolvedTheme } = useSettings()
 const { apiBase, probe: probeBackend } = useBackend()
 
 // ---- file project state -----------------------------------------------------------------
@@ -340,8 +340,9 @@ async function run() {
   try {
     const runner = await import('./pythonRunner')
     const { runPython, setProxyApiBase } = runner
-    // Point the in-interpreter network patch at the same-origin CORS proxy.
-    setProxyApiBase(apiBase || '')
+    // Point the in-interpreter network patch at the same-origin CORS proxy — but only when the
+    // backend master toggle is on. Off ⇒ no proxy ⇒ Python networking (requests/urllib) is disabled.
+    setProxyApiBase(apiBase || '', settings.backendEnabled)
 
     const res = await runPython(
       { files: { ...project.value.files }, entry: activeName.value },

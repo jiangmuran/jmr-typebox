@@ -234,16 +234,37 @@ function onDrop(e) {
   uploadFiles(files)
 }
 
-// Scroll sync
+// Scroll sync — rAF-throttled + bidirectional. The pane the user is actively scrolling drives
+// the other; an "active pane" latch (reset on idle) stops the driven pane's echo scroll event
+// from bouncing back, and the rAF coalesces to one update per frame so it stays smooth (the old
+// version set scrollTop synchronously on every scroll event → forced reflow + jitter).
+const previewPaneEl = ref(null)
+let activePane = ''
+let activeTimer = null
+let syncRaf = 0
+function scheduleSync(source, target) {
+  if (effectiveView.value !== 'split' || !source || !target || syncRaf) return
+  syncRaf = requestAnimationFrame(() => {
+    syncRaf = 0
+    const denom = source.scrollHeight - source.clientHeight
+    const ratio = denom > 0 ? source.scrollTop / denom : 0
+    target.scrollTop = ratio * (target.scrollHeight - target.clientHeight)
+  })
+}
+function setActive(pane) {
+  activePane = pane
+  clearTimeout(activeTimer)
+  activeTimer = setTimeout(() => { activePane = '' }, 150)
+}
 function onEditorScroll() {
-  if (effectiveView.value !== 'split') return
-  const el = editorEl.value
-  if (!el) return
-  const ratio = el.scrollTop / (el.scrollHeight - el.clientHeight || 1)
-  const preview = el.parentElement?.nextElementSibling?.nextElementSibling
-  if (preview) {
-    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight)
-  }
+  if (activePane === 'preview') return // preview is driving — this is its echo, ignore
+  setActive('editor')
+  scheduleSync(editorEl.value, previewPaneEl.value)
+}
+function onPreviewScroll() {
+  if (activePane === 'editor') return // editor is driving — ignore the echo
+  setActive('preview')
+  scheduleSync(previewPaneEl.value, editorEl.value)
 }
 
 // Divider resize
@@ -331,8 +352,10 @@ onMounted(async () => {
     </div>
 
     <div
+      ref="previewPaneEl"
       class="pane preview-pane"
       :style="effectiveView === 'split' ? { flex: previewFlex } : {}"
+      @scroll="onPreviewScroll"
     >
       <iframe v-if="themed" class="preview-frame" :srcdoc="frameHtml" sandbox="allow-same-origin" title="Themed preview"></iframe>
       <article v-else ref="previewEl" class="markdown-body" v-html="previewHTML"></article>

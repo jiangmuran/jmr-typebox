@@ -190,8 +190,11 @@ export function stopRun() {
 export function isReady() { return runtimeReady }
 
 // ---- public: proxy base ------------------------------------------------------------------
-export function setProxyApiBase(apiBase = '') {
-  proxyBase = `${String(apiBase || '')}${PROXY_PATH}`
+// `enabled` mirrors the Settings "backend" master toggle: when off, the proxy is cleared so
+// Python's requests/urllib have no CORS proxy to route through (network is unavailable), the
+// same as the image-upload/AI gating.
+export function setProxyApiBase(apiBase = '', enabled = true) {
+  proxyBase = enabled ? `${String(apiBase || '')}${PROXY_PATH}` : ''
 }
 
 // ---- BLOCKING input() via SharedArrayBuffer + Atomics ------------------------------------

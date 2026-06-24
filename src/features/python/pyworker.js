@@ -467,7 +467,7 @@ def _tb_proxy_for(url):
     if not (low.startswith("http://") or low.startswith("https://")):
         return s
     if not _TB_PROXY_BASE:
-        return s
+        raise RuntimeError("Network access is disabled. Enable the backend in Settings to allow Python requests/urllib.")
     if s.startswith(_TB_PROXY_BASE):
         return s
     return _TB_PROXY_BASE + "?url=" + _up.quote(s, safe="")
@@ -585,8 +585,8 @@ def _tb_install_net(proxy_base):
     _tb_net_installed = True
 
 def _tb_patch_requests():
-    if not _TB_PROXY_BASE:
-        return
+    # Always patch (even with no proxy): _tb_proxy_for raises a clear "backend off" error when
+    # _TB_PROXY_BASE is empty, so a late-imported requests fails cleanly instead of via raw CORS.
     try:
         import sys
         _rq = sys.modules.get("requests")
