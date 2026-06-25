@@ -114,13 +114,18 @@ async function renderThemedCanvas(themedHtml) {
   document.body.appendChild(iframe)
   try {
     await new Promise((res) => { iframe.onload = () => res(); iframe.srcdoc = themedHtml })
-    await new Promise((r) => setTimeout(r, 320)) // let fonts + layout settle
     const doc = iframe.contentDocument
+    // Wait for the theme's web fonts to actually load before snapshotting — the usual cause of
+    // crammed/overlapping text (html2canvas measures each glyph, so a late-loading font misaligns it).
+    try { if (doc.fonts?.ready) await doc.fonts.ready } catch {}
+    await new Promise((r) => setTimeout(r, 200)) // final layout settle
     const target = doc.getElementById('write') || doc.body
     const bg = getComputedStyle(doc.body).backgroundColor || '#ffffff'
+    // Give wide content (tables, code blocks) its real width so cells/text aren't squished into 840px.
+    const w = Math.max(840, Math.ceil(target.scrollWidth))
     return await html2canvas(target, {
       scale: 2, useCORS: true, backgroundColor: bg, logging: false,
-      windowWidth: 840, windowHeight: Math.max(target.scrollHeight + 80, 600),
+      width: w, windowWidth: w, windowHeight: Math.max(target.scrollHeight + 80, 600),
     })
   } finally {
     document.body.removeChild(iframe)

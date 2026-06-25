@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS = {
   defaultTool: '/',
   restoreLast: true,
   writingTheme: 'default',
-  exportTheme: 'inkwell',
+  exportTheme: 'follow',    // 'follow' = use the current writing theme; or a specific theme id
   backendEnabled: true,
   // AI assistant (OpenAI-compatible /chat/completions). Keys are stored locally in the
   // browser; requests go to the configured endpoint (via the same-origin proxy by default).

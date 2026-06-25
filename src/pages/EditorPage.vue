@@ -36,7 +36,13 @@ const { settings, setSetting } = useSettings()
 const handoff = useHandoff()
 const writingTheme = computed({ get: () => settings.writingTheme, set: v => setSetting('writingTheme', v) })
 const exportTheme = computed({ get: () => settings.exportTheme, set: v => setSetting('exportTheme', v) })
-function exportThemeId() { return (exportTheme.value && exportTheme.value !== 'default') ? exportTheme.value : 'inkwell' }
+function exportThemeId() {
+  // 'follow' (the default) → use the current writing theme; if that's the app default (no themed
+  // CSS), fall back to a clean print theme. Otherwise honor the explicitly chosen export theme.
+  let id = exportTheme.value
+  if (!id || id === 'follow') id = writingTheme.value
+  return (id && id !== 'default') ? id : 'inkwell'
+}
 
 const editorRef = ref(null)
 const searchOpen = ref(false)
@@ -237,8 +243,19 @@ async function printThemed() {
   showToast(t('toast.genPdf'))
   const html = await buildThemedHtml(await renderExportBody(), exportThemeId())
   const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;'
-  iframe.onload = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {} ; setTimeout(() => iframe.remove(), 2000) }
+  // Render OFF-SCREEN at a real page width (A4 @96dpi). A 1px/opacity:0 frame lays the document
+  // out at ~1px wide, so the print preview comes out blank — give it real size instead.
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;'
+  iframe.onload = () => {
+    const go = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {} ; setTimeout(() => iframe.remove(), 60000) }
+    // Wait for the themed doc's fonts/images to settle, else the first paint (and the print) is empty.
+    try {
+      const fonts = iframe.contentWindow?.document?.fonts?.ready
+      if (fonts && typeof fonts.then === 'function') fonts.then(() => setTimeout(go, 120)).catch(() => setTimeout(go, 300))
+      else setTimeout(go, 300)
+    } catch { setTimeout(go, 300) }
+  }
   document.body.appendChild(iframe)
   iframe.srcdoc = html
 }
@@ -466,6 +483,9 @@ onUnmounted(() => {
           </button>
         </div>
 
+        <!-- Writing theme — a primary control, kept inline (not in the overflow). -->
+        <ThemePicker class="ec-theme" v-model="writingTheme" :preview-markdown="content" />
+
         <!-- AI: whole-document actions menu (hidden entirely until AI is configured) -->
         <div v-if="ai.ready.value" class="dd-wrap">
           <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
@@ -499,7 +519,7 @@ onUnmounted(() => {
             <div v-if="exportOpen" class="dd-menu">
               <div class="dd-theme">
                 <span class="dd-theme-lbl">{{ t('settings.exportTheme') }}</span>
-                <ThemePicker v-model="exportTheme" :preview-markdown="content" />
+                <ThemePicker v-model="exportTheme" :preview-markdown="content" :allow-follow="true" :follow-label="t('settings.exportFollow')" />
               </div>
               <div class="dd-sep"></div>
               <div class="dd-label">{{ t('export.download') }}</div>
@@ -529,11 +549,6 @@ onUnmounted(() => {
               <div class="dd-file">
                 <input :value="filename" @input="updateFilename($event.target.value)" spellcheck="false" :placeholder="t('file.placeholder')">
                 <span class="file-ext">.md</span>
-              </div>
-              <div class="dd-sep"></div>
-              <div class="dd-theme">
-                <span class="dd-theme-lbl">{{ t('settings.writingTheme') }}</span>
-                <ThemePicker v-model="writingTheme" :preview-markdown="content" />
               </div>
               <div class="dd-sep"></div>
               <button @click="moreOpen = false; openFilePicker()"><span class="ai-mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 13.5V4a1 1 0 0 1 1-1h3.6l1.4 2H13a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg></span>{{ t('menu.open') }}</button>
@@ -609,6 +624,7 @@ onUnmounted(() => {
 
 .ec-theme { flex-shrink: 0; }
 .ec-theme :deep(.tp-trigger) { height: 30px; }
+@media (max-width: 768px) { .ec-theme :deep(.tp-trigger-label) { display: none; } }
 /* Filename + writing theme moved into the ⋯ overflow menu. */
 .dd-file { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; }
 .dd-file input { flex: 1; min-width: 0; border: 1px solid var(--border-light); background: var(--surface-hover); font-size: 12px; font-family: var(--font-mono); color: var(--text); outline: none; padding: 6px 8px; border-radius: var(--radius-sm); transition: border-color 0.15s; }

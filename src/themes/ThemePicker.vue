@@ -25,6 +25,10 @@ const model = defineModel({ type: String, default: '' })
 const props = defineProps({
   previewMarkdown: { type: String, default: '' },
   label: { type: String, default: '' },
+  // When true, adds a "follow writing theme" option (value 'follow') at the top — used by the
+  // export picker so export defaults to whatever the editor is currently themed with.
+  allowFollow: { type: Boolean, default: false },
+  followLabel: { type: String, default: 'Follow writing theme' },
 })
 
 const emit = defineEmits(['preview'])
@@ -38,7 +42,10 @@ const popEl = ref(null)
 const popStyle = ref({}) // fixed-position style so the popover escapes any clipping ancestor
 
 const selected = computed(() => THEMES.find((t) => t.id === model.value) || null)
-const buttonLabel = computed(() => props.label || selected.value?.name || (model.value === 'default' ? 'Default' : 'Theme'))
+const buttonLabel = computed(() =>
+  (props.allowFollow && model.value === 'follow') ? props.followLabel
+    : (props.label || selected.value?.name || (model.value === 'default' ? 'Default' : 'Theme'))
+)
 
 const lightThemes = computed(() => THEMES.filter((t) => !t.dark))
 const darkThemes = computed(() => THEMES.filter((t) => t.dark))
@@ -132,6 +139,17 @@ onBeforeUnmount(() => { document.removeEventListener('mousedown', onDocClick); d
     <Teleport to="body">
     <div v-if="open" ref="popEl" class="tp-pop" role="listbox" :style="popStyle">
       <div class="tp-list" @mouseleave="clearPreview">
+        <button
+          v-if="allowFollow" type="button" role="option" class="tp-item" :class="{ active: model === 'follow' }"
+          :aria-selected="model === 'follow'"
+          @mouseenter="clearPreview()" @click="choose('follow')"
+        >
+          <span class="tp-swatch" aria-hidden="true" style="background: var(--accent-bg); border-color: var(--accent)"></span>
+          <span class="tp-name">{{ followLabel }}</span>
+          <svg v-if="model === 'follow'" class="tp-check" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button
           type="button" role="option" class="tp-item" :class="{ active: !model || model === 'default' }"
           :aria-selected="!model || model === 'default'"
