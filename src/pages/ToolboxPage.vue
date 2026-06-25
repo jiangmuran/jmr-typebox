@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRouteHead } from '../composables/useRouteHead'
 import { useI18n } from '../composables/useI18n'
@@ -8,6 +8,7 @@ import { TOOL_DEFS } from '../tools/text/toolDefs'
 import { jwtDecode, countText } from '../tools/text/transforms'
 import { sha1, sha256, sha384, sha512 } from '../tools/text/hash'
 import { aesEncrypt, aesDecrypt } from '../tools/text/crypto'
+import { totp, totpRemaining, parseOtpauth } from '../tools/text/totp'
 
 const { meta: m } = useRouteHead()
 const route = useRoute()
@@ -62,6 +63,34 @@ async function copyOut() {
 async function pasteIn() {
   try { input.value = await navigator.clipboard.readText() } catch {}
 }
+
+// TOTP (live 2FA code) — recomputed every second so the code + countdown stay current. All local.
+const totpCode = ref('')
+const totpRemain = ref(30)
+const totpStep = ref(30)
+const totpErr = ref(false)
+async function recomputeTotp() {
+  if (def.value.mode !== 'totp') return
+  let secret = input.value.trim(), step = 30, digits = 6, algorithm = 'SHA1'
+  if (/^otpauth:\/\//i.test(secret)) {
+    const p = parseOtpauth(secret)
+    if (p) { secret = p.secret; step = p.step; digits = p.digits; algorithm = p.algorithm }
+  }
+  totpStep.value = step
+  if (!secret) { totpCode.value = ''; totpErr.value = false; totpRemain.value = step; return }
+  try { totpCode.value = await totp(secret, { step, digits, algorithm }); totpRemain.value = totpRemaining(step); totpErr.value = false }
+  catch { totpCode.value = ''; totpErr.value = true }
+}
+let totpTimer = null
+watch([input, def], recomputeTotp, { immediate: true })
+onMounted(() => { totpTimer = setInterval(recomputeTotp, 1000) })
+onUnmounted(() => clearInterval(totpTimer))
+async function copyTotp() {
+  if (!totpCode.value) return
+  try { await navigator.clipboard.writeText(totpCode.value); showToast(t('toast.copied')) } catch {}
+}
+const totpSpaced = computed(() => totpCode.value.length === 6 ? totpCode.value.slice(0, 3) + ' ' + totpCode.value.slice(3) : totpCode.value)
+const totpPct = computed(() => Math.round((totpRemain.value / (totpStep.value || 30)) * 100))
 function clearAll() { input.value = ''; output.value = ''; passphrase.value = '' }
 function onDrop(e) {
   const f = e.dataTransfer?.files?.[0]
@@ -85,7 +114,7 @@ function onDrop(e) {
             <button @click="clearAll">{{ t('tool.clear') }}</button>
           </div>
         </div>
-        <textarea v-model="input" spellcheck="false" :placeholder="t('tool.input') + '…'"></textarea>
+        <textarea v-model="input" spellcheck="false" :placeholder="def.mode === 'totp' ? t('tool.totp.placeholder') : t('tool.input') + '…'"></textarea>
       </div>
 
       <!-- AES passphrase -->
@@ -137,6 +166,16 @@ function onDrop(e) {
         <div class="stat"><strong>{{ stats.lines }}</strong><span>{{ t('status.lines') }}</span></div>
         <div class="stat"><strong>{{ stats.readMin }}</strong><span>{{ t('status.minRead') }}</span></div>
       </div>
+
+      <!-- Output: TOTP (live 2FA code) -->
+      <div v-else-if="def.mode === 'totp'" class="tb-totp">
+        <div v-if="totpCode" class="totp-card">
+          <button class="totp-code" :title="t('tool.copy')" @click="copyTotp">{{ totpSpaced }}</button>
+          <div class="totp-track"><div class="totp-fill" :style="{ width: totpPct + '%' }"></div></div>
+          <span class="totp-remain">{{ totpRemain }}s</span>
+        </div>
+        <p v-else-if="totpErr" class="tb-hint">{{ t('tool.invalid') }}</p>
+      </div>
     </div>
   </main>
 </template>
@@ -168,6 +207,13 @@ function onDrop(e) {
 .jwt-block pre { padding: 12px; font-family: var(--font-mono); font-size: 12px; overflow-x: auto; color: var(--text); }
 .tb-hint { color: var(--text-tertiary); font-size: 13px; padding: 8px; }
 .tb-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tb-totp { display: flex; flex-direction: column; }
+.totp-card { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
+.totp-code { font-family: var(--font-mono); font-size: 34px; font-weight: 700; letter-spacing: 4px; color: var(--accent); background: none; border: none; padding: 0; line-height: 1; cursor: pointer; font-variant-numeric: tabular-nums; }
+.totp-track { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
+.totp-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.9s linear; }
+.totp-remain { font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .totp-code { font-size: 28px; letter-spacing: 3px; } }
 .stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .stat strong { font-size: 26px; font-weight: 750; }
 .stat span { font-size: 11px; color: var(--text-secondary); }

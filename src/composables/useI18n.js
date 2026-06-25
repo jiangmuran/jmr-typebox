@@ -162,6 +162,9 @@ const dict = {
     'tool.hash.sub': 'SHA-1, SHA-256, SHA-384 and SHA-512 from text — computed locally.',
     'tool.json.title': 'JSON Formatter',
     'tool.json.sub': 'Format, minify and validate JSON. Nothing leaves your device.',
+    'tool.totp.title': 'TOTP Generator',
+    'tool.totp.sub': 'Live two-factor (2FA) codes from a base32 secret or otpauth:// link — computed locally, never sent anywhere.',
+    'tool.totp.placeholder': 'Base32 secret (e.g. JBSWY3DPEHPK3PXP) or otpauth://…',
     'tool.jwt.title': 'JWT Decoder',
     'tool.jwt.sub': 'Decode a JSON Web Token’s header and payload locally.',
 
@@ -502,6 +505,9 @@ const dict = {
     'tool.hash.sub': '在本地从文本计算 SHA-1、SHA-256、SHA-384、SHA-512。',
     'tool.json.title': 'JSON 格式化',
     'tool.json.sub': '格式化、压缩并校验 JSON,数据不离开本机。',
+    'tool.totp.title': 'TOTP 动态码',
+    'tool.totp.sub': '从 base32 密钥或 otpauth:// 链接生成实时两步验证(2FA)码 —— 全程本地计算,绝不外传。',
+    'tool.totp.placeholder': 'Base32 密钥(如 JBSWY3DPEHPK3PXP)或 otpauth://…',
     'tool.jwt.title': 'JWT 解码',
     'tool.jwt.sub': '在本地解码 JSON Web Token 的 Header 与 Payload。',
 

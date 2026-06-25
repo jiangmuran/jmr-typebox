@@ -213,6 +213,12 @@ export const ROUTE_META = {
     h1: 'JWT Decoder',
     keywords: 'jwt decoder, decode jwt, json web token, jwt parser',
   },
+  '/tools/totp': {
+    title: 'TOTP Authenticator Code Generator — TypeBox',
+    description: 'Generate live TOTP two-factor (2FA) codes from a base32 secret or otpauth:// link, in your browser. Private — nothing is sent anywhere.',
+    h1: 'TOTP Generator',
+    keywords: 'totp, 2fa, authenticator, one-time password, otpauth, two-factor code, 动态口令, 两步验证',
+  },
 
   // ---- Python ----
   '/python': {

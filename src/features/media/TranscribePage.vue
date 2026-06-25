@@ -458,7 +458,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 .ghost-btn:hover { background: var(--surface-hover); }
 /* .download-btn → gold fill from .btn.cta */
 
-.segs { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 8px; max-height: 60vh; overflow-y: auto; }
+.segs { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); padding: 8px; }
 .seg-row { display: flex; gap: 12px; align-items: baseline; text-align: left; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); font-size: 13.5px; line-height: 1.55; cursor: pointer; font-family: var(--font-sans); transition: background 0.12s; }
 .seg-row:hover { background: var(--surface-hover); }
 .seg-ts { flex-shrink: 0; font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; font-family: var(--font-mono, monospace); padding-top: 1px; min-width: 56px; }

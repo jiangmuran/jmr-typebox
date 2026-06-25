@@ -28,6 +28,7 @@ export const TOOL_DEFS = {
     ],
   },
   '/tools/jwt': { mode: 'jwt' },
+  '/tools/totp': { mode: 'totp' },
 }
 
 export const TOOL_PATHS = Object.keys(TOOL_DEFS)
