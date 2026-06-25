@@ -466,10 +466,10 @@ const infoRows = computed(() => {
 <style scoped>
 .route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.media-navwrap { max-width: var(--page-narrow); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
+.media-navwrap { max-width: var(--page-wide); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
 @media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-wide); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 0; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }

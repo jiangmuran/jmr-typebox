@@ -95,7 +95,11 @@ function openSettings() { settingsOpen.value = true }
     </header>
 
     <main class="app-content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </router-view>
     </main>
 
     <SettingsPanel v-model:open="settingsOpen" />
