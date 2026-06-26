@@ -363,27 +363,55 @@ function handleNew() {
   nextTick(() => editorRef.value?.focus())
 }
 
-// Cross-module handoff: another tool (e.g. the ASR transcribe tool) can stage a text/markdown
-// payload and route here. Open it as a NEW document tab so existing docs are untouched. Accepts a
-// plain string or a text/markdown Blob/File. One-shot (take() clears the staged payload).
+// Cross-module handoff: another tool can stage a payload and route here. TEXT/markdown (e.g. an ASR
+// transcript) opens as a NEW document; an IMAGE (e.g. a processed picture from the image tools) is
+// inserted into the current doc as markdown. One-shot (take() clears the staged payload).
 async function receiveHandoff() {
-  const h = handoff.take('text')
+  const h = handoff.take(['text', 'image'])
   if (!h?.payload) return
+  const p = h.payload
+  const isImage = h.kind === 'image' || (p && typeof p.type === 'string' && /^image\//.test(p.type))
+  if (isImage) { await receiveHandoffImage(p, h.name); return }
+
+  // Text / markdown → open as a new document tab.
   let text = null
   let name = h.name || ''
-  const p = h.payload
   if (typeof p === 'string') {
     text = p
-  } else if (p && typeof p.text === 'function' && /^text\/|markdown/i.test(p.type || '')) {
-    // Blob/File of text or markdown.
+  } else if (p && typeof p.text === 'function') {
     try { text = await p.text() } catch { text = null }
     name = name || p.name || ''
   }
   if (text == null) return
-  // Strip a file extension from the staged name for the doc title (loadFile names the tab).
   const title = (name ? name.replace(/\.\w+$/, '') : '') || 'untitled'
   loadFile(text, title)
   startDismissed.value = true
+  showToast(t('handoff.received'))
+  nextTick(() => editorRef.value?.focus())
+}
+
+// An image was sent here from an image tool. Upload it through the configured host (same path as
+// paste-to-upload) and insert ![](url); if upload is unavailable (backend off / no host), fall back
+// to an inline data URL so it always lands. Appends to the current document.
+async function receiveHandoffImage(blob, name) {
+  if (!blob) return
+  const alt = ((name || 'image').replace(/\.\w+$/, '').replace(/[\[\]]/g, '')) || 'image'
+  let url = ''
+  try {
+    const { useImageUpload } = await import('../composables/useImageUpload')
+    const file = blob instanceof File ? blob : new File([blob], name || 'image.png', { type: blob.type || 'image/png' })
+    url = await useImageUpload().uploadImage(file)
+  } catch {
+    url = await new Promise((res) => {
+      const r = new FileReader()
+      r.onload = () => res(String(r.result || '')); r.onerror = () => res('')
+      r.readAsDataURL(blob)
+    })
+  }
+  if (!url) { showToast(t('upload.failed')); return }
+  startDismissed.value = true
+  const base = content.value && content.value.trim() ? content.value.replace(/\s*$/, '') + '\n\n' : ''
+  updateContent(`${base}![${alt}](${url})\n`)
   showToast(t('handoff.received'))
   nextTick(() => editorRef.value?.focus())
 }
