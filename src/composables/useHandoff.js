@@ -43,8 +43,8 @@ export const HANDOFF_TARGETS = {
 
 export function useHandoff() {
   // Stage a payload (File | Blob | string) for the next module.
-  function send(payload, { kind = '', from = '', name = '' } = {}) {
-    pending.value = { payload, kind, from, name: name || payload?.name || '' }
+  function send(payload, { kind = '', from = '', name = '', handle = null } = {}) {
+    pending.value = { payload, kind, from, name: name || payload?.name || '', handle }
   }
   // Consume the staged payload if its kind matches (or no filter). One-shot: clears after taking.
   function take(kinds) {

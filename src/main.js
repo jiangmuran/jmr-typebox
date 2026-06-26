@@ -33,10 +33,12 @@ export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
       window.launchQueue.setConsumer(async (params) => {
         try {
           if (!params.files?.length) return
-          const file = await params.files[0].getFile()
+          const fileHandle = params.files[0]
+          const file = await fileHandle.getFile()
           const text = await file.text()
           const { useHandoff } = await import('./composables/useHandoff')
-          useHandoff().send(text, { kind: 'text', name: file.name })
+          // Keep the handle so the editor can save edits straight back to the opened file.
+          useHandoff().send(text, { kind: 'text', name: file.name, handle: fileHandle })
           if (router.currentRoute.value.path !== '/') await router.push('/')
           window.dispatchEvent(new CustomEvent('tb-handoff'))
         } catch { /* ignore */ }

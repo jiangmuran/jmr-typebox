@@ -11,6 +11,7 @@ import { renderMarkdown } from '../utils/markdown'
 import { prerenderMermaid } from '../utils/mermaid'
 import { useSettings } from '../composables/useSettings'
 import { useHandoff } from '../composables/useHandoff'
+import { useFileHandles } from '../composables/useFileHandles'
 import { buildThemedHtml, THEMES } from '../themes/registry'
 import ThemePicker from '../themes/ThemePicker.vue'
 import { load, save } from '../utils/storage'
@@ -34,6 +35,7 @@ const { t } = useI18n()
 const { theme } = useTheme()
 const { settings, setSetting } = useSettings()
 const handoff = useHandoff()
+const fileHandles = useFileHandles()
 const writingTheme = computed({ get: () => settings.writingTheme, set: v => setSetting('writingTheme', v) })
 const exportTheme = computed({ get: () => settings.exportTheme, set: v => setSetting('exportTheme', v) })
 function exportThemeId() {
@@ -311,7 +313,27 @@ async function doExport(fmt) {
 }
 
 // ---- File open / import (PDF → Markdown happens IN the editor, as a new doc) ----
-function openFilePicker() {
+async function openFilePicker() {
+  // Prefer the File System Access API so an opened markdown file keeps a handle (→ Ctrl+S saves back).
+  if (typeof window !== 'undefined' && window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'Documents', accept: {
+          'text/markdown': ['.md', '.markdown', '.mdown', '.mkd'],
+          'text/plain': ['.txt'],
+          'text/html': ['.html', '.htm'],
+          'application/pdf': ['.pdf'],
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+        } }],
+      })
+      if (handle) await importFile(await handle.getFile(), handle)
+      return
+    } catch (err) {
+      if (err?.name === 'AbortError') return // user cancelled the picker
+      // other errors → fall through to the classic input
+    }
+  }
   const input = document.createElement('input')
   input.type = 'file'; input.accept = '.txt,.md,.markdown,.html,.htm,.pdf,.xlsx,.xls,.csv,.pptx,.ppt'
   input.onchange = e => { if (e.target.files[0]) importFile(e.target.files[0]) }
@@ -342,8 +364,31 @@ async function importFile(file) {
     return
   }
   const reader = new FileReader()
-  reader.onload = () => { loadFile(reader.result, file.name.replace(/\.\w+$/, '')); startDismissed.value = true; showToast(`${t('toast.loaded')} ${file.name}`) }
+  reader.onload = () => {
+    loadFile(reader.result, file.name.replace(/\.\w+$/, ''))
+    if (handle) fileHandles.set(activeId.value, handle) // back this doc with the file → Ctrl+S saves to it
+    startDismissed.value = true
+    showToast(`${t('toast.loaded')} ${file.name}`)
+  }
   reader.readAsText(file)
+}
+
+// Ctrl+S: if the active doc is backed by a file handle (opened via the PWA file handler or the File
+// System Access picker), write edits straight back to that file; otherwise download a .md copy.
+async function saveActiveDoc() {
+  const handle = fileHandles.get(activeId.value)
+  if (!handle) { doExport('md'); return }
+  try {
+    if (handle.queryPermission) {
+      let perm = await handle.queryPermission({ mode: 'readwrite' })
+      if (perm !== 'granted' && handle.requestPermission) perm = await handle.requestPermission({ mode: 'readwrite' })
+      if (perm !== 'granted') { doExport('md'); return }
+    }
+    const writable = await handle.createWritable()
+    await writable.write(content.value)
+    await writable.close()
+    showToast(`${t('toast.savedFile')} ${handle.name || ''}`.trim())
+  } catch (err) { console.error(err); showToast(t('toast.exportFailed')) }
 }
 
 // ---- Drag & drop ----
@@ -385,6 +430,7 @@ async function receiveHandoff() {
   if (text == null) return
   const title = (name ? name.replace(/\.\w+$/, '') : '') || 'untitled'
   loadFile(text, title)
+  if (h.handle) fileHandles.set(activeId.value, h.handle) // .md opened via the file handler → Ctrl+S saves back
   startDismissed.value = true
   showToast(t('handoff.received'))
   nextTick(() => editorRef.value?.focus())
@@ -429,7 +475,7 @@ function onKeydown(e) {
   if (e.key === 'Tab' && ghost.value?.text && editorRef.value && document.activeElement === editorRef.value) {
     e.preventDefault(); ghost.value = null; return
   }
-  if (mod && e.key === 's') { e.preventDefault(); doExport('md') }
+  if (mod && e.key === 's') { e.preventDefault(); saveActiveDoc() }
   else if (mod && e.key === 'b') { e.preventDefault(); insertMarkdown('**', '**', 'bold') }
   else if (mod && e.key === 'i') { e.preventDefault(); insertMarkdown('*', '*', 'italic') }
   else if (mod && e.shiftKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); insertMarkdown('[', '](url)', 'text') }
