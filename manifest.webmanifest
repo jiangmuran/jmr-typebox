@@ -1,0 +1,23 @@
+{
+  "name": "TypeBox — Markdown Editor & Toolkit",
+  "short_name": "TypeBox",
+  "description": "Fast, private Markdown editor with live preview, conversion and multi-format export.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": "focus-existing" },
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "text/markdown": [".md", ".markdown", ".mdown", ".mkd", ".mdx"],
+        "text/plain": [".txt"]
+      }
+    }
+  ]
+}

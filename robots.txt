@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://box.muran.tech/sitemap.xml
