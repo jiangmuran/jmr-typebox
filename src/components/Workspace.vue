@@ -20,7 +20,7 @@ const props = defineProps({
   ghost: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:content', 'editor-mounted', 'accept-ghost'])
+const emit = defineEmits(['update:content', 'editor-mounted', 'accept-ghost', 'import-file'])
 
 const editorEl = ref(null)
 const previewEl = ref(null)
@@ -198,6 +198,15 @@ function imageFilesFrom(list) {
   return out
 }
 
+// First markdown/text FILE in a clipboard/drop list (e.g. a .md copied from the file manager).
+function textFileFrom(list) {
+  for (const f of list || []) {
+    const name = ((f && f.name) || '').toLowerCase()
+    if (f && (/^text\//.test(f.type || '') || /\.(md|markdown|mdown|mkd|mdx|txt)$/.test(name))) return f
+  }
+  return null
+}
+
 function onPaste(e) {
   const dt = e.clipboardData
   if (!dt) return
@@ -212,9 +221,11 @@ function onPaste(e) {
     }
   }
   if (!files.length && dt.files && dt.files.length) files = imageFilesFrom(dt.files)
-  if (!files.length) return // plain text/HTML paste → let the textarea handle it natively
-  e.preventDefault()
-  uploadFiles(files)
+  if (files.length) { e.preventDefault(); uploadFiles(files); return }
+  // A pasted markdown/text FILE (e.g. a .md copied from the file manager) → import it as a new doc.
+  const docFile = textFileFrom(dt.files)
+  if (docFile) { e.preventDefault(); emit('import-file', docFile); return }
+  // else: plain text/HTML paste → let the textarea handle it natively.
 }
 
 const dragOver = ref(false)

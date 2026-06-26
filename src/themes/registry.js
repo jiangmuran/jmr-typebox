@@ -245,6 +245,7 @@ export function buildThemedHtmlSync(bodyHtml, css, opts = {}) {
 <style>
 /* Typora-style host reset so themes that style html/body/#write apply cleanly */
 html,body{margin:0;padding:0}
+@page{margin:12mm}
 #write{box-sizing:border-box}
 img{max-width:100%}
 /* Math + diagrams: keep wide content inside the page and center diagrams. */

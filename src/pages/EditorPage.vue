@@ -473,12 +473,15 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) zenMode.value = false })
-  // Pick up a text/markdown payload handed off from another module (e.g. an ASR transcript).
+  // Pick up a text/markdown payload handed off from another module (e.g. an ASR transcript or a .md
+  // the OS opened via the PWA file handler). Re-check on the 'tb-handoff' event for later arrivals.
   receiveHandoff()
+  window.addEventListener('tb-handoff', receiveHandoff)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('tb-handoff', receiveHandoff)
 })
 </script>
 
@@ -594,7 +597,7 @@ onUnmounted(() => {
       <div class="editor-body">
         <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
         <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
-        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" :ghost="inlineGhost" @update:content="updateContent" @editor-mounted="onEditorMounted" @accept-ghost="acceptInlineGhost" />
+        <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" :ghost="inlineGhost" @update:content="updateContent" @editor-mounted="onEditorMounted" @accept-ghost="acceptInlineGhost" @import-file="importFile" />
         <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
       </div>
 

@@ -25,5 +25,22 @@ export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
         }
       } catch { /* ignore */ }
     })
+
+    // PWA file handling: when the OS opens a .md/.txt with TypeBox (manifest file_handlers →
+    // launchQueue), stage its text for the editor and route there. The editor consumes it on mount
+    // or via the 'tb-handoff' re-check event.
+    if ('launchQueue' in window && 'setConsumer' in window.launchQueue) {
+      window.launchQueue.setConsumer(async (params) => {
+        try {
+          if (!params.files?.length) return
+          const file = await params.files[0].getFile()
+          const text = await file.text()
+          const { useHandoff } = await import('./composables/useHandoff')
+          useHandoff().send(text, { kind: 'text', name: file.name })
+          if (router.currentRoute.value.path !== '/') await router.push('/')
+          window.dispatchEvent(new CustomEvent('tb-handoff'))
+        } catch { /* ignore */ }
+      })
+    }
   }
 })
