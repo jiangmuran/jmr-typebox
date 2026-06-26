@@ -175,7 +175,7 @@ async function runDocAi(id) {
       showToast(t('ai.done'))
       return
     }
-    const r = await ai.runDocAction(id)
+    const r = await ai.runDocAction(id, el)
     if (!r.ok && r.reason === 'empty') { showToast(t('ai.docEmpty')); return }
     if (r.replaced) showToast(t('ai.done'))
     else if (r.text) {

@@ -76,6 +76,7 @@ export function useAiActions() {
 
     // Replace as we stream: keep the original range start fixed, grow the inserted text by
     // overwriting from curStart to the end of what we last wrote.
+    const originalValue = el.value // snapshot so the final apply can be a single undoable edit
     const curStart = sel.start
     let curEnd = sel.end
     const text = await streamInto(messages, {
@@ -88,26 +89,48 @@ export function useAiActions() {
         } catch { /* element may have unmounted */ }
       },
     })
-    // Select the final result so the user sees exactly what was replaced.
+    // setRangeText streaming bypasses the textarea's native undo history. Re-apply the final result
+    // as ONE execCommand('insertText') edit over the original selection so a single Ctrl+Z reverts
+    // the whole AI change. Falls back to setRangeText if execCommand is unavailable.
     try {
       el.focus()
+      el.value = originalValue
+      el.setSelectionRange(sel.start, sel.end)
+      const undoable = typeof document !== 'undefined' && document.execCommand && document.execCommand('insertText', false, text)
+      if (!undoable) el.setRangeText(text, sel.start, sel.end, 'end')
       el.selectionStart = curStart
       el.selectionEnd = curStart + text.length
-    } catch {}
+      updateContent(el.value)
+    } catch {
+      try { el.setRangeText(text, curStart, curEnd, 'end'); updateContent(el.value) } catch {}
+    }
     return { ok: true, replaced: true, text }
   }
 
   // Whole-document action. Replacing actions overwrite content; others return text to display.
-  async function runDocAction(actionId) {
+  // `el` (the textarea) is optional — when given, the final overwrite is applied as a single
+  // undoable edit so Ctrl+Z reverts the AI change.
+  async function runDocAction(actionId, el) {
     const doc = content.value
     if (!doc.trim() && actionId !== 'generate') return { ok: false, reason: 'empty' }
     const { replaces, messages } = buildDocMessages(actionId, doc)
     activeKind.value = actionId
     if (replaces) {
+      const originalValue = el ? el.value : doc
       const text = await streamInto(messages, {
         temperature: 0.6,
         onChunk: (full) => updateContent(full),
       })
+      if (el) {
+        try {
+          el.focus()
+          el.value = originalValue
+          el.setSelectionRange(0, originalValue.length)
+          const undoable = typeof document !== 'undefined' && document.execCommand && document.execCommand('insertText', false, text)
+          if (!undoable) el.value = text
+          updateContent(el.value)
+        } catch { updateContent(text) }
+      }
       return { ok: true, replaced: true, text }
     }
     const text = await streamInto(messages, { temperature: 0.4 })
