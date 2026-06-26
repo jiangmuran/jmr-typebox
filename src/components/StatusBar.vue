@@ -40,5 +40,5 @@ const props = defineProps({ stats: Object, dirty: Boolean, t: Function })
 .saved-pill svg { width: 10px; height: 10px; }
 .saved-pill.unsaved { background: var(--status-warn-bg); color: var(--status-warn); }
 .fmt-badge { padding: 1px 6px; border-radius: 3px; background: var(--surface-hover); font-weight: 500; }
-@media (max-width: 640px) { .status-bar { font-size: 10px; padding: 0 10px; } .sr { display: none; } }
+@media (max-width: 640px) { .status-bar { font-size: 11px; padding: 0 10px; } .sr { display: none; } }
 </style>

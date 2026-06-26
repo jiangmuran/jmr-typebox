@@ -142,8 +142,10 @@ function insL(p, ph) { emit('insert-line', p, ph) }
 }
 
 @media (max-width: 768px) {
-  .md-toolbar { padding: 3px 6px; height: 34px; }
-  .md-toolbar button { min-width: 28px; height: 26px; font-size: 12px; }
-  .md-toolbar button svg { width: 13px; height: 13px; }
+  /* Scrollable formatting strip: give the icon buttons a more thumb-friendly height (they were
+     26px — too small to tap reliably) while keeping the bar compact. */
+  .md-toolbar { padding: 3px 6px; height: 42px; gap: 2px; }
+  .md-toolbar button { min-width: 36px; height: 34px; font-size: 12.5px; }
+  .md-toolbar button svg { width: 14px; height: 14px; }
 }
 </style>

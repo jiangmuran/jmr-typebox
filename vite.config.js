@@ -7,4 +7,13 @@ export default defineConfig({
     outDir: 'dist',
     assetsInlineLimit: 8192,
   },
+  ssgOptions: {
+    script: 'async',
+    formatting: 'minify',
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.js'],
+    globals: true,
+  },
 })

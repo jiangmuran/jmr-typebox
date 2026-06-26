@@ -1,0 +1,750 @@
+// Media toolkit — a powerful, multi-function media suite powered by ffmpeg.wasm:
+//   • Universal converter (mp3/wav/flac/ogg/opus/aac/m4a + audio extraction from video)
+//   • Subtitle tool (hard-burn subtitles into video, or soft-mux a selectable subtitle track)
+//   • In-page <audio>/<video> preview of input and output
+//
+// Drop-in feature module: `components` override ToolStub for the /media routes, `i18n` is merged
+// into useI18n, and register() wires the converters into the converter registry + adds a couple of
+// ⌘K action commands (every route is auto-registered for navigation by the command palette).
+//
+// Engine: ffmpeg.wasm. The big ffmpeg-core (~31MB) is loaded at RUNTIME from the official CDN
+// (it exceeds Cloudflare's 25MB static-asset limit); the small JS wrappers are bundled locally.
+// This file MUST stay light/side-effect-free at import: no window/Blob/ffmpeg access, no useI18n.
+import { registerConverter } from '../../converters/registry'
+import { registerCommand } from '../../composables/useCommands'
+import { MEDIA_CONVERTERS, mimeForFormat } from './mediaHelpers'
+
+const Converter = () => import('./MediaPage.vue')
+const Subtitle = () => import('./SubtitlePage.vue')
+const Player = () => import('./PlayerPage.vue')
+const Metadata = () => import('./MetadataPage.vue')
+const Compress = () => import('./CompressPage.vue')
+const Transcribe = () => import('./TranscribePage.vue')
+
+export default {
+  components: {
+    // Universal converter (generic landing page) — audio + VIDEO conversion / extraction.
+    '/media/convert': Converter,
+    // Audio editor view — the same workbench, opened on its Edit tab (deep-linked sub-tool).
+    '/media/edit': Converter,
+    // Compression tool — shrink a video (CRF/scale/fps/codec) or audio (bitrate), with size estimate.
+    '/media/compress': Compress,
+    // Subtitle tool.
+    '/media/subtitles': Subtitle,
+    // Online ASR transcription — audio/video → text + SRT/VTT (via the configured provider).
+    '/media/transcribe': Transcribe,
+    // Metadata editor — view & edit ALL tags + cover art of any audio/video file (no re-encode export).
+    '/media/metadata': Metadata,
+    // Music player mode — local/uploaded audio: library, playlists, lyrics, metadata, MediaSession.
+    '/media/player': Player,
+    // Named, SEO-friendly converter routes (all render the same universal converter, prefilled).
+    ...Object.fromEntries(MEDIA_CONVERTERS.map(c => [c.route, Converter])),
+  },
+
+  i18n: {
+    en: {
+      // Drop zone + shared
+      'media.drop': 'Drop an audio or video file here',
+      'media.browse': 'Click, drop, or paste · audio & video supported',
+      'media.hint': 'Converts in your browser — nothing is uploaded',
+      'media.convert': 'Convert',
+      'media.converting': 'Converting…',
+      'media.loadingRuntime': 'Loading runtime…',
+      'media.runtimeHint': 'First run downloads the ffmpeg engine (~31MB) from the official CDN. It is cached afterwards.',
+      // Pre-run hints reflecting whether the ~31MB core is already cached (Cache API).
+      'media.runtimeCached': 'Runtime cached — loads instantly, no download.',
+      'media.runtimeWillDownload': 'First run downloads the ffmpeg engine (~31MB) once, then caches it for next time.',
+      'media.runtimeFromCache': 'Loading cached runtime…',
+      'media.download': 'Download',
+      'media.change': 'Change file',
+      'media.bitrate': 'Bitrate',
+      'media.from': 'From',
+      'media.to': 'Convert to',
+      'media.done': 'Done',
+      'media.failed': 'Conversion failed',
+      'media.unsupported': 'Unsupported file type — pick an audio or video file',
+      'media.videoInput': 'video — audio will be extracted',
+      'media.extractNote': 'Video detected — the audio track will be extracted.',
+      'media.advanced': 'Advanced',
+      'media.sampleRate': 'Sample rate',
+      'media.channels': 'Channels',
+      'media.keep': 'Keep source',
+      'media.mono': 'Mono',
+      'media.stereo': 'Stereo',
+
+      // Workbench tabs
+      'media.tab.convert': 'Convert',
+      'media.tab.edit': 'Edit',
+      'media.tab.advanced': 'Advanced',
+
+      // Edit tab
+      'media.edit.hint': 'Trim, adjust volume, fade, or normalize — applied with ffmpeg and re-encoded.',
+      'media.edit.apply': 'Apply & export',
+      'media.edit.trim': 'Trim',
+      'media.edit.start': 'Start',
+      'media.edit.end': 'End',
+      'media.edit.clearTrim': 'Clear',
+      'media.edit.dragHint': 'Tip: drag across the waveform to set a trim range; click to seek.',
+      'media.edit.gain': 'Volume / gain',
+      'media.edit.fadeIn': 'Fade in',
+      'media.edit.fadeOut': 'Fade out',
+      'media.edit.normalize': 'Normalize loudness (EBU R128)',
+      'media.edit.normalizeHint': 'Evens out perceived loudness to a broadcast target (~-16 LUFS).',
+
+      // Advanced / custom command
+      'media.adv.intro': 'Run a raw ffmpeg command against your file. For advanced users.',
+      'media.adv.label': 'ffmpeg arguments',
+      'media.adv.placeholder': "e.g.  -af loudnorm   (input & output are wired automatically)",
+      'media.adv.tokens': 'Your input is added as -i automatically; the output is appended. Use {input} / {output} to place them explicitly.',
+      'media.adv.ack': 'I understand this runs a custom command in my browser.',
+      'media.adv.run': 'Run command',
+      'media.adv.failed': 'Command failed — check your ffmpeg arguments',
+
+      // Converter page header
+      'media.conv.title': 'Audio & Video Workbench',
+      'media.conv.sub': 'Convert audio and video, change resolution, trim, fade, normalize — or extract audio from video and even export a GIF. Powered by ffmpeg, fully in your browser. Private, nothing uploaded.',
+
+      // Subtitle tool
+      'media.sub.title': 'Subtitle Tool',
+      'media.sub.sub': 'Burn subtitles into a video, or add a soft subtitle track from an .srt / .ass file.',
+      'media.sub.mode': 'Mode',
+      'media.sub.burn': 'Burn in (hardsub)',
+      'media.sub.mux': 'Soft track (mux)',
+      'media.sub.burnHint': 'Renders subtitles permanently onto the picture (re-encodes the video). Plays everywhere.',
+      'media.sub.muxHint': 'Adds a selectable subtitle track without re-encoding — fast and lossless. Viewer can toggle it.',
+      'media.sub.dropVideo': 'Drop a video file here',
+      'media.sub.browseVideo': 'Click, drop, or paste · MP4, MOV, WebM, MKV',
+      'media.sub.pickSub': 'Choose subtitle file (.srt / .ass / .vtt)',
+      'media.sub.fontSize': 'Font size',
+      'media.sub.quality': 'Quality (lower = better)',
+      'media.sub.run': 'Process',
+      'media.sub.failed': 'Subtitle processing failed',
+      'media.sub.needVideo': 'Please choose a video file',
+      'media.sub.needSub': 'Please choose a subtitle file (.srt / .ass / .vtt)',
+
+      // ⌘K commands
+      'media.cmd.convert': 'Convert audio & video / extract audio',
+      'media.cmd.compress': 'Compress video or audio',
+      'media.cmd.subtitles': 'Add subtitles to video',
+      'media.cmd.transcribe': 'Transcribe audio / video to text',
+      'media.cmd.metadata': 'Edit audio metadata / tags',
+      'media.cmd.player': 'Music player (play your own audio)',
+
+      // Audio/Video hub sub-nav
+      'media.nav.convert': 'Convert',
+      'media.nav.compress': 'Compress',
+      'media.nav.edit': 'Edit',
+      'media.nav.subtitles': 'Subtitles',
+      'media.nav.transcribe': 'Transcribe',
+      'media.nav.metadata': 'Metadata',
+      'media.nav.player': 'Player',
+
+      // Video output (converter)
+      'media.outputKind': 'Output',
+      'media.kindVideo': 'Video',
+      'media.kindAudio': 'Audio only',
+      'media.gifNote': 'Exports a silent animated GIF (lower fps + smaller size keep it light).',
+
+      // ===== Compression tool =====
+      'media.cmp.title': 'Compress Audio & Video',
+      'media.cmp.sub': 'Shrink a video (resolution, quality, frame rate, codec) or audio (bitrate) with a live size estimate. Runs in your browser with ffmpeg — private, nothing uploaded.',
+      'media.cmp.drop': 'Drop a video or audio file here',
+      'media.cmp.browse': 'Click, drop, or paste · video & audio supported',
+      'media.cmp.quality': 'Quality',
+      'media.cmp.better': 'Better quality',
+      'media.cmp.smaller': 'Smaller file',
+      'media.cmp.qHigh': 'High quality',
+      'media.cmp.qBalanced': 'Balanced',
+      'media.cmp.qSmall': 'Small',
+      'media.cmp.qTiny': 'Tiny',
+      'media.cmp.resolution': 'Resolution',
+      'media.cmp.codec': 'Codec',
+      'media.cmp.fps': 'Frame rate',
+      'media.cmp.audioBitrate': 'Audio bitrate',
+      'media.cmp.maxBitrate': 'Max bitrate',
+      'media.cmp.maxBitratePh': 'e.g. 2000k',
+      'media.cmp.maxBitrateHint': 'Optional hard ceiling on the video bitrate (kbps). Leave blank to let quality (CRF) decide.',
+      'media.cmp.audioHint': 'Re-encodes to MP3 at the chosen bitrate. Lower bitrate = smaller file.',
+      'media.cmp.original': 'Original',
+      'media.cmp.estimate': 'Estimated',
+      'media.cmp.estimateNote': 'An estimate — the real size is shown after compressing.',
+      'media.cmp.estimatePending': 'Play or load the file to read its length for an estimate.',
+      'media.cmp.run': 'Compress',
+      'media.cmp.working': 'Compressing…',
+      'media.cmp.done': 'Compressed',
+      'media.cmp.failed': 'Compression failed',
+
+      // ===== Transcription (ASR) tool =====
+      'media.asr.title': 'Transcribe Audio & Video',
+      'media.asr.sub': 'Turn speech in an audio or video file into text with timestamps, then export TXT, SRT, or VTT. Uses the speech-to-text model configured in Settings.',
+      'media.asr.drop': 'Drop an audio or video file here',
+      'media.asr.browse': 'Click, drop, or paste · audio & video supported',
+      'media.asr.videoNote': 'video — audio will be extracted',
+      'media.asr.usingModel': 'Using model',
+      'media.asr.run': 'Transcribe',
+      'media.asr.runHint': 'Audio is sent to your configured provider for transcription. Video and large files are downsampled first.',
+      'media.asr.cancel': 'Cancel',
+      'media.asr.canceled': 'Canceled.',
+      'media.asr.done': 'Transcription complete',
+      'media.asr.again': 'Transcribe another file',
+      // Stages
+      'media.asr.stageExtract': 'Extracting audio…',
+      'media.asr.stageTranscribe': 'Transcribing…',
+      'media.asr.stageTranscribeN': 'Transcribing chunk {i} of {n}…',
+      'media.asr.stageStitch': 'Assembling transcript…',
+      // Log lines
+      'media.asr.logChunking': 'Long audio — splitting into {n} chunks of ~{win} min and stitching with time offsets.',
+      'media.asr.logExtract': 'Extracting + downsampling audio (16 kHz mono) for upload…',
+      'media.asr.logExtractChunk': 'Extracting chunk {i} of {n}…',
+      // Result
+      'media.asr.transcript': 'Transcript',
+      'media.asr.segments': 'segments',
+      'media.asr.words': 'words',
+      'media.asr.copy': 'Copy',
+      'media.asr.copied': 'Copied to clipboard',
+      'media.asr.export': 'Export {fmt}',
+      // Errors
+      'media.asr.errNotConfigured': 'Transcription is not configured. Open Settings → AI and set an ASR model.',
+      'media.asr.errTooBig': 'The audio is too large for the provider. Try a shorter clip — long files are auto-chunked, but a single window may still exceed the limit.',
+      'media.asr.errNetwork': 'Could not reach the transcription service. Check your connection (and that the backend is enabled, or turn on "Call provider directly").',
+      'media.asr.errProvider': 'The transcription provider returned an error',
+      'media.asr.errEmpty': 'No speech was transcribed from this file.',
+      'media.asr.retry': 'Retry',
+      // Empty state
+      'media.asr.emptyTitle': 'Transcription needs a speech-to-text model',
+      'media.asr.emptySub': 'This tool sends audio to an OpenAI-compatible /audio/transcriptions endpoint (e.g. whisper-1) and renders the result with timestamps.',
+      'media.asr.emptySteps': 'Open Settings (gear icon, top right) → AI, then set an ASR model (and a key/endpoint if different from chat).',
+
+      // ===== Metadata editor =====
+      'media.meta.title': 'Audio & Video Metadata Editor',
+      'media.meta.sub': 'View and edit every tag in your audio or video file — title, artist, album, cover art, and any custom field. Reads all metadata with ffmpeg and exports without re-encoding. Private, nothing uploaded.',
+      'media.meta.drop': 'Drop an audio or video file here',
+      'media.meta.browse': 'Click, drop, or paste · MP3, FLAC, M4A, MP4, MOV, MKV…',
+      'media.meta.reading': 'Reading metadata…',
+      'media.meta.readFailed': 'Could not read this file',
+      'media.meta.noTags': 'No metadata tags found in this file.',
+      // Technical / stream info
+      'media.meta.info': 'File info',
+      'media.meta.codec': 'Codec',
+      'media.meta.videoCodec': 'Video codec',
+      'media.meta.resolution': 'Resolution',
+      'media.meta.fps': 'Frame rate',
+      'media.meta.duration': 'Duration',
+      'media.meta.bitrate': 'Bitrate',
+      'media.meta.sampleRate': 'Sample rate',
+      'media.meta.channels': 'Channels',
+      'media.meta.size': 'Size',
+      'media.meta.format': 'Format',
+      // Cover art
+      'media.meta.cover': 'Cover art',
+      'media.meta.noCover': 'No cover art',
+      'media.meta.replaceCover': 'Replace',
+      'media.meta.removeCover': 'Remove',
+      'media.meta.coverHint': 'JPG or PNG recommended',
+      // Tag sections
+      'media.meta.common': 'Common tags',
+      'media.meta.custom': 'Other / custom tags',
+      'media.meta.addTag': 'Add tag',
+      'media.meta.keyPlaceholder': 'key (e.g. mood)',
+      'media.meta.valuePlaceholder': 'value',
+      'media.meta.removeTag': 'Remove tag',
+      'media.meta.dupKey': 'That tag key already exists',
+      'media.meta.needKey': 'Enter a tag name first',
+      // Common field labels
+      'media.meta.f.title': 'Title',
+      'media.meta.f.artist': 'Artist',
+      'media.meta.f.album': 'Album',
+      'media.meta.f.album_artist': 'Album artist',
+      'media.meta.f.composer': 'Composer',
+      'media.meta.f.genre': 'Genre',
+      'media.meta.f.date': 'Year / date',
+      'media.meta.f.track': 'Track',
+      'media.meta.f.disc': 'Disc',
+      'media.meta.f.comment': 'Comment',
+      'media.meta.f.lyrics': 'Lyrics',
+      'media.meta.f.publisher': 'Publisher',
+      'media.meta.f.copyright': 'Copyright',
+      'media.meta.f.language': 'Language',
+      'media.meta.f.encoded_by': 'Encoded by',
+      'media.meta.f.grouping': 'Grouping',
+      // Actions
+      'media.meta.export': 'Export with metadata',
+      'media.meta.exporting': 'Writing…',
+      'media.meta.strip': 'Strip all metadata',
+      'media.meta.stripped': 'All metadata removed',
+      'media.meta.exported': 'Metadata written',
+      'media.meta.exportFailed': 'Failed to write metadata',
+      'media.meta.noChange': 'No changes to write',
+      'media.meta.before': 'Before',
+      'media.meta.after': 'After',
+      'media.meta.download': 'Download',
+      'media.meta.copyNote': 'Exports a tagged copy without re-encoding the audio (-c copy) — fast and lossless.',
+      'media.meta.limitedNote': 'This container (e.g. WAV) supports only a small, fixed set of tags — custom or uncommon keys may not be saved.',
+
+      // Add-to-player (shown on the converter / editor / subtitle pages)
+      'media.addToPlayer': 'Add to player',
+      'media.addedToPlayer': 'Added to your player library',
+
+      // ===== Player mode =====
+      'media.player.title': 'Music Player',
+      'media.player.sub': 'Play audio you own — private and offline. Tracks and playlists are saved in your browser; nothing is uploaded.',
+      'media.player.nowPlaying': 'Now Playing',
+      'media.player.lyrics': 'Lyrics',
+      'media.player.nothingPlaying': 'Nothing playing — add a track to begin',
+      // Library
+      'media.player.allTracks': 'All tracks',
+      'media.player.add': 'Add music',
+      'media.player.search': 'Search title, artist, album…',
+      'media.player.emptyTitle': 'Your library is empty',
+      'media.player.emptySub': 'Drop audio files here, or click Add music. They stay on your device.',
+      'media.player.noMatch': 'No tracks match your search.',
+      'media.player.play': 'Play',
+      'media.player.more': 'More',
+      'media.player.addTo': 'Add to playlist',
+      'media.player.remove': 'Remove from library',
+      'media.player.newPlaylist': 'New playlist',
+      'media.player.playlistName': 'Playlist name',
+      'media.player.deletePlaylist': 'Delete playlist',
+      'media.player.addedToPlaylist': 'Added to playlist',
+      // Cache
+      'media.player.stored': 'Stored',
+      'media.player.clearCache': 'Clear cache',
+      'media.player.clearConfirm': 'Remove all stored tracks from this browser? Playlists are kept but emptied.',
+      'media.player.cacheCleared': 'Library cleared',
+      'media.player.cacheFull': 'Storage cap reached — clear some tracks first',
+      // Now-Playing transport
+      'media.player.prev': 'Previous',
+      'media.player.pause': 'Pause',
+      'media.player.next': 'Next',
+      'media.player.shuffle': 'Shuffle',
+      'media.player.repeat': 'Repeat',
+      'media.player.abRepeat': 'A–B repeat',
+      'media.player.toggleArt': 'Toggle artwork / waveform',
+      'media.player.editTags': 'Edit metadata',
+      'media.player.sendEdit': 'Send to Edit',
+      'media.player.sendConvert': 'Send to Convert',
+      // Mobile deck
+      'media.player.swipeHint': 'Swipe to switch',
+      'media.player.swipeLyrics': 'Swipe left for lyrics →',
+      'media.player.swipeBack': '← Swipe back',
+      // Tag editor
+      'media.player.fieldTitle': 'Title',
+      'media.player.fieldArtist': 'Artist',
+      'media.player.fieldAlbum': 'Album',
+      'media.player.exportNote': 'Saving updates the title in your library. “Export tagged file” writes the tags into a downloadable copy (no re-encode).',
+      'media.player.exportTagged': 'Export tagged file',
+      'media.player.tagsSaved': 'Metadata saved',
+      // Lyrics panel
+      'media.lyrics.none': 'No lyrics yet',
+      'media.lyrics.addHint': 'Drop or paste a .lrc file for synced lyrics, or plain text.',
+      'media.lyrics.paste': 'Add lyrics',
+      'media.lyrics.dropHere': 'Drop .lrc or .txt to add lyrics',
+      'media.lyrics.edit': 'Edit lyrics',
+      'media.lyrics.save': 'Save',
+      'media.lyrics.cancel': 'Cancel',
+      'media.lyrics.plainNote': 'Plain text (no timing). Paste an .lrc for synced, scrolling lyrics.',
+      'media.lyrics.placeholder': 'Paste .lrc (e.g. [00:12.34]line) or plain lyrics…',
+
+      // ===== Online (official-embed) source =====
+      'media.online.tabFiles': 'Files',
+      'media.online.tabOnline': 'Online',
+      'media.online.paste': 'Paste a NetEase / Bilibili / YouTube link…',
+      'media.online.addBtn': 'Add',
+      'media.online.hint': 'Plays the platform’s OWN embedded player in-page — official playback, not a download. NetEase Cloud Music, Bilibili, and YouTube links are supported.',
+      'media.online.unsupported': 'Unsupported link — paste a NetEase, Bilibili, or YouTube URL',
+      'media.online.emptyTitle': 'No online items yet',
+      'media.online.emptySub': 'Paste a share link to play it via the platform’s official embed.',
+      'media.online.embedTag': 'official embed',
+      'media.online.officialBadge': 'Official embed · in-page playback',
+      'media.online.playbackNote': 'This is the platform’s own embedded player (playback only). Online items can’t be edited, tagged, converted, or cached as files — they’re live embeds. Availability and region limits are set by the platform.',
+      'media.online.openTab': 'Open in a new tab',
+      'media.online.badUrl': 'This embed URL is not allowed.',
+    },
+    zh: {
+      'media.drop': '拖入音频或视频文件',
+      'media.browse': '点击、拖入或粘贴 · 支持音频与视频',
+      'media.hint': '在浏览器中转换,绝不上传',
+      'media.convert': '开始转换',
+      'media.converting': '转换中…',
+      'media.loadingRuntime': '正在加载运行时…',
+      'media.runtimeHint': '首次运行会从官方 CDN 下载 ffmpeg 引擎(约 31MB),之后会被缓存。',
+      // 运行前提示:根据 ~31MB 核心是否已缓存(Cache API)显示不同文案。
+      'media.runtimeCached': '运行时已缓存 —— 立即加载,无需下载。',
+      'media.runtimeWillDownload': '首次运行会下载一次 ffmpeg 引擎(约 31MB),之后会被缓存以便下次直接使用。',
+      'media.runtimeFromCache': '正在加载已缓存的运行时…',
+      'media.download': '下载',
+      'media.change': '更换文件',
+      'media.bitrate': '比特率',
+      'media.from': '源格式',
+      'media.to': '转换为',
+      'media.done': '完成',
+      'media.failed': '转换失败',
+      'media.unsupported': '不支持的文件类型 — 请选择音频或视频文件',
+      'media.videoInput': '视频 — 将提取音频',
+      'media.extractNote': '检测到视频 — 将提取其中的音频轨道。',
+      'media.advanced': '高级选项',
+      'media.sampleRate': '采样率',
+      'media.channels': '声道',
+      'media.keep': '保持原样',
+      'media.mono': '单声道',
+      'media.stereo': '立体声',
+
+      // 工作台标签
+      'media.tab.convert': '转换',
+      'media.tab.edit': '编辑',
+      'media.tab.advanced': '高级',
+
+      // 编辑
+      'media.edit.hint': '裁剪、调整音量、淡入淡出或响度归一 —— 由 ffmpeg 处理并重新编码。',
+      'media.edit.apply': '应用并导出',
+      'media.edit.trim': '裁剪',
+      'media.edit.start': '起点',
+      'media.edit.end': '终点',
+      'media.edit.clearTrim': '清除',
+      'media.edit.dragHint': '提示:在波形上拖动可设置裁剪区间;点击可跳转播放位置。',
+      'media.edit.gain': '音量 / 增益',
+      'media.edit.fadeIn': '淡入',
+      'media.edit.fadeOut': '淡出',
+      'media.edit.normalize': '响度归一化(EBU R128)',
+      'media.edit.normalizeHint': '将感知响度调整到广播标准(约 -16 LUFS)。',
+
+      // 高级 / 自定义命令
+      'media.adv.intro': '对你的文件运行原始 ffmpeg 命令。面向高级用户。',
+      'media.adv.label': 'ffmpeg 参数',
+      'media.adv.placeholder': '例如  -af loudnorm  (输入与输出会自动接入)',
+      'media.adv.tokens': '输入会自动以 -i 加入,输出会自动追加。可用 {input} / {output} 显式指定它们的位置。',
+      'media.adv.ack': '我了解这会在我的浏览器中运行自定义命令。',
+      'media.adv.run': '运行命令',
+      'media.adv.failed': '命令执行失败 —— 请检查你的 ffmpeg 参数',
+
+      'media.conv.title': '音视频工作台',
+      'media.conv.sub': '转换音频与视频、调整分辨率、裁剪、淡入淡出、响度归一,或从视频提取音频,甚至导出 GIF。由 ffmpeg 驱动,完全在浏览器中处理,私密、绝不上传。',
+
+      'media.sub.title': '字幕工具',
+      'media.sub.sub': '将字幕烧录进视频,或从 .srt / .ass 文件添加可切换的软字幕轨道。',
+      'media.sub.mode': '模式',
+      'media.sub.burn': '硬字幕(烧录)',
+      'media.sub.mux': '软字幕(封装)',
+      'media.sub.burnHint': '把字幕永久渲染到画面上(会重新编码视频),在任何播放器都能显示。',
+      'media.sub.muxHint': '添加可切换的字幕轨道,无需重新编码 — 快速且无损,观众可自行开关。',
+      'media.sub.dropVideo': '拖入视频文件',
+      'media.sub.browseVideo': '点击、拖入或粘贴 · MP4、MOV、WebM、MKV',
+      'media.sub.pickSub': '选择字幕文件(.srt / .ass / .vtt)',
+      'media.sub.fontSize': '字号',
+      'media.sub.quality': '画质(越小越清晰)',
+      'media.sub.run': '开始处理',
+      'media.sub.failed': '字幕处理失败',
+      'media.sub.needVideo': '请选择一个视频文件',
+      'media.sub.needSub': '请选择一个字幕文件(.srt / .ass / .vtt)',
+
+      'media.cmd.convert': '转换音视频 / 提取音频',
+      'media.cmd.compress': '压缩视频或音频',
+      'media.cmd.subtitles': '为视频添加字幕',
+      'media.cmd.transcribe': '将音视频转录为文字',
+      'media.cmd.metadata': '编辑音频元信息 / 标签',
+      'media.cmd.player': '音乐播放器(播放你自己的音频)',
+
+      // 音视频中心子导航
+      'media.nav.convert': '转换',
+      'media.nav.compress': '压缩',
+      'media.nav.edit': '编辑',
+      'media.nav.subtitles': '字幕',
+      'media.nav.transcribe': '转录',
+      'media.nav.metadata': '元信息',
+      'media.nav.player': '播放器',
+
+      // 视频输出(转换器)
+      'media.outputKind': '输出',
+      'media.kindVideo': '视频',
+      'media.kindAudio': '仅音频',
+      'media.gifNote': '导出为无声的动态 GIF(更低帧率与更小尺寸可让文件更轻)。',
+
+      // ===== 压缩工具 =====
+      'media.cmp.title': '压缩音视频',
+      'media.cmp.sub': '压缩视频(分辨率、画质、帧率、编码)或音频(比特率),并提供实时体积预估。由 ffmpeg 在浏览器中处理,私密、绝不上传。',
+      'media.cmp.drop': '拖入一个视频或音频文件',
+      'media.cmp.browse': '点击、拖入或粘贴 · 支持视频与音频',
+      'media.cmp.quality': '画质',
+      'media.cmp.better': '画质更好',
+      'media.cmp.smaller': '体积更小',
+      'media.cmp.qHigh': '高画质',
+      'media.cmp.qBalanced': '均衡',
+      'media.cmp.qSmall': '较小',
+      'media.cmp.qTiny': '极小',
+      'media.cmp.resolution': '分辨率',
+      'media.cmp.codec': '编码',
+      'media.cmp.fps': '帧率',
+      'media.cmp.audioBitrate': '音频比特率',
+      'media.cmp.maxBitrate': '最大比特率',
+      'media.cmp.maxBitratePh': '例如 2000k',
+      'media.cmp.maxBitrateHint': '可选的视频比特率上限(kbps)。留空则由画质(CRF)决定。',
+      'media.cmp.audioHint': '以所选比特率重新编码为 MP3。比特率越低,文件越小。',
+      'media.cmp.original': '原始',
+      'media.cmp.estimate': '预计',
+      'media.cmp.estimateNote': '这是预估值 —— 压缩后会显示真实体积。',
+      'media.cmp.estimatePending': '播放或载入文件以读取时长来进行预估。',
+      'media.cmp.run': '开始压缩',
+      'media.cmp.working': '压缩中…',
+      'media.cmp.done': '压缩完成',
+      'media.cmp.failed': '压缩失败',
+
+      // ===== 转录(ASR)工具 =====
+      'media.asr.title': '音视频转录',
+      'media.asr.sub': '将音频或视频中的语音转成带时间轴的文字,并可导出 TXT、SRT 或 VTT。使用在「设置」中配置的语音转文字模型。',
+      'media.asr.drop': '拖入一个音频或视频文件',
+      'media.asr.browse': '点击、拖入或粘贴 · 支持音频与视频',
+      'media.asr.videoNote': '视频 —— 将提取音频',
+      'media.asr.usingModel': '使用模型',
+      'media.asr.run': '开始转录',
+      'media.asr.runHint': '音频会被发送到你配置的服务进行转录。视频与较大文件会先被降采样。',
+      'media.asr.cancel': '取消',
+      'media.asr.canceled': '已取消。',
+      'media.asr.done': '转录完成',
+      'media.asr.again': '转录另一个文件',
+      // 阶段
+      'media.asr.stageExtract': '正在提取音频…',
+      'media.asr.stageTranscribe': '正在转录…',
+      'media.asr.stageTranscribeN': '正在转录第 {i} / {n} 段…',
+      'media.asr.stageStitch': '正在拼合文字…',
+      // 日志
+      'media.asr.logChunking': '音频较长 —— 拆分为 {n} 段(每段约 {win} 分钟),并按时间偏移拼合。',
+      'media.asr.logExtract': '正在提取并降采样音频(16 kHz 单声道)以便上传…',
+      'media.asr.logExtractChunk': '正在提取第 {i} / {n} 段…',
+      // 结果
+      'media.asr.transcript': '转录文本',
+      'media.asr.segments': '段',
+      'media.asr.words': '词',
+      'media.asr.copy': '复制',
+      'media.asr.copied': '已复制到剪贴板',
+      'media.asr.export': '导出 {fmt}',
+      // 错误
+      'media.asr.errNotConfigured': '尚未配置转录。请打开「设置 → AI」并设置一个 ASR 模型。',
+      'media.asr.errTooBig': '音频对服务来说过大。请尝试更短的片段 —— 长文件会自动分段,但单段窗口仍可能超出限制。',
+      'media.asr.errNetwork': '无法连接转录服务。请检查网络(以及后端是否已启用,或开启「直接调用服务商」)。',
+      'media.asr.errProvider': '转录服务返回了错误',
+      'media.asr.errEmpty': '未从该文件转录到任何语音。',
+      'media.asr.retry': '重试',
+      // 空状态
+      'media.asr.emptyTitle': '转录需要一个语音转文字模型',
+      'media.asr.emptySub': '此工具会将音频发送到兼容 OpenAI 的 /audio/transcriptions 接口(例如 whisper-1),并将结果按时间轴呈现。',
+      'media.asr.emptySteps': '打开「设置」(右上角齿轮图标)→ AI,然后设置一个 ASR 模型(如与聊天不同,再填写密钥/接口)。',
+
+      // ===== 元信息编辑器 =====
+      'media.meta.title': '音视频元信息编辑器',
+      'media.meta.sub': '查看并编辑音频或视频文件中的每一个标签 —— 标题、艺术家、专辑、封面以及任意自定义字段。使用 ffmpeg 读取全部元信息,导出时不重新编码。私密,绝不上传。',
+      'media.meta.drop': '拖入一个音频或视频文件',
+      'media.meta.browse': '点击、拖入或粘贴 · 支持 MP3、FLAC、M4A、MP4、MOV、MKV…',
+      'media.meta.reading': '正在读取元信息…',
+      'media.meta.readFailed': '无法读取该文件',
+      'media.meta.noTags': '该文件中未找到元信息标签。',
+      // 技术 / 流信息
+      'media.meta.info': '文件信息',
+      'media.meta.codec': '编码',
+      'media.meta.videoCodec': '视频编码',
+      'media.meta.resolution': '分辨率',
+      'media.meta.fps': '帧率',
+      'media.meta.duration': '时长',
+      'media.meta.bitrate': '比特率',
+      'media.meta.sampleRate': '采样率',
+      'media.meta.channels': '声道',
+      'media.meta.size': '大小',
+      'media.meta.format': '格式',
+      // 封面
+      'media.meta.cover': '封面',
+      'media.meta.noCover': '无封面',
+      'media.meta.replaceCover': '替换',
+      'media.meta.removeCover': '移除',
+      'media.meta.coverHint': '建议使用 JPG 或 PNG',
+      // 标签分区
+      'media.meta.common': '常用标签',
+      'media.meta.custom': '其他 / 自定义标签',
+      'media.meta.addTag': '添加标签',
+      'media.meta.keyPlaceholder': '键(如 mood)',
+      'media.meta.valuePlaceholder': '值',
+      'media.meta.removeTag': '删除标签',
+      'media.meta.dupKey': '该标签键已存在',
+      'media.meta.needKey': '请先输入标签名',
+      // 常用字段标签
+      'media.meta.f.title': '标题',
+      'media.meta.f.artist': '艺术家',
+      'media.meta.f.album': '专辑',
+      'media.meta.f.album_artist': '专辑艺术家',
+      'media.meta.f.composer': '作曲',
+      'media.meta.f.genre': '流派',
+      'media.meta.f.date': '年份 / 日期',
+      'media.meta.f.track': '音轨号',
+      'media.meta.f.disc': '碟片号',
+      'media.meta.f.comment': '注释',
+      'media.meta.f.lyrics': '歌词',
+      'media.meta.f.publisher': '发行方',
+      'media.meta.f.copyright': '版权',
+      'media.meta.f.language': '语言',
+      'media.meta.f.encoded_by': '编码者',
+      'media.meta.f.grouping': '分组',
+      // 操作
+      'media.meta.export': '导出并写入元信息',
+      'media.meta.exporting': '写入中…',
+      'media.meta.strip': '清除全部元信息',
+      'media.meta.stripped': '已移除全部元信息',
+      'media.meta.exported': '元信息已写入',
+      'media.meta.exportFailed': '写入元信息失败',
+      'media.meta.noChange': '没有可写入的更改',
+      'media.meta.before': '之前',
+      'media.meta.after': '之后',
+      'media.meta.download': '下载',
+      'media.meta.copyNote': '导出带标签的副本,不重新编码音频(-c copy)—— 快速且无损。',
+      'media.meta.limitedNote': '该容器(如 WAV)仅支持一小组固定标签 —— 自定义或不常见的键可能无法保存。',
+
+      // 加入播放器(显示在转换 / 编辑 / 字幕页面)
+      'media.addToPlayer': '加入播放器',
+      'media.addedToPlayer': '已加入播放器曲库',
+
+      // ===== 播放器模式 =====
+      'media.player.title': '音乐播放器',
+      'media.player.sub': '播放你自己的音频 —— 私密、离线。曲目与歌单保存在你的浏览器中,绝不上传。',
+      'media.player.nowPlaying': '正在播放',
+      'media.player.lyrics': '歌词',
+      'media.player.nothingPlaying': '暂无播放 —— 添加一首曲目开始',
+      // 曲库
+      'media.player.allTracks': '全部曲目',
+      'media.player.add': '添加音乐',
+      'media.player.search': '搜索标题、艺术家、专辑…',
+      'media.player.emptyTitle': '曲库还是空的',
+      'media.player.emptySub': '把音频文件拖到这里,或点击「添加音乐」。文件只保存在你的设备上。',
+      'media.player.noMatch': '没有匹配的曲目。',
+      'media.player.play': '播放',
+      'media.player.more': '更多',
+      'media.player.addTo': '加入歌单',
+      'media.player.remove': '从曲库移除',
+      'media.player.newPlaylist': '新建歌单',
+      'media.player.playlistName': '歌单名称',
+      'media.player.deletePlaylist': '删除歌单',
+      'media.player.addedToPlaylist': '已加入歌单',
+      // 缓存
+      'media.player.stored': '已存储',
+      'media.player.clearCache': '清除缓存',
+      'media.player.clearConfirm': '从此浏览器移除所有已存储的曲目?歌单会保留但被清空。',
+      'media.player.cacheCleared': '曲库已清空',
+      'media.player.cacheFull': '已达存储上限 —— 请先清理部分曲目',
+      // 正在播放 / 传输控制
+      'media.player.prev': '上一首',
+      'media.player.pause': '暂停',
+      'media.player.next': '下一首',
+      'media.player.shuffle': '随机播放',
+      'media.player.repeat': '循环',
+      'media.player.abRepeat': 'A–B 循环',
+      'media.player.toggleArt': '切换封面 / 波形',
+      'media.player.editTags': '编辑元数据',
+      'media.player.sendEdit': '发送到编辑',
+      'media.player.sendConvert': '发送到转换',
+      // 移动端滑动
+      'media.player.swipeHint': '滑动切换',
+      'media.player.swipeLyrics': '左滑查看歌词 →',
+      'media.player.swipeBack': '← 向右滑返回',
+      // 标签编辑
+      'media.player.fieldTitle': '标题',
+      'media.player.fieldArtist': '艺术家',
+      'media.player.fieldAlbum': '专辑',
+      'media.player.exportNote': '保存会更新曲库中的标题。「导出带标签文件」会把标签写入一个可下载的副本(不重新编码)。',
+      'media.player.exportTagged': '导出带标签文件',
+      'media.player.tagsSaved': '元数据已保存',
+      // 歌词面板
+      'media.lyrics.none': '暂无歌词',
+      'media.lyrics.addHint': '拖入或粘贴 .lrc 文件以获得同步歌词,或粘贴纯文本。',
+      'media.lyrics.paste': '添加歌词',
+      'media.lyrics.dropHere': '拖入 .lrc 或 .txt 添加歌词',
+      'media.lyrics.edit': '编辑歌词',
+      'media.lyrics.save': '保存',
+      'media.lyrics.cancel': '取消',
+      'media.lyrics.plainNote': '纯文本(无时间轴)。粘贴 .lrc 可获得同步滚动歌词。',
+      'media.lyrics.placeholder': '粘贴 .lrc(例如 [00:12.34]歌词)或纯文本歌词…',
+
+      // ===== 在线(官方嵌入)来源 =====
+      'media.online.tabFiles': '文件',
+      'media.online.tabOnline': '在线',
+      'media.online.paste': '粘贴网易云 / 哔哩哔哩 / YouTube 链接…',
+      'media.online.addBtn': '添加',
+      'media.online.hint': '在页面内播放平台「自己的」嵌入式播放器 —— 官方播放,并非下载。支持网易云音乐、哔哩哔哩和 YouTube 链接。',
+      'media.online.unsupported': '不支持的链接 —— 请粘贴网易云、哔哩哔哩或 YouTube 网址',
+      'media.online.emptyTitle': '还没有在线项目',
+      'media.online.emptySub': '粘贴一个分享链接,通过平台官方嵌入播放。',
+      'media.online.embedTag': '官方嵌入',
+      'media.online.officialBadge': '官方嵌入 · 页面内播放',
+      'media.online.playbackNote': '这是平台自带的嵌入式播放器(仅播放)。在线项目无法被编辑、写标签、转换或作为文件缓存 —— 它们是实时嵌入。可用性与地区限制由平台决定。',
+      'media.online.openTab': '在新标签打开',
+      'media.online.badUrl': '该嵌入网址不被允许。',
+    },
+  },
+
+  register() {
+    // Register each named converter into the converter registry so file-drop / convert flows can
+    // discover and run them. The actual engine is lazy-loaded from ./audioRunner on run().
+    for (const c of MEDIA_CONVERTERS) {
+      registerConverter({
+        id: c.id,
+        route: c.route,
+        inputs: [c.input],
+        output: c.output,
+        where: 'client',
+        needsBackend: false,
+        run: async (input, opts = {}) => {
+          const { convertAudio } = await import('./audioRunner')
+          return convertAudio(input, { outputFormat: c.output, options: opts.options, onProgress: opts.onProgress })
+        },
+        mime: mimeForFormat(c.output),
+      })
+    }
+
+    // ⌘K action commands with bilingual keywords (routes are auto-registered for navigation by the
+    // palette; these add intent-based entries that match terms like "extract"/"提取"/"字幕").
+    const go = (path) => { if (typeof window !== 'undefined') window.location.assign(path) }
+    registerCommand({
+      id: 'media-convert',
+      title: 'Media Converter',
+      group: 'Audio',
+      keywords: 'audio video convert mp3 wav flac ogg opus aac m4a mp4 webm mov mkv gif extract sound resolution 音频 视频 转换 提取 转码 分辨率',
+      needsBackend: false,
+      run: () => go('/media/convert'),
+    })
+    registerCommand({
+      id: 'media-compress',
+      title: 'Compress Video / Audio',
+      group: 'Audio',
+      keywords: 'compress shrink reduce size video audio bitrate crf resolution downscale smaller mp4 压缩 缩小 体积 视频 音频 比特率 分辨率',
+      needsBackend: false,
+      run: () => go('/media/compress'),
+    })
+    registerCommand({
+      id: 'media-transcribe',
+      title: 'Transcribe Audio / Video',
+      group: 'Audio',
+      keywords: 'transcribe transcription speech to text asr whisper subtitles srt vtt captions stt audio video 转录 语音转文字 字幕 听写',
+      needsBackend: false,
+      run: () => go('/media/transcribe'),
+    })
+    registerCommand({
+      id: 'media-subtitles',
+      title: 'Subtitle Tool',
+      group: 'Audio',
+      keywords: 'subtitle subtitles srt ass burn hardsub softsub mux caption video 字幕 烧录 软字幕 硬字幕 视频',
+      needsBackend: false,
+      run: () => go('/media/subtitles'),
+    })
+    registerCommand({
+      id: 'media-metadata',
+      title: 'Audio Metadata Editor',
+      group: 'Audio',
+      keywords: 'metadata tags id3 vorbis tag editor title artist album cover art album art edit tags strip metadata 元信息 元数据 标签 编辑标签 封面 专辑封面',
+      needsBackend: false,
+      run: () => go('/media/metadata'),
+    })
+    registerCommand({
+      id: 'media-player',
+      title: 'Music Player',
+      group: 'Audio',
+      keywords: 'music player play audio playlist lyrics lrc id3 tags local offline 音乐 播放器 播放 歌单 歌词 本地',
+      needsBackend: false,
+      run: () => go('/media/player'),
+    })
+  },
+}

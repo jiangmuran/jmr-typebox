@@ -1,5 +1,15 @@
 import { renderMarkdown, buildStandaloneHTML } from './markdown'
-import { loadScript } from './loadScript'
+import { prerenderMermaid, hasMermaid } from './mermaid'
+
+// Math present? -> embed KaTeX CSS (with bundled fonts) so a standalone/exported
+// document styles it. Lazy so no-math exports stay lean.
+async function katexCssIfNeeded(html) {
+  if (typeof html !== 'string' || html.indexOf('class="katex') === -1) return ''
+  try {
+    const { getKatexCss } = await import('./katexCss')
+    return await getKatexCss()
+  } catch { return '' }
+}
 
 function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type })
@@ -36,23 +46,25 @@ export function exportMD(content, filename) {
   return { key: 'toast.downloaded', params: { name: `${filename}.md` } }
 }
 
-export function exportHTML(content, filename) {
-  const html = renderMarkdown(content)
-  downloadBlob(buildStandaloneHTML(filename, html), `${filename}.html`, 'text/html;charset=utf-8')
+export async function exportHTML(content, filename, isDark = false) {
+  let html = renderMarkdown(content)
+  html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG
+  const katexCss = await katexCssIfNeeded(html)
+  downloadBlob(buildStandaloneHTML(filename, html, { katexCss }), `${filename}.html`, 'text/html;charset=utf-8')
   return { key: 'toast.downloaded', params: { name: `${filename}.html` } }
 }
 
 export async function exportPDF(content, filename) {
-  await Promise.all([
-    loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
-    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
   ])
-  const el = createExportElement(renderMarkdown(content), false)
+  const html = renderMarkdown(content)
+  const el = createExportElement(html, false)
   el.style.background = '#fff'; el.style.color = '#1c1c1e'
-  const canvas = await window.html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
+  if (hasMermaid(html)) { const { renderMermaidIn } = await import('./mermaid'); await renderMermaidIn(el, false) }
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false })
   document.body.removeChild(el)
-
-  const { jsPDF } = window.jspdf
   const pdf = new jsPDF('p', 'px', 'a4', true)
   const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight()
   const ratio = pw / canvas.width
@@ -72,26 +84,72 @@ export async function exportPDF(content, filename) {
 }
 
 export async function exportPNG(content, filename, isDark) {
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js')
-  const el = createExportElement(renderMarkdown(content), isDark)
+  const { default: html2canvas } = await import('html2canvas')
+  const html = renderMarkdown(content)
+  const el = createExportElement(html, isDark)
+  if (hasMermaid(html)) { const { renderMermaidIn } = await import('./mermaid'); await renderMermaidIn(el, isDark) }
 
   // Branding footer
   const footer = document.createElement('div')
   const borderColor = isDark ? '#38383a' : '#e5e5ea'
   const textColor = isDark ? '#636366' : '#aeaeb2'
   footer.style.cssText = `margin-top:32px;padding-top:16px;border-top:1px solid ${borderColor};font-size:12px;color:${textColor};display:flex;align-items:center;gap:8px;`
-  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><defs><linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><rect width="16" height="16" rx="4" fill="url(#wg)"/><path d="M5 5.5h6M8 5.5v6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · github.com/jmr/typebox</span>`
+  footer.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="${isDark ? '#f5f5f7' : '#1c1c1e'}"/><path d="M5 5.5h6M8 5.5v6" stroke="${isDark ? '#1c1c1e' : '#fff'}" stroke-width="1.4" stroke-linecap="round"/></svg><span>Made with TypeBox · box.muran.tech</span>`
   el.appendChild(footer)
 
   const bg = isDark ? '#1c1c1e' : '#fff'
-  const canvas = await window.html2canvas(el, { scale: 2, useCORS: true, backgroundColor: bg, logging: false })
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: bg, logging: false })
   document.body.removeChild(el)
   const link = document.createElement('a'); link.download = `${filename}.png`; link.href = canvas.toDataURL('image/png'); link.click()
   return { key: 'toast.pngDone' }
 }
 
-export async function copyHTML(content) {
-  const html = renderMarkdown(content)
+// Render themed HTML (a full <html> doc string from buildThemedHtml) to a canvas, isolated in
+// an iframe so the export theme's CSS applies faithfully without leaking into the app.
+async function renderThemedCanvas(themedHtml) {
+  const { default: html2canvas } = await import('html2canvas')
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:840px;height:1200px;border:0;'
+  document.body.appendChild(iframe)
+  try {
+    await new Promise((res) => { iframe.onload = () => res(); iframe.srcdoc = themedHtml })
+    const doc = iframe.contentDocument
+    // Wait for the theme's web fonts to actually load before snapshotting — the usual cause of
+    // crammed/overlapping text (html2canvas measures each glyph, so a late-loading font misaligns it).
+    try { if (doc.fonts?.ready) await doc.fonts.ready } catch {}
+    await new Promise((r) => setTimeout(r, 200)) // final layout settle
+    const target = doc.getElementById('write') || doc.body
+    const bg = getComputedStyle(doc.body).backgroundColor || '#ffffff'
+    // Give wide content (tables, code blocks) its real width so cells/text aren't squished into 840px.
+    const w = Math.max(840, Math.ceil(target.scrollWidth))
+    return await html2canvas(target, {
+      scale: 2, useCORS: true, backgroundColor: bg, logging: false,
+      width: w, windowWidth: w, windowHeight: Math.max(target.scrollHeight + 80, 600),
+    })
+  } finally {
+    document.body.removeChild(iframe)
+  }
+}
+
+export async function exportThemedPNG(filename, themedHtml) {
+  const canvas = await renderThemedCanvas(themedHtml)
+  const link = document.createElement('a')
+  link.download = `${filename}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
+
+export async function copyThemedPNG(themedHtml) {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) throw new Error('clipboard-image-unsupported')
+  const canvas = await renderThemedCanvas(themedHtml)
+  const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'))
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+}
+
+export async function copyHTML(content, isDark = false) {
+  let html = renderMarkdown(content)
+  html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG so pasted HTML is self-contained
   try { await navigator.clipboard.writeText(html) } catch { await fallbackCopy(html) }
   return { key: 'toast.htmlCopied' }
 }

@@ -1,28 +1,12 @@
-import { ref, watchEffect } from 'vue'
-import { load, save } from '../utils/storage'
+import { useSettings } from './useSettings'
 
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-const theme = ref(load('theme', systemDark ? 'dark' : 'light'))
-
+// Thin wrapper over useSettings so existing callers keep { theme, toggleTheme, setTheme }.
+// `theme` is the RESOLVED scheme ('light' | 'dark'); appearance is applied by useSettings.
 export function useTheme() {
-  function setTheme(t) {
-    document.documentElement.classList.add('theme-transition')
-    theme.value = t
-    document.documentElement.dataset.theme = t
-    save('theme', t)
-    requestAnimationFrame(() => {
-      setTimeout(() => document.documentElement.classList.remove('theme-transition'), 550)
-    })
-  }
+  const { resolvedTheme, setSetting } = useSettings()
 
-  function toggleTheme() {
-    setTheme(theme.value === 'dark' ? 'light' : 'dark')
-  }
+  function setTheme(t) { setSetting('theme', t) }
+  function toggleTheme() { setSetting('theme', resolvedTheme.value === 'dark' ? 'light' : 'dark') }
 
-  // Apply on init
-  watchEffect(() => {
-    document.documentElement.dataset.theme = theme.value
-  })
-
-  return { theme, setTheme, toggleTheme }
+  return { theme: resolvedTheme, setTheme, toggleTheme }
 }

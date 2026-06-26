@@ -6,22 +6,20 @@
  *           → smart paragraph merging → Markdown generation
  */
 
-import { loadScript } from './loadScript'
-
-let pdfjsReady = false
+let pdfjsLib = null
 
 async function ensurePdfJs() {
-  if (pdfjsReady) return
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js')
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
-  pdfjsReady = true
+  if (pdfjsLib) return pdfjsLib
+  pdfjsLib = await import('pdfjs-dist')
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = worker.default
+  return pdfjsLib
 }
 
 // ===== Extract raw items =====
 async function extractRawPages(file, onProgress) {
-  await ensurePdfJs()
-  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise
+  const pdfjs = await ensurePdfJs()
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
   const pages = []
 
   for (let i = 1; i <= pdf.numPages; i++) {

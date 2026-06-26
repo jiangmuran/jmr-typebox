@@ -101,6 +101,13 @@
   border: 1px solid var(--border);
   padding: 8px 14px;
   text-align: left;
+  overflow-wrap: break-word;
+}
+
+/* Mobile: a wide table would otherwise be clipped by the editor's overflow:hidden chain with no
+   way to reach the right columns. Make the table scroll horizontally within the preview pane. */
+@media (max-width: 768px) {
+  .markdown-body table { display: block; width: max-content; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
 .markdown-body th {
@@ -117,4 +124,58 @@
 .markdown-body input[type="checkbox"] {
   margin-right: 6px;
   accent-color: var(--accent);
+}
+
+/* ---------- KaTeX math ---------- */
+/* Block ($$) math: let wide equations scroll instead of overflowing the pane. */
+.markdown-body .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.markdown-body .katex { font-size: 1.05em; }
+/* KaTeX inherits color from text, so it tracks light/dark automatically. */
+.markdown-body .math-error {
+  color: #cc0000;
+  background: var(--code-bg);
+}
+
+/* ---------- Mermaid diagrams ---------- */
+.markdown-body pre.mermaid,
+.markdown-body .mermaid {
+  margin: 1em 0;
+  padding: 0;
+  background: transparent;
+  text-align: center;
+  overflow-x: auto;
+  line-height: normal;
+}
+/* Before render (and the brief moment the raw code is visible): keep it unobtrusive. */
+.markdown-body pre.mermaid:not(.mermaid-rendered) {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  white-space: pre-wrap;
+}
+.markdown-body pre.mermaid.mermaid-rendered,
+.markdown-body .mermaid.mermaid-rendered {
+  color: inherit;
+  font-size: inherit;
+}
+.markdown-body .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.markdown-body .mermaid-error {
+  display: inline-block;
+  text-align: left;
+  color: #b42318;
+  background: rgba(180, 35, 24, 0.08);
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  white-space: pre-wrap;
 }

@@ -1,0 +1,24 @@
+name = "typebox"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Bind the custom domain (Cloudflare manages the DNS record for it).
+routes = [
+  { pattern = "box.muran.tech", custom_domain = true },
+]
+
+# Serve the built static frontend; the Worker runs first for /api/* then falls through.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Globally-consistent per-IP rate limiting (Durable Object) for the abuse-prone proxy endpoints.
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]

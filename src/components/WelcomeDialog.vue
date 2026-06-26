@@ -70,22 +70,19 @@ function dismiss() {
               </svg>
             </div>
 
+            <p class="intro-title">{{ t('welcome.intro') }}</p>
             <div class="features">
               <div class="feat">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2.5l3 3L7 16H4v-3z"/></svg>
-                <div><strong>{{ t('welcome.feat.markdown') }}</strong><span>{{ t('welcome.feat.markdownDesc') }}</span></div>
+                <div><strong>{{ t('welcome.tip.write.t') }}</strong><span>{{ t('welcome.tip.write.d') }}</span></div>
               </div>
               <div class="feat">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 2h6.5l5 5V17a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17V3.5A1.5 1.5 0 0 1 5 2z"/><path d="M11.5 2v5.5H17"/></svg>
-                <div><strong>{{ t('welcome.feat.txt') }}</strong><span>{{ t('welcome.feat.txtDesc') }}</span></div>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3l13 5-5 2-2 5z"/></svg>
+                <div><strong>{{ t('welcome.tip.rc.t') }}</strong><span>{{ t('welcome.tip.rc.d') }}</span></div>
               </div>
               <div class="feat">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3.5" y="1.5" width="13" height="17" rx="2"/><path d="M7 8h3a1.5 1.5 0 0 1 0 3H7m0-3v7"/></svg>
-                <div><strong>{{ t('welcome.feat.pdf') }}</strong><span>{{ t('welcome.feat.pdfDesc') }}</span></div>
-              </div>
-              <div class="feat">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="16" height="12" rx="2"/><circle cx="7" cy="8.5" r="1.5"/><path d="M18 13l-5-4-4 3-2.5-2L2 13.5"/></svg>
-                <div><strong>{{ t('welcome.feat.image') }}</strong><span>{{ t('welcome.feat.imageDesc') }}</span></div>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><line x1="13" y1="13" x2="17.5" y2="17.5"/></svg>
+                <div><strong>{{ t('welcome.tip.k.t') }}</strong><span>{{ t('welcome.tip.k.d') }}</span></div>
               </div>
             </div>
 
@@ -154,7 +151,8 @@ function dismiss() {
 .step-intro { display: flex; flex-direction: column; align-items: center; }
 .intro-logo { margin-bottom: 20px; }
 .intro-logo svg { width: 44px; height: 44px; }
-.features { text-align: left; display: flex; flex-direction: column; gap: 12px; width: 100%; margin-bottom: 20px; }
+.intro-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.features { text-align: left; display: flex; flex-direction: column; gap: 14px; width: 100%; margin-bottom: 20px; }
 .feat { display: flex; gap: 10px; align-items: flex-start; }
 .feat svg { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
 .feat strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 1px; }
