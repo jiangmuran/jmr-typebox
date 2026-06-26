@@ -28,6 +28,8 @@ const dict = {
     // Export menu
     'export': 'Export',
     'export.download': 'Download',
+    'export.saveFile': 'Save to file',
+    'export.saveAs': 'Save a copy…',
     'export.txt': 'Plain Text (.txt)',
     'export.md': 'Markdown (.md)',
     'export.html': 'HTML (.html)',
@@ -374,6 +376,8 @@ const dict = {
 
     'export': '导出',
     'export.download': '下载',
+    'export.saveFile': '保存到文件',
+    'export.saveAs': '另存为副本…',
     'export.txt': '纯文本 (.txt)',
     'export.md': 'Markdown (.md)',
     'export.html': 'HTML (.html)',

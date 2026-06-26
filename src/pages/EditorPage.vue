@@ -375,20 +375,52 @@ async function importFile(file) {
 
 // Ctrl+S: if the active doc is backed by a file handle (opened via the PWA file handler or the File
 // System Access picker), write edits straight back to that file; otherwise download a .md copy.
+// Write the doc's content to a file handle (requesting readwrite permission as needed). True on success.
+async function saveToHandle(handle) {
+  if (handle.queryPermission) {
+    let perm = await handle.queryPermission({ mode: 'readwrite' })
+    if (perm !== 'granted' && handle.requestPermission) perm = await handle.requestPermission({ mode: 'readwrite' })
+    if (perm !== 'granted') return false
+  }
+  const writable = await handle.createWritable()
+  await writable.write(content.value)
+  await writable.close()
+  return true
+}
+
+// Ctrl/Cmd+S — Save. If this doc is backed by a file, write straight back to it; otherwise prompt
+// once for where to save (and remember it). Falls back to a download only where the File System
+// Access API is unavailable (Firefox/Safari).
 async function saveActiveDoc() {
   const handle = fileHandles.get(activeId.value)
-  if (!handle) { doExport('md'); return }
-  try {
-    if (handle.queryPermission) {
-      let perm = await handle.queryPermission({ mode: 'readwrite' })
-      if (perm !== 'granted' && handle.requestPermission) perm = await handle.requestPermission({ mode: 'readwrite' })
-      if (perm !== 'granted') { doExport('md'); return }
+  if (handle) {
+    try { if (await saveToHandle(handle)) { showToast(`${t('toast.savedFile')} ${handle.name || ''}`.trim()); return } }
+    catch (err) { console.error(err) }
+    // permission denied / write error → fall through to a Save-As prompt
+  }
+  await saveAsDoc()
+}
+
+// Save As — write to a NEW file the user picks (a copy, leaving any source untouched) and bind it so
+// later saves go there. Downloads a copy where File System Access isn't available.
+async function saveAsDoc() {
+  if (typeof window !== 'undefined' && window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${filename.value || 'untitled'}.md`,
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'] } }],
+      })
+      if (handle && await saveToHandle(handle)) {
+        fileHandles.set(activeId.value, handle)
+        showToast(`${t('toast.savedFile')} ${handle.name || ''}`.trim())
+      }
+      return
+    } catch (err) {
+      if (err?.name === 'AbortError') return // user cancelled the picker
+      console.error(err)
     }
-    const writable = await handle.createWritable()
-    await writable.write(content.value)
-    await writable.close()
-    showToast(`${t('toast.savedFile')} ${handle.name || ''}`.trim())
-  } catch (err) { console.error(err); showToast(t('toast.exportFailed')) }
+  }
+  doExport('md') // no File System Access → download a copy
 }
 
 // ---- Drag & drop ----
@@ -475,6 +507,7 @@ function onKeydown(e) {
   if (e.key === 'Tab' && ghost.value?.text && editorRef.value && document.activeElement === editorRef.value) {
     e.preventDefault(); ghost.value = null; return
   }
+  if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveAsDoc(); return }
   if (mod && e.key === 's') { e.preventDefault(); saveActiveDoc() }
   else if (mod && e.key === 'b') { e.preventDefault(); insertMarkdown('**', '**', 'bold') }
   else if (mod && e.key === 'i') { e.preventDefault(); insertMarkdown('*', '*', 'italic') }
@@ -599,8 +632,11 @@ onUnmounted(() => {
                 <ThemePicker v-model="exportTheme" :preview-markdown="content" :allow-follow="true" :follow-label="t('settings.exportFollow')" />
               </div>
               <div class="dd-sep"></div>
+              <button @click="exportOpen = false; saveActiveDoc()">{{ t('export.saveFile') }}<kbd>{{ modLabel }}S</kbd></button>
+              <button @click="exportOpen = false; saveAsDoc()">{{ t('export.saveAs') }}<kbd>{{ modLabel }}⇧S</kbd></button>
+              <div class="dd-sep"></div>
               <div class="dd-label">{{ t('export.download') }}</div>
-              <button @click="doExport('md')">{{ t('export.md') }}<kbd>{{ modLabel }}S</kbd></button>
+              <button @click="doExport('md')">{{ t('export.md') }}</button>
               <button @click="doExport('txt')">{{ t('export.txt') }}</button>
               <button @click="doExport('html')">{{ t('export.html') }}</button>
               <button @click="doExport('docx')">{{ t('export.docx') }}</button>
