@@ -19,11 +19,13 @@ import PlayerLyrics from './PlayerLyrics.vue'
 import TrackTagEditor from './TrackTagEditor.vue'
 import { usePlayerStore } from './usePlayerStore'
 import { useMediaPool } from './useMediaPool'
+import { useHandoff } from '../../composables/useHandoff'
 
 const { meta: m } = useRouteHead()
 const { t } = useI18n()
 const store = usePlayerStore()
 const pool = useMediaPool()
+const handoff = useHandoff()
 
 // Desktop right-pane toggle: now-playing vs lyrics.
 const rightTab = ref('now') // 'now' | 'lyrics'
@@ -35,6 +37,12 @@ const editTagsFor = ref('')
 
 onMounted(async () => {
   await store.init()
+  // Cross-module "Send to →": add a file sent here from another tool to the library and play it.
+  const taken = handoff.take(['av', 'audio', 'video'])
+  if (taken?.payload) {
+    const f = taken.payload instanceof File ? taken.payload : new File([taken.payload], taken.name || 'audio', { type: taken.payload?.type || '' })
+    await store.addFile(f, { autoplay: true })
+  }
   // Register the player as the live "Add to player" sink so the converter/editor can push files
   // straight into the library without a route change.
   pool.registerPlayerSink(async (file) => { await store.addFile(file) })

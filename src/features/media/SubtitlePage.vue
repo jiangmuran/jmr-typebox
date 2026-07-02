@@ -11,12 +11,14 @@ import ClientOnly from '../../components/ClientOnly.vue'
 import MediaShell from './MediaShell.vue'
 import MediaToolNav from './MediaToolNav.vue'
 import { useMediaFile } from './useMediaFile'
+import { useHandoff } from '../../composables/useHandoff'
 import MediaDropZone from './MediaDropZone.vue'
 import { isVideoInput, isSubtitleInput, formatSize, buildOutputNameWithSuffix } from './mediaHelpers'
 
 const { meta: m } = useRouteHead()
 const { t } = useI18n()
 const { showToast } = useToast()
+const handoff = useHandoff()
 
 const mode = ref('burn') // 'burn' (hardsub) | 'mux' (softsub)
 const fontSize = ref(24)
@@ -69,6 +71,12 @@ const outputName = computed(() => {
 
 let unsubEngine = null
 onMounted(async () => {
+  // Cross-module "Send to →": load a video sent here from another tool.
+  const taken = handoff.take(['av', 'video', 'audio'])
+  if (taken?.payload) {
+    const f = taken.payload instanceof File ? taken.payload : new File([taken.payload], taken.name || 'media', { type: taken.payload?.type || 'video/mp4' })
+    if (video.set(f)) showToast(t('handoff.received'))
+  }
   const { onEngineEvent, isRuntimeCached } = await import('./ffmpegRunner')
   unsubEngine = onEngineEvent((e) => {
     if (e.type === 'download') dl.value = { received: e.received, total: e.total, ratio: e.ratio, fromCache: e.fromCache }

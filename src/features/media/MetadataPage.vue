@@ -17,6 +17,7 @@ import MediaToolNav from './MediaToolNav.vue'
 import MediaDropZone from './MediaDropZone.vue'
 import { useMediaFile } from './useMediaFile'
 import { useMediaPool } from './useMediaPool'
+import { useHandoff } from '../../composables/useHandoff'
 import { isAudioInput, isVideoInput, formatSize, formatDuration, extOf, buildOutputNameWithSuffix } from './mediaHelpers'
 import { COMMON_TAG_KEYS, canonicalTagKey, buildEntries } from './ffmetadata'
 
@@ -24,6 +25,7 @@ const { meta: m } = useRouteHead()
 const { t } = useI18n()
 const { showToast } = useToast()
 const pool = useMediaPool()
+const handoff = useHandoff()
 
 // ---- file ----
 const media = useMediaFile({
@@ -89,6 +91,12 @@ const effectiveCoverUrl = computed(() => {
 let unsubEngine = null
 onMounted(async () => {
   window.addEventListener('paste', onPaste)
+  // Cross-module "Send to →" (useHandoff): load a file sent here from another tool.
+  const taken = handoff.take(['av', 'audio', 'video'])
+  if (taken?.payload) {
+    const f = taken.payload instanceof File ? taken.payload : new File([taken.payload], taken.name || 'media', { type: taken.payload?.type || '' })
+    if (media.set(f)) { read(); showToast(t('handoff.received')) }
+  }
   // Pick up a file handed off from the player ("Send to …") if one is pending for us.
   const pending = pool.peekPending()
   if (pending && pending.file && pending.tab !== 'player') {
