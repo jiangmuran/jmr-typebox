@@ -47,6 +47,12 @@ export const ROUTE_META = {
     h1: 'Image Metadata Viewer & Editor',
     keywords: 'exif viewer, exif editor, image metadata, gps location, remove exif, strip metadata, iptc, xmp, png text, edit exif, view metadata, 图片元信息, EXIF 查看, 删除 EXIF, GPS 位置',
   },
+  '/image/compose': {
+    title: 'Image Compositor — Layer, Merge & Overlay Images — TypeBox',
+    description: 'Combine multiple images on one canvas: stack layers, move, scale, rotate, reorder, and set opacity, then flatten to PNG or JPG. Put one picture on top of another — entirely in your browser, nothing uploaded.',
+    h1: 'Image Compositor',
+    keywords: 'image compositor, combine images, overlay images, merge images, layer images, put image on image, photo layers, stack images, image collage, 图片合成, 图层, 叠加图片, 合并图片',
+  },
 
   // ---- Convert ----
   '/convert/markdown-to-pdf': {
@@ -90,10 +96,10 @@ export const ROUTE_META = {
     keywords: 'audio converter, video converter, convert mp4, video to gif, video to audio, extract audio, change resolution, mp3, wav, flac, ogg, opus, aac, m4a, webm, mov, mkv, 音频转换, 视频转换, 视频提取音频',
   },
   '/media/subtitles': {
-    title: 'Add Subtitles to Video — Burn or Mux SRT/ASS — TypeBox',
-    description: 'Hardcode (burn) subtitles into a video or add a soft, selectable subtitle track from an SRT/ASS file. In-browser with ffmpeg — private, nothing uploaded.',
-    h1: 'Subtitle Tool',
-    keywords: 'burn subtitles, hardsub, softsub, mux subtitles, srt, ass, add subtitles to video, 字幕, 烧录字幕',
+    title: 'Subtitle Studio — Proofread, Style & Render Audio to Subtitled Video — TypeBox',
+    description: 'Proofread subtitles against the waveform, style them (Minimal / Lyric presets, font, color, position), then render an audio-to-subtitled video (WebM) on a canvas with your system fonts — or export SRT / VTT / LRC, or burn/mux into a video with ffmpeg. In-browser, private, nothing uploaded.',
+    h1: 'Subtitle Studio',
+    keywords: 'subtitle studio, proofread subtitles, style subtitles, audio to video, subtitled video, render captions, srt, vtt, lrc, burn subtitles, hardsub, softsub, mux subtitles, karaoke, lyric video, add subtitles to video, 字幕工作室, 字幕校对, 字幕样式, 音频转视频, 烧录字幕, 歌词视频',
   },
   // Audio EDIT view (the workbench's trim/fade/normalize, opened directly). Renders MediaConverter
   // with the Edit tab active.

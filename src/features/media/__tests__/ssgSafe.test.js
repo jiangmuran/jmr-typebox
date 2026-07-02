@@ -72,6 +72,26 @@ describe('media engine modules are SSG/node-safe at import', () => {
     expect(typeof mod.drawWaveform).toBe('function')
   })
 
+  it('subtitle studio modules import without touching canvas/MediaRecorder/AudioContext at top level', async () => {
+    // subtitleStudio is pure; subtitleRender must reach canvas/MediaRecorder/WebAudio only inside its
+    // functions (behind dynamic import from the client-only page) — so importing here in node is safe.
+    const studio = await import('../subtitleStudio')
+    expect(typeof studio.parseSubtitles).toBe('function')
+    expect(typeof studio.serializeSubtitles).toBe('function')
+    expect(typeof studio.activeSegmentIndex).toBe('function')
+    // Pure round-trip works with no globals.
+    expect(studio.serializeSubtitles([{ start: 0, end: 1, text: 'hi' }], 'srt').text).toContain('-->')
+
+    const render = await import('../subtitleRender')
+    expect(typeof render.drawFrame).toBe('function')
+    expect(typeof render.renderSubtitledVideo).toBe('function')
+    expect(typeof render.isRecordingSupported).toBe('function')
+    expect(typeof render.pickWebmMimeType).toBe('function')
+    // Capability checks return a boolean/string without throwing in a node-ish env.
+    expect(typeof render.isRecordingSupported()).toBe('boolean')
+    expect(typeof render.pickWebmMimeType()).toBe('string')
+  })
+
   it('player infra modules import without touching IndexedDB/Audio/window at top level', async () => {
     // These power the music-player mode. Importing them in node (no indexedDB/Audio/navigator) must
     // not throw — every browser global is accessed lazily inside functions, behind dynamic import.

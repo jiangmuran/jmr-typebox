@@ -9,6 +9,7 @@ const TOOLS = [
   { id: 'convert', to: '/image/convert' },
   { id: 'watermark', to: '/image/watermark' },
   { id: 'edit', to: '/image/edit' },
+  { id: 'compose', to: '/image/compose' },
   { id: 'metadata', to: '/image/metadata' },
 ]
 
