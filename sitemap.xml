@@ -35,6 +35,7 @@
   <url><loc>https://box.muran.tech/tools/jwt</loc></url>
   <url><loc>https://box.muran.tech/tools/totp</loc></url>
   <url><loc>https://box.muran.tech/tools/qr</loc></url>
+  <url><loc>https://box.muran.tech/tools/rsa</loc></url>
   <url><loc>https://box.muran.tech/python</loc></url>
   <url><loc>https://box.muran.tech/office</loc></url>
 </urlset>
