@@ -9,6 +9,7 @@ import { jwtDecode, countText } from '../tools/text/transforms'
 import { sha1, sha256, sha384, sha512 } from '../tools/text/hash'
 import { aesEncrypt, aesDecrypt } from '../tools/text/crypto'
 import { totp, totpRemaining, parseOtpauth } from '../tools/text/totp'
+import ToolboxNav from '../components/ToolboxNav.vue'
 
 const { meta: m } = useRouteHead()
 const route = useRoute()
@@ -154,6 +155,37 @@ async function pasteQrImage() {
   } catch {}
 }
 async function copyDecoded() { if (!qrDecoded.value) return; try { await navigator.clipboard.writeText(qrDecoded.value); showToast(t('toast.copied')) } catch {} }
+
+// RSA — encrypt/decrypt (OAEP) or sign/verify (PSS). Keys are PEM. rsa.js is lazy-loaded.
+const rsaPurpose = ref('encrypt') // 'encrypt' | 'sign'
+const rsaBits = ref(2048)
+const rsaPub = ref('')
+const rsaPriv = ref('')
+const rsaInput = ref('')
+const rsaOut = ref('') // ciphertext / plaintext, or the signature (sign purpose)
+const rsaMsg = ref('')
+const rsaOk = ref(false)
+const rsaBusy = ref(false)
+async function genRsa() {
+  rsaBusy.value = true; rsaMsg.value = ''
+  try {
+    const { generateRsaKeys } = await import('../tools/text/rsa')
+    const { publicKey, privateKey } = await generateRsaKeys(rsaPurpose.value, rsaBits.value)
+    rsaPub.value = publicKey; rsaPriv.value = privateKey
+    showToast(t('tool.rsa.generated'))
+  } catch { showToast(t('tool.rsa.failed')) } finally { rsaBusy.value = false }
+}
+async function runRsa(op) {
+  rsaMsg.value = ''; rsaOk.value = false
+  try {
+    const rsa = await import('../tools/text/rsa')
+    if (op === 'encrypt') rsaOut.value = await rsa.rsaEncrypt(rsaInput.value, rsaPub.value)
+    else if (op === 'decrypt') rsaOut.value = await rsa.rsaDecrypt(rsaInput.value, rsaPriv.value)
+    else if (op === 'sign') rsaOut.value = await rsa.rsaSign(rsaInput.value, rsaPriv.value)
+    else if (op === 'verify') { const ok = await rsa.rsaVerify(rsaInput.value, rsaOut.value, rsaPub.value); rsaOk.value = ok; rsaMsg.value = ok ? t('tool.rsa.valid') : t('tool.rsa.invalid') }
+  } catch { rsaMsg.value = t('tool.rsa.failed') }
+}
+async function copyText(text) { if (!text) return; try { await navigator.clipboard.writeText(text); showToast(t('toast.copied')) } catch {} }
 function clearAll() { input.value = ''; output.value = ''; passphrase.value = '' }
 function onDrop(e) {
   const f = e.dataTransfer?.files?.[0]
@@ -164,13 +196,14 @@ function onDrop(e) {
 <template>
   <main class="toolbox" @dragover.prevent @drop.prevent="onDrop">
     <h1 class="sr-only">{{ m.h1 }}</h1>
+    <ToolboxNav />
     <header class="tb-head">
       <h2>{{ pageTitle }}</h2>
       <p>{{ pageSub }}</p>
     </header>
 
     <div class="tb-io">
-      <div v-if="def.mode !== 'qr'" class="tb-pane">
+      <div v-if="def.mode !== 'qr' && def.mode !== 'rsa'" class="tb-pane">
         <div class="tb-pane-head"><span>{{ t('tool.input') }}</span>
           <div class="tb-actions">
             <button @click="pasteIn">{{ t('tool.paste') }}</button>
@@ -276,6 +309,49 @@ function onDrop(e) {
           <p v-else-if="qrDecErr" class="tb-hint">{{ t('tool.qr.notFound') }}</p>
         </template>
       </div>
+
+      <!-- RSA: encrypt/decrypt or sign/verify -->
+      <div v-else-if="def.mode === 'rsa'" class="tb-rsa">
+        <div class="seg rsa-seg">
+          <button :class="{ on: rsaPurpose === 'encrypt' }" @click="rsaPurpose = 'encrypt'">{{ t('tool.rsa.encMode') }}</button>
+          <button :class="{ on: rsaPurpose === 'sign' }" @click="rsaPurpose = 'sign'">{{ t('tool.rsa.signMode') }}</button>
+        </div>
+
+        <div class="tb-pane">
+          <div class="tb-pane-head"><span>{{ t('tool.rsa.pub') }}</span><div class="tb-actions"><button @click="copyText(rsaPub)">{{ t('tool.copy') }}</button></div></div>
+          <textarea v-model="rsaPub" class="rsa-key" spellcheck="false" placeholder="-----BEGIN PUBLIC KEY-----"></textarea>
+        </div>
+        <div class="tb-pane">
+          <div class="tb-pane-head"><span>{{ t('tool.rsa.priv') }}</span><div class="tb-actions"><button @click="copyText(rsaPriv)">{{ t('tool.copy') }}</button></div></div>
+          <textarea v-model="rsaPriv" class="rsa-key" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+        </div>
+        <div class="rsa-genrow">
+          <label>{{ t('tool.rsa.size') }}<select v-model.number="rsaBits"><option :value="2048">2048</option><option :value="4096">4096</option></select></label>
+          <button class="btn" :disabled="rsaBusy" @click="genRsa">{{ rsaBusy ? '…' : t('tool.rsa.gen') }}</button>
+        </div>
+
+        <div class="tb-pane">
+          <div class="tb-pane-head"><span>{{ rsaPurpose === 'encrypt' ? t('tool.input') : t('tool.rsa.text') }}</span></div>
+          <textarea v-model="rsaInput" class="rsa-io" spellcheck="false" :placeholder="rsaPurpose === 'encrypt' ? t('tool.rsa.inEnc') : t('tool.rsa.inSign')"></textarea>
+        </div>
+
+        <div class="rsa-run">
+          <template v-if="rsaPurpose === 'encrypt'">
+            <button class="btn primary" @click="runRsa('encrypt')">{{ t('tool.rsa.encBtn') }}</button>
+            <button class="btn" @click="runRsa('decrypt')">{{ t('tool.rsa.decBtn') }}</button>
+          </template>
+          <template v-else>
+            <button class="btn primary" @click="runRsa('sign')">{{ t('tool.rsa.signBtn') }}</button>
+            <button class="btn" @click="runRsa('verify')">{{ t('tool.rsa.verifyBtn') }}</button>
+          </template>
+        </div>
+
+        <div class="tb-pane">
+          <div class="tb-pane-head"><span>{{ rsaPurpose === 'sign' ? t('tool.rsa.sig') : t('tool.output') }}</span><div class="tb-actions"><button @click="copyText(rsaOut)">{{ t('tool.copy') }}</button></div></div>
+          <textarea v-model="rsaOut" class="rsa-io" spellcheck="false"></textarea>
+        </div>
+        <p v-if="rsaMsg" class="tb-hint" :class="{ 'rsa-ok': rsaOk }">{{ rsaMsg }}</p>
+      </div>
     </div>
   </main>
 </template>
@@ -331,6 +407,15 @@ function onDrop(e) {
 .qr-drop:hover, .qr-drop.over { border-color: var(--accent); background: var(--accent-bg); }
 .qr-drop svg { width: 34px; height: 34px; color: var(--text-tertiary); }
 .qr-decoded textarea { width: 100%; min-height: 80px; border: none; background: transparent; padding: 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; word-break: break-all; }
+.tb-rsa { display: flex; flex-direction: column; gap: 12px; }
+.rsa-seg { align-self: flex-start; }
+.rsa-key { width: 100%; min-height: 84px; border: none; background: transparent; padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text); outline: none; resize: vertical; word-break: break-all; }
+.rsa-genrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+.rsa-genrow label { display: flex; align-items: center; gap: 8px; }
+.rsa-genrow select { padding: 5px 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-family: var(--font-sans); }
+.rsa-io { width: 100%; min-height: 72px; border: none; background: transparent; padding: 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; word-break: break-all; }
+.rsa-run { display: flex; gap: 8px; flex-wrap: wrap; }
+.rsa-ok { color: var(--status-ok, #34c759); font-weight: 600; }
 .stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .stat strong { font-size: 26px; font-weight: 750; }
 .stat span { font-size: 11px; color: var(--text-secondary); }

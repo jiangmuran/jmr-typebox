@@ -231,6 +231,12 @@ export const ROUTE_META = {
     h1: 'QR Code Generator & Reader',
     keywords: 'qr code generator, qr code reader, qr decoder, scan qr from image, make qr code, text to qr, url qr, 二维码生成, 二维码识别, 扫码',
   },
+  '/tools/rsa': {
+    title: 'RSA Encrypt / Decrypt / Sign — Key Pair Generator — TypeBox',
+    description: 'Generate an RSA key pair and encrypt, decrypt, sign, or verify text in your browser with the Web Crypto API. Private, nothing uploaded.',
+    h1: 'RSA Tool',
+    keywords: 'rsa, rsa encrypt, rsa decrypt, rsa sign, rsa verify, generate rsa key pair, public key, private key, web crypto, RSA 加密, 签名, 密钥对',
+  },
 
   // ---- Python ----
   '/python': {
