@@ -29,6 +29,7 @@ export const TOOL_DEFS = {
   },
   '/tools/jwt': { mode: 'jwt' },
   '/tools/totp': { mode: 'totp' },
+  '/tools/qr': { mode: 'qr' },
 }
 
 export const TOOL_PATHS = Object.keys(TOOL_DEFS)

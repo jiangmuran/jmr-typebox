@@ -225,6 +225,12 @@ export const ROUTE_META = {
     h1: 'TOTP Generator',
     keywords: 'totp, 2fa, authenticator, one-time password, otpauth, two-factor code, 动态口令, 两步验证',
   },
+  '/tools/qr': {
+    title: 'QR Code Generator & Reader — Encode & Decode — TypeBox',
+    description: 'Generate a QR code from text or a URL, or decode/scan one from an image — entirely in your browser. Download PNG/SVG, private, nothing uploaded.',
+    h1: 'QR Code Generator & Reader',
+    keywords: 'qr code generator, qr code reader, qr decoder, scan qr from image, make qr code, text to qr, url qr, 二维码生成, 二维码识别, 扫码',
+  },
 
   // ---- Python ----
   '/python': {

@@ -91,6 +91,69 @@ async function copyTotp() {
 }
 const totpSpaced = computed(() => totpCode.value.length === 6 ? totpCode.value.slice(0, 3) + ' ' + totpCode.value.slice(3) : totpCode.value)
 const totpPct = computed(() => Math.round((totpRemain.value / (totpStep.value || 30)) * 100))
+
+// QR code — generate (text → QR canvas) / decode (image → text). qrcode + jsqr are lazy-loaded.
+const qrMode = ref('gen') // 'gen' | 'dec'
+const qrText = ref('https://box.muran.tech')
+const qrSize = ref(256)
+const qrLevel = ref('M')
+const qrCanvas = ref(null)
+const qrDecoded = ref('')
+const qrDecErr = ref(false)
+const qrDragOver = ref(false)
+async function renderQR() {
+  if (def.value.mode !== 'qr' || qrMode.value !== 'gen') return
+  const canvas = qrCanvas.value
+  if (!canvas) return
+  if (!qrText.value) { canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height); return }
+  try {
+    const { default: QRCode } = await import('qrcode')
+    await QRCode.toCanvas(canvas, qrText.value, { width: qrSize.value, margin: 2, errorCorrectionLevel: qrLevel.value })
+  } catch { /* content too long for this error-correction level, etc. */ }
+}
+watch([qrText, qrSize, qrLevel, qrMode, def], renderQR, { flush: 'post' })
+onMounted(renderQR)
+function downloadQRPng() {
+  const canvas = qrCanvas.value; if (!canvas) return
+  const a = document.createElement('a'); a.download = 'qrcode.png'; a.href = canvas.toDataURL('image/png'); a.click()
+}
+async function downloadQRSvg() {
+  if (!qrText.value) return
+  try {
+    const { default: QRCode } = await import('qrcode')
+    const svg = await QRCode.toString(qrText.value, { type: 'svg', margin: 2, errorCorrectionLevel: qrLevel.value })
+    const a = document.createElement('a'); a.download = 'qrcode.svg'; a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); a.click()
+  } catch {}
+}
+async function copyQR() {
+  const canvas = qrCanvas.value; if (!canvas) return
+  try {
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); showToast(t('toast.copied'))
+  } catch {}
+}
+async function decodeImageFile(file) {
+  qrDecErr.value = false
+  try {
+    const bmp = await createImageBitmap(file)
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height
+    const ctx = c.getContext('2d'); ctx.drawImage(bmp, 0, 0)
+    const data = ctx.getImageData(0, 0, c.width, c.height)
+    const { default: jsQR } = await import('jsqr')
+    const res = jsQR(data.data, data.width, data.height)
+    if (res && res.data) { qrDecoded.value = res.data } else { qrDecoded.value = ''; qrDecErr.value = true }
+  } catch { qrDecoded.value = ''; qrDecErr.value = true }
+}
+function onQrDrop(e) { qrDragOver.value = false; const f = e.dataTransfer?.files?.[0]; if (f && f.type?.startsWith('image/')) decodeImageFile(f) }
+function pickQrImage() { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = (e) => { const f = e.target.files?.[0]; if (f) decodeImageFile(f) }; i.click() }
+async function pasteQrImage() {
+  try {
+    const items = await navigator.clipboard.read()
+    for (const it of items) { const type = it.types.find((x) => x.startsWith('image/')); if (type) return decodeImageFile(await it.getType(type)) }
+    showToast(t('tool.qr.notFound'))
+  } catch {}
+}
+async function copyDecoded() { if (!qrDecoded.value) return; try { await navigator.clipboard.writeText(qrDecoded.value); showToast(t('toast.copied')) } catch {} }
 function clearAll() { input.value = ''; output.value = ''; passphrase.value = '' }
 function onDrop(e) {
   const f = e.dataTransfer?.files?.[0]
@@ -107,7 +170,7 @@ function onDrop(e) {
     </header>
 
     <div class="tb-io">
-      <div class="tb-pane">
+      <div v-if="def.mode !== 'qr'" class="tb-pane">
         <div class="tb-pane-head"><span>{{ t('tool.input') }}</span>
           <div class="tb-actions">
             <button @click="pasteIn">{{ t('tool.paste') }}</button>
@@ -176,6 +239,43 @@ function onDrop(e) {
         </div>
         <p v-else-if="totpErr" class="tb-hint">{{ t('tool.invalid') }}</p>
       </div>
+
+      <!-- QR code: generate / decode -->
+      <div v-else-if="def.mode === 'qr'" class="tb-qr">
+        <div class="seg qr-seg">
+          <button :class="{ on: qrMode === 'gen' }" @click="qrMode = 'gen'">{{ t('tool.qr.gen') }}</button>
+          <button :class="{ on: qrMode === 'dec' }" @click="qrMode = 'dec'">{{ t('tool.qr.dec') }}</button>
+        </div>
+
+        <template v-if="qrMode === 'gen'">
+          <textarea v-model="qrText" class="qr-input" spellcheck="false" :placeholder="t('tool.qr.placeholder')"></textarea>
+          <div class="qr-opts">
+            <label>{{ t('tool.qr.level') }}
+              <select v-model="qrLevel"><option value="L">L</option><option value="M">M</option><option value="Q">Q</option><option value="H">H</option></select>
+            </label>
+            <label class="qr-size">{{ t('tool.qr.size') }}<input type="range" v-model.number="qrSize" min="128" max="512" step="16"><span class="qr-val">{{ qrSize }}</span></label>
+          </div>
+          <div class="qr-preview"><canvas ref="qrCanvas"></canvas></div>
+          <div class="qr-actions">
+            <button class="btn" :disabled="!qrText" @click="downloadQRPng">PNG</button>
+            <button class="btn" :disabled="!qrText" @click="downloadQRSvg">SVG</button>
+            <button class="btn" :disabled="!qrText" @click="copyQR">{{ t('tool.copy') }}</button>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="qr-drop" :class="{ over: qrDragOver }" @click="pickQrImage" @dragover.prevent="qrDragOver = true" @dragleave="qrDragOver = false" @drop.prevent="onQrDrop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20.5 14v.01M14 20.5v.01M20.5 20.5v.01M17.5 17.5v.01"/></svg>
+            <span>{{ t('tool.qr.drop') }}</span>
+          </div>
+          <div class="qr-actions"><button class="btn" @click="pasteQrImage">{{ t('tool.qr.paste') }}</button></div>
+          <div v-if="qrDecoded" class="tb-pane qr-decoded">
+            <div class="tb-pane-head"><span>{{ t('tool.output') }}</span><div class="tb-actions"><button @click="copyDecoded">{{ t('tool.copy') }}</button></div></div>
+            <textarea :value="qrDecoded" readonly spellcheck="false"></textarea>
+          </div>
+          <p v-else-if="qrDecErr" class="tb-hint">{{ t('tool.qr.notFound') }}</p>
+        </template>
+      </div>
     </div>
   </main>
 </template>
@@ -214,6 +314,23 @@ function onDrop(e) {
 .totp-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.9s linear; }
 .totp-remain { font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 480px) { .totp-code { font-size: 28px; letter-spacing: 3px; } }
+.tb-qr { display: flex; flex-direction: column; gap: 12px; }
+.qr-seg { align-self: flex-start; }
+.qr-input { min-height: 70px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); padding: 10px 12px; font-family: var(--font-mono); font-size: 13px; color: var(--text); outline: none; resize: vertical; }
+.qr-input:focus { border-color: var(--accent); }
+.qr-opts { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+.qr-opts label { display: flex; align-items: center; gap: 8px; }
+.qr-opts select { padding: 5px 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-family: var(--font-sans); }
+.qr-size { flex: 1; min-width: 180px; }
+.qr-size input[type=range] { flex: 1; }
+.qr-val { font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.qr-preview { display: flex; justify-content: center; padding: 16px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; }
+.qr-preview canvas { max-width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; }
+.qr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.qr-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 20px; border: 2px dashed var(--border); border-radius: 12px; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.qr-drop:hover, .qr-drop.over { border-color: var(--accent); background: var(--accent-bg); }
+.qr-drop svg { width: 34px; height: 34px; color: var(--text-tertiary); }
+.qr-decoded textarea { width: 100%; min-height: 80px; border: none; background: transparent; padding: 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; word-break: break-all; }
 .stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); }
 .stat strong { font-size: 26px; font-weight: 750; }
 .stat span { font-size: 11px; color: var(--text-secondary); }
