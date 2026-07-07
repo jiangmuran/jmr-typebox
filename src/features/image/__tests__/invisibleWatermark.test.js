@@ -93,3 +93,43 @@ describe('YCbCr', () => {
     for (let i = 0; i < 8; i++) if (i % 4 !== 3) expect(Math.abs(back[i] - px[i])).toBeLessThanOrEqual(2)
   })
 })
+
+import {
+  DELTA, COEF_INDEX, embedCoef, extractCoef, capacityBlocks, encode, decode,
+} from '../invisibleWatermark'
+
+// Deterministic synthetic RGBA image (a smooth gradient) — no canvas needed.
+function gradient(w, h) {
+  const px = new Uint8ClampedArray(w * h * 4)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4
+    px[i] = (x * 255 / w) | 0; px[i + 1] = (y * 255 / h) | 0; px[i + 2] = 128; px[i + 3] = 255
+  }
+  return px
+}
+
+describe('QIM coefficient', () => {
+  it('embeds and extracts a bit through rounding noise', () => {
+    for (const bit of [0, 1]) {
+      const c = embedCoef(37.4, bit, 16)
+      expect(extractCoef(c, 16)).toBe(bit)
+      expect(extractCoef(c + 3, 16)).toBe(bit) // tolerates < delta/2 perturbation
+    }
+  })
+})
+
+describe('encode/decode round-trip (clean)', () => {
+  it('recovers the record from a marked image', () => {
+    const w = 256, h = 256
+    expect(capacityBlocks(w, h)).toBeGreaterThanOrEqual(RECORD_BITS)
+    const rec = packRecord({ version: FORMAT_VERSION, timestamp: 1_700_000_000, content: 'trace-A' })
+    const marked = encode(gradient(w, h), w, h, rec)
+    const got = decode(marked, w, h)
+    expect(got).toMatchObject({ ok: true, content: 'trace-A', timestamp: 1_700_000_000 })
+    expect(got.confidence).toBeGreaterThan(0.9)
+  })
+  it('reports ok:false on an unmarked image', () => {
+    const w = 256, h = 256
+    expect(decode(gradient(w, h), w, h).ok).toBe(false)
+  })
+})

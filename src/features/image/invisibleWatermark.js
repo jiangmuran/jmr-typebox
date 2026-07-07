@@ -159,3 +159,74 @@ export function idct8x8(block) {
   const cols = new Float64Array(64); _rows(_transpose(rows), cols, false)
   return _transpose(cols)
 }
+
+export let DELTA = 18          // QIM step on luma DCT coefficients; tuned in Task 5
+export const COEF_INDEX = 21   // mid-frequency coefficient (row 2, col 5) in 8x8 linear order
+
+// Dither/QIM: bit 0 → nearest integer multiple of delta; bit 1 → nearest half-integer multiple.
+export function embedCoef(c, bit, delta = DELTA) {
+  const off = bit ? 0.5 : 0
+  return (Math.round(c / delta - off) + off) * delta
+}
+export function extractCoef(c, delta = DELTA) {
+  const r = c / delta
+  const dInt = Math.abs(r - Math.round(r))
+  const dHalf = Math.abs(r - (Math.round(r - 0.5) + 0.5))
+  return dInt <= dHalf ? 0 : 1
+}
+
+export function capacityBlocks(w, h) {
+  return Math.floor(w / 8) * Math.floor(h / 8)
+}
+
+function _readBlock(Y, w, bx, by) {
+  const blk = new Float64Array(64)
+  for (let r = 0; r < 8; r++) for (let cc = 0; cc < 8; cc++) blk[r * 8 + cc] = Y[(by * 8 + r) * w + (bx * 8 + cc)]
+  return blk
+}
+function _writeBlock(Y, w, bx, by, blk) {
+  for (let r = 0; r < 8; r++) for (let cc = 0; cc < 8; cc++) Y[(by * 8 + r) * w + (bx * 8 + cc)] = blk[r * 8 + cc]
+}
+
+export function encode(pixels, w, h, record, opts = {}) {
+  const delta = opts.delta ?? DELTA
+  const coef = opts.coefIndex ?? COEF_INDEX
+  if (capacityBlocks(w, h) < RECORD_BITS) throw new Error('image too small for one watermark pass')
+  const bits = bytesToBits(record)
+  const { Y, Cb, Cr } = toYCbCr(pixels, w, h)
+  const bw = Math.floor(w / 8), bh = Math.floor(h / 8)
+  let k = 0
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+    const blk = _readBlock(Y, w, bx, by)
+    const d = dct8x8(blk)
+    d[coef] = embedCoef(d[coef], bits[k % RECORD_BITS], delta)
+    _writeBlock(Y, w, bx, by, idct8x8(d))
+    k++
+  }
+  return toRGB(Y, Cb, Cr, w, h)
+}
+
+export function decode(pixels, w, h, opts = {}) {
+  const delta = opts.delta ?? DELTA
+  const coef = opts.coefIndex ?? COEF_INDEX
+  if (capacityBlocks(w, h) < RECORD_BITS) return { ok: false }
+  const { Y } = toYCbCr(pixels, w, h)
+  const bw = Math.floor(w / 8), bh = Math.floor(h / 8)
+  const votes = new Float64Array(RECORD_BITS) // + toward 1, - toward 0
+  const counts = new Uint32Array(RECORD_BITS)
+  let k = 0
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+    const d = dct8x8(_readBlock(Y, w, bx, by))
+    votes[k % RECORD_BITS] += extractCoef(d[coef], delta) ? 1 : -1
+    counts[k % RECORD_BITS]++
+    k++
+  }
+  const bits = new Uint8Array(RECORD_BITS)
+  let agree = 0
+  for (let i = 0; i < RECORD_BITS; i++) {
+    bits[i] = votes[i] > 0 ? 1 : 0
+    agree += counts[i] ? Math.abs(votes[i]) / counts[i] : 0
+  }
+  const rec = unpackRecord(bitsToBytes(bits))
+  return rec.ok ? { ...rec, confidence: agree / RECORD_BITS } : { ok: false }
+}
