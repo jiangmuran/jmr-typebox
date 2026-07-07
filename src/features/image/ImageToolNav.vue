@@ -8,6 +8,7 @@ const TOOLS = [
   { id: 'compress', to: '/image/compress' },
   { id: 'convert', to: '/image/convert' },
   { id: 'watermark', to: '/image/watermark' },
+  { id: 'invisible', to: '/image/invisible' },
   { id: 'edit', to: '/image/edit' },
   { id: 'compose', to: '/image/compose' },
   { id: 'metadata', to: '/image/metadata' },

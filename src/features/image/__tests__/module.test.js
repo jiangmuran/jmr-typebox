@@ -5,7 +5,7 @@ import feature from '../index.js'
 // expose lazy component thunks for every image route plus matched en/zh i18n keys.
 describe('image feature module', () => {
   it('declares lazy thunks for all image routes', () => {
-    const routes = ['/image/compress', '/image/convert', '/image/watermark', '/image/edit', '/image/metadata']
+    const routes = ['/image/compress', '/image/convert', '/image/watermark', '/image/edit', '/image/compose', '/image/metadata', '/image/invisible']
     for (const r of routes) {
       expect(typeof feature.components[r]).toBe('function')
     }

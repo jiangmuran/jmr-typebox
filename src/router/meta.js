@@ -35,6 +35,12 @@ export const ROUTE_META = {
     h1: 'Watermark Images',
     keywords: 'watermark image, add watermark, photo watermark, batch watermark',
   },
+  '/image/invisible': {
+    title: 'Invisible Watermark — Embed & Read Hidden Marks — TypeBox',
+    description: 'Embed a hidden, robust watermark into your images that survives re-compression, rescaling, and colour shifts — then read it back. Fully private, client-side, nothing uploaded.',
+    h1: 'Invisible Watermark',
+    keywords: 'invisible watermark, hidden watermark, robust watermark, blind watermark, steganography, embed watermark, read watermark, 隐水印, 隐形水印, 盲水印',
+  },
   '/image/edit': {
     title: 'Quick Image Editor — Draw, Add Text, Redact — TypeBox',
     description: 'Annotate images in your browser: doodle, add text, and redact with mosaic or blur. Undo/redo, private, no upload.',
