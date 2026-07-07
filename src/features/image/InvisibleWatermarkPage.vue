@@ -46,15 +46,23 @@ const bytesLeft = computed(() => CONTENT_MAX - contentByteLength(uniform.value))
 function onUniformInput() { uniform.value = fitContent(uniform.value, CONTENT_MAX) }
 
 function addFiles(files) {
+  lastSingleBlob.value = null                        // a new drop invalidates any prior single result
   for (const f of files) jobs.value.push({ ...makeJob(f, uniform.value), name: f.name })
 }
 async function pickEmbed() { addFiles(await pickImageFiles({ multiple: true })) }
 function onDropEmbed(e) { embedDragOver.value = false; addFiles(imageFilesFromEvent(e)) }
-function removeJob(id) { jobs.value = jobs.value.filter(j => j.id !== id) }
+function removeJob(id) {
+  const job = jobs.value.find(j => j.id === id)
+  if (job?.url) URL.revokeObjectURL(job.url)          // free the row's object URL before dropping it
+  lastSingleBlob.value = null                         // dropping a row invalidates any prior single result
+  jobs.value = jobs.value.filter(j => j.id !== id)
+}
 function makeVersions(job) {
   const dups = duplicateJobs({ ...job, content: job.content || uniform.value }, Math.max(2, dupCount.value))
     .map(d => ({ ...d, source: job.source, name: job.name }))
   const i = jobs.value.findIndex(j => j.id === job.id)
+  if (job.url) URL.revokeObjectURL(job.url)           // the source row is replaced; free its object URL
+  lastSingleBlob.value = null                         // versioning invalidates any prior single result
   jobs.value.splice(i, 1, ...dups)
 }
 
@@ -64,15 +72,22 @@ async function generate() {
   const stamp = Math.floor(Date.now() / 1000)   // one "now" for the whole batch
   try {
     for (const job of jobs.value) {
-      job.status = 'working'
-      const content = fitContent(job.content || uniform.value, CONTENT_MAX)
-      job.blob = await embedImageBlob(job.source, { content, timestamp: stamp })
-      job.url = URL.createObjectURL(job.blob)
-      job.status = 'done'
+      // Per-job try/catch: one bad image (e.g. too small for a pass) must not abort the batch.
+      try {
+        job.status = 'working'
+        const content = fitContent(job.content || uniform.value, CONTENT_MAX)
+        const blob = await embedImageBlob(job.source, { content, timestamp: stamp })
+        if (job.url) URL.revokeObjectURL(job.url)   // free the prior result URL before replacing it
+        job.blob = blob
+        job.url = URL.createObjectURL(blob)
+        job.status = 'done'
+      } catch (err) {
+        job.status = 'error'
+        showToast(/too small/i.test(err?.message || '') ? t('img2.inv.tooSmall') : t('img2.unsupported'))
+      }
     }
-    lastSingleBlob.value = jobs.value.length === 1 ? jobs.value[0].blob : null
-  } catch { showToast(t('img2.unsupported')) }
-  finally { generating.value = false }
+    lastSingleBlob.value = jobs.value.length === 1 && jobs.value[0].blob ? jobs.value[0].blob : null
+  } finally { generating.value = false }
 }
 
 async function downloadZip() {
@@ -132,6 +147,7 @@ function downloadOne(job, i) { if (job.blob) downloadBlob(job.blob, jobFileName(
           <input type="text" v-model="job.content" :placeholder="uniform || t('img2.inv.content')" class="text-input job-content" />
           <span class="job-status" :class="job.status">
             <svg v-if="job.status === 'done'" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5 6 12 2.5 8.5"/></svg>
+            <svg v-else-if="job.status === 'error'" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 1 14h14L8 1.8Z"/><path d="M8 6.4v3.1"/><path d="M8 12h.01"/></svg>
             <template v-else-if="job.status === 'working'">{{ t('img2.inv.generating') }}</template>
           </span>
           <div class="job-actions">
@@ -172,10 +188,23 @@ function downloadOne(job, i) { if (job.blob) downloadBlob(job.blob, jobFileName(
 .job-name { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .job-status { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; font-size: 11.5px; color: var(--muted, #888); }
 .job-status.done { color: var(--accent); }
+.job-status.error { color: var(--status-warn); }
 .job-actions { display: flex; gap: 6px; align-items: center; }
 .job-add { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
 .dup-n { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted, #888); }
 .dup-n input { width: 56px; }
 .hint { color: var(--muted, #888); font-size: 12px; }
 .robust { margin-top: 10px; }
+
+/* Phones: collapse the 5-column job row into stacked bands (thumb/name/status,
+   then the content input, then actions) and stack the decode card's rows. */
+@media (max-width: 768px) {
+  .job-row { grid-template-columns: 32px 1fr auto; grid-template-areas: "thumb name status" "content content content" "actions actions actions"; row-gap: 6px; }
+  .thumb { grid-area: thumb; width: 32px; height: 32px; }
+  .job-name { grid-area: name; }
+  .job-status { grid-area: status; }
+  .job-content { grid-area: content; }
+  .job-actions { grid-area: actions; justify-content: flex-end; }
+  .info-row { flex-direction: column; gap: 2px; }
+}
 </style>
