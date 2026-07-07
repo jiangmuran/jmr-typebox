@@ -132,6 +132,21 @@ describe('encode/decode round-trip (clean)', () => {
     const w = 256, h = 256
     expect(decode(gradient(w, h), w, h).ok).toBe(false)
   })
+  it('preserves the source alpha channel per pixel (luma-only embed)', () => {
+    const w = 128, h = 128
+    expect(capacityBlocks(w, h)).toBeGreaterThanOrEqual(RECORD_BITS)
+    // RGBA image whose alpha varies per pixel (transparent PNG/GIF surrogate).
+    const src = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      src[i] = (x * 255 / w) | 0; src[i + 1] = (y * 255 / h) | 0; src[i + 2] = 128
+      src[i + 3] = (x * y) % 256
+    }
+    const rec = packRecord({ version: FORMAT_VERSION, timestamp: 1_700_000_000, content: 'alpha' })
+    const out = encode(src, w, h, rec)
+    for (let i = 3; i < out.length; i += 4) expect(out[i]).toBe(src[i]) // alpha untouched
+    expect(decode(out, w, h)).toMatchObject({ ok: true, content: 'alpha' }) // record still round-trips
+  })
 })
 
 import { psnr, resampleNearest, decodeMultiScale, dct8x8 as _d, idct8x8 as _id } from '../invisibleWatermark'
@@ -209,6 +224,14 @@ describe('job model', () => {
     expect(jobs).toHaveLength(3)
     expect(jobs.every(j => j.source === 'imgA')).toBe(true)
     expect(jobs.map(j => j.content)).toEqual(['客户 #1', '客户 #2', '客户 #3'])
+  })
+  it('keeps near-cap versions within CONTENT_MAX and distinct (no suffix collision)', () => {
+    // A base already at the byte cap would otherwise let fitContent drop every ` #i`
+    // suffix at generate time, collapsing all versions to one identical mark.
+    const jobs = duplicateJobs(makeJob('imgA', 'x'.repeat(CONTENT_MAX)), 3)
+    expect(jobs).toHaveLength(3)
+    for (const j of jobs) expect(contentByteLength(j.content)).toBeLessThanOrEqual(CONTENT_MAX)
+    expect(new Set(jobs.map(j => j.content)).size).toBe(3)
   })
   it('builds safe filenames', () => {
     expect(jobFileName('photo.jpg', 'trace A/1', 0)).toBe('photo__trace-a-1__1.png')

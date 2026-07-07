@@ -210,7 +210,11 @@ export function encode(pixels, w, h, record, opts = {}) {
     _writeBlock(Y, w, bx, by, idct8x8(d))
     k++
   }
-  return toRGB(Y, Cb, Cr, w, h)
+  // Embedding only perturbs luma; carry the source alpha through so transparent
+  // PNG/GIF inputs don't come back opaque (toRGB hardcodes alpha=255).
+  const out = toRGB(Y, Cb, Cr, w, h)
+  for (let i = 3; i < out.length; i += 4) out[i] = pixels[i]
+  return out
 }
 
 export function decode(pixels, w, h, opts = {}) {
@@ -285,10 +289,14 @@ export function makeJob(source, content = '') {
 
 // Fan one source out into n jobs sharing job.source, content suffixed ` #1..#n`
 // (an empty base content yields `#1`, `#2`, … thanks to the trim).
+// Reserve room for the widest suffix (` #n`) up front so a near-cap base isn't
+// re-truncated by fitContent at generate time — which would drop every suffix and
+// collapse all versions to one identical mark, defeating traitor-tracing.
 export function duplicateJobs(job, n) {
+  const base = fitContent(job.content, CONTENT_MAX - contentByteLength(' #' + n))
   const out = []
   for (let i = 1; i <= n; i++) {
-    out.push({ id: ++_jobSeq, source: job.source, content: `${job.content} #${i}`.trim(), status: 'idle' })
+    out.push({ id: ++_jobSeq, source: job.source, content: `${base} #${i}`.trim(), status: 'idle' })
   }
   return out
 }

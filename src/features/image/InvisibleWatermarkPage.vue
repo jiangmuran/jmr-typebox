@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import JSZip from 'jszip'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
@@ -58,7 +58,7 @@ function removeJob(id) {
   jobs.value = jobs.value.filter(j => j.id !== id)
 }
 function makeVersions(job) {
-  const dups = duplicateJobs({ ...job, content: job.content || uniform.value }, Math.max(2, dupCount.value))
+  const dups = duplicateJobs({ ...job, content: job.content || uniform.value }, Math.min(50, Math.max(2, dupCount.value)))
     .map(d => ({ ...d, source: job.source, name: job.name }))
   const i = jobs.value.findIndex(j => j.id === job.id)
   if (job.url) URL.revokeObjectURL(job.url)           // the source row is replaced; free its object URL
@@ -97,6 +97,10 @@ async function downloadZip() {
   downloadBlob(out, 'invisible-watermark.zip')
 }
 function downloadOne(job, i) { if (job.blob) downloadBlob(job.blob, jobFileName(job.name, fitContent(job.content || uniform.value), i)) }
+
+// Free every outstanding result URL on navigate-away (row-level revokes only cover
+// remove/versionize/regenerate, not unmount).
+onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectURL(job.url) })
 </script>
 
 <template>
@@ -178,22 +182,22 @@ function downloadOne(job, i) { if (job.blob) downloadBlob(job.blob, jobFileName(
 .mode-seg { margin-bottom: 16px; max-width: 320px; }
 .info-card { display: flex; flex-direction: column; gap: 8px; }
 .info-row { display: flex; justify-content: space-between; gap: 16px; }
-.info-row .k { color: var(--muted, #888); }
+.info-row .k { color: var(--text-tertiary); }
 .info-row .v.mono { font-family: var(--font-mono); }
-.empty { color: var(--muted, #888); text-align: center; padding: 24px; }
+.empty { color: var(--text-tertiary); text-align: center; padding: 24px; }
 .job-table { display: flex; flex-direction: column; gap: 10px; }
 .job-row { display: grid; grid-template-columns: 40px 1fr 1.4fr auto auto; gap: 10px; align-items: center; }
 .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }
-.thumb.ph { background: var(--panel, #2a2a2a); }
+.thumb.ph { background: var(--code-bg); }
 .job-name { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.job-status { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; font-size: 11.5px; color: var(--muted, #888); }
+.job-status { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; font-size: 11.5px; color: var(--text-tertiary); }
 .job-status.done { color: var(--accent); }
 .job-status.error { color: var(--status-warn); }
 .job-actions { display: flex; gap: 6px; align-items: center; }
 .job-add { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
-.dup-n { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted, #888); }
+.dup-n { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-tertiary); }
 .dup-n input { width: 56px; }
-.hint { color: var(--muted, #888); font-size: 12px; }
+.hint { color: var(--text-tertiary); font-size: 12px; }
 .robust { margin-top: 10px; }
 
 /* Phones: collapse the 5-column job row into stacked bands (thumb/name/status,
