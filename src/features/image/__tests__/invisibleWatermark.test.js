@@ -195,3 +195,23 @@ describe('robustness', () => {
     expect(decodeMultiScale(small, w / 2, h / 2)).toMatchObject({ ok: true, content: 'trace-A' })
   })
 })
+
+import { makeJob, duplicateJobs, jobFileName } from '../invisibleWatermark'
+
+describe('job model', () => {
+  it('makes a job with a unique id', () => {
+    const a = makeJob('imgA', 'x'), b = makeJob('imgB', 'y')
+    expect(a.id).not.toBe(b.id)
+    expect(a).toMatchObject({ source: 'imgA', content: 'x', status: 'idle' })
+  })
+  it('duplicates one source into N numbered versions', () => {
+    const jobs = duplicateJobs(makeJob('imgA', '客户'), 3)
+    expect(jobs).toHaveLength(3)
+    expect(jobs.every(j => j.source === 'imgA')).toBe(true)
+    expect(jobs.map(j => j.content)).toEqual(['客户 #1', '客户 #2', '客户 #3'])
+  })
+  it('builds safe filenames', () => {
+    expect(jobFileName('photo.jpg', 'trace A/1', 0)).toBe('photo__trace-a-1__1.png')
+    expect(jobFileName('photo', '', 4, 'png')).toBe('photo__5.png')
+  })
+})

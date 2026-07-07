@@ -272,3 +272,31 @@ export function decodeMultiScale(pixels, w, h, opts = {}) {
   }
   return { ok: false }
 }
+
+// --- Task 7: pure UI-logic helpers (batch "job model") ---
+// Kept pure and canvas-free so the Vue page stays thin. Ids come from a
+// module-local monotonic counter (no Date/Math.random → deterministic, testable).
+
+let _jobSeq = 0
+
+export function makeJob(source, content = '') {
+  return { id: ++_jobSeq, source, content, status: 'idle' }
+}
+
+// Fan one source out into n jobs sharing job.source, content suffixed ` #1..#n`
+// (an empty base content yields `#1`, `#2`, … thanks to the trim).
+export function duplicateJobs(job, n) {
+  const out = []
+  for (let i = 1; i <= n; i++) {
+    out.push({ id: ++_jobSeq, source: job.source, content: `${job.content} #${i}`.trim(), status: 'idle' })
+  }
+  return out
+}
+
+// Safe download filename: base__content__idx.ext, content slugified to [a-z0-9-];
+// an empty/blank content collapses to base__idx.ext. index is 0-based, shown 1-based.
+export function jobFileName(baseName, content, index, ext = 'png') {
+  const base = String(baseName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
+  const slug = String(content || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return slug ? `${base}__${slug}__${index + 1}.${ext}` : `${base}__${index + 1}.${ext}`
+}
