@@ -95,3 +95,67 @@ export function unpackRecord(bytes) {
   const content = _dec.decode(body.subarray(7, 7 + len))
   return { ok: true, version, flags, timestamp, content }
 }
+
+// BT.601 full-range RGB <-> YCbCr.
+export function toYCbCr(pixels, w, h) {
+  const n = w * h
+  const Y = new Float64Array(n), Cb = new Float64Array(n), Cr = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    const r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2]
+    Y[i] = 0.299 * r + 0.587 * g + 0.114 * b
+    Cb[i] = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+    Cr[i] = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
+  }
+  return { Y, Cb, Cr }
+}
+
+export function toRGB(Y, Cb, Cr, w, h) {
+  const n = w * h
+  const out = new Uint8ClampedArray(n * 4)
+  for (let i = 0; i < n; i++) {
+    const y = Y[i], cb = Cb[i] - 128, cr = Cr[i] - 128
+    out[i * 4] = y + 1.402 * cr
+    out[i * 4 + 1] = y - 0.344136 * cb - 0.714136 * cr
+    out[i * 4 + 2] = y + 1.772 * cb
+    out[i * 4 + 3] = 255
+  }
+  return out
+}
+
+// Orthonormal 8-point DCT-II basis (so the inverse is the transpose).
+const _N = 8
+const _C = (() => {
+  const c = new Float64Array(_N * _N)
+  for (let u = 0; u < _N; u++) {
+    const s = u === 0 ? Math.sqrt(1 / _N) : Math.sqrt(2 / _N)
+    for (let x = 0; x < _N; x++) c[u * _N + x] = s * Math.cos(((2 * x + 1) * u * Math.PI) / (2 * _N))
+  }
+  return c
+})()
+
+function _rows(inp, out, fwd) {
+  const tmp = new Float64Array(_N)
+  for (let r = 0; r < _N; r++) {
+    for (let k = 0; k < _N; k++) {
+      let sum = 0
+      for (let j = 0; j < _N; j++) sum += (fwd ? _C[k * _N + j] : _C[j * _N + k]) * inp[r * _N + j]
+      tmp[k] = sum
+    }
+    for (let k = 0; k < _N; k++) out[r * _N + k] = tmp[k]
+  }
+}
+function _transpose(a) {
+  const t = new Float64Array(64)
+  for (let i = 0; i < _N; i++) for (let j = 0; j < _N; j++) t[j * _N + i] = a[i * _N + j]
+  return t
+}
+export function dct8x8(block) {
+  const rows = new Float64Array(64); _rows(block, rows, true)
+  const cols = new Float64Array(64); _rows(_transpose(rows), cols, true)
+  return _transpose(cols)
+}
+export function idct8x8(block) {
+  const rows = new Float64Array(64); _rows(block, rows, false)
+  const cols = new Float64Array(64); _rows(_transpose(rows), cols, false)
+  return _transpose(cols)
+}

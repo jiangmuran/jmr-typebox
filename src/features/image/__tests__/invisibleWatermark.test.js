@@ -68,3 +68,28 @@ describe('record pack/unpack', () => {
     expect(() => packRecord({ version: 1, timestamp: 0, content: 'x'.repeat(17) })).toThrow()
   })
 })
+
+import { toYCbCr, toRGB, dct8x8, idct8x8 } from '../invisibleWatermark'
+
+function almost(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps }
+
+describe('DCT 8x8', () => {
+  it('idct(dct(x)) ≈ x', () => {
+    const x = Float64Array.from({ length: 64 }, (_, i) => (i * 7) % 256)
+    const y = idct8x8(dct8x8(x))
+    for (let i = 0; i < 64; i++) expect(almost(y[i], x[i], 1e-6)).toBe(true)
+  })
+  it('DC term equals 8× the mean for a flat block', () => {
+    const flat = new Float64Array(64).fill(10)
+    expect(almost(dct8x8(flat)[0], 80, 1e-9)).toBe(true) // orthonormal DC = mean*8
+  })
+})
+
+describe('YCbCr', () => {
+  it('round-trips RGB within ±2 per channel', () => {
+    const px = new Uint8ClampedArray([10, 20, 30, 255, 200, 150, 100, 255])
+    const { Y, Cb, Cr } = toYCbCr(px, 2, 1)
+    const back = toRGB(Y, Cb, Cr, 2, 1)
+    for (let i = 0; i < 8; i++) if (i % 4 !== 3) expect(Math.abs(back[i] - px[i])).toBeLessThanOrEqual(2)
+  })
+})
