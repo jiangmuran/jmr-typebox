@@ -85,19 +85,23 @@ function makeVersions(job) {
 async function generate() {
   if (!jobs.value.length) return
   generating.value = true
+  // Freeze the job refs up-front: if the list is mutated during the registerRecords await,
+  // indexing the live jobs.value by position would misalign ids[i] to the wrong job. The
+  // captured refs are the same objects, so status/url/blob writes still update visible rows.
+  const snapshot = jobs.value.slice()
   const stamp = Math.floor(Date.now() / 1000)   // one "now" for the whole batch
   try {
     // Register mode: batch-register every job's content up-front, then embed the returned
     // ids (flags:1) instead of the raw text — one bad backend response aborts before any embed.
     let ids = null
     if (registerOn.value) {
-      const records = jobs.value.map(j => ({ content: j.content || uniform.value, timestamp: stamp, version: FORMAT_VERSION }))
+      const records = snapshot.map(j => ({ content: j.content || uniform.value, timestamp: stamp, version: FORMAT_VERSION }))
       if (records.some(r => contentByteLength(r.content) > CONTENT_MAX_BYTES)) { showToast(t('img2.inv.registerFailed')); return }
       try { ids = await registerRecords(records) }
       catch { showToast(t('img2.inv.registerFailed')); return }
     }
-    for (let i = 0; i < jobs.value.length; i++) {
-      const job = jobs.value[i]
+    for (let i = 0; i < snapshot.length; i++) {
+      const job = snapshot[i]
       // Per-job try/catch: one bad image (e.g. too small for a pass) must not abort the batch.
       try {
         job.status = 'working'
@@ -113,7 +117,7 @@ async function generate() {
         showToast(/too small/i.test(err?.message || '') ? t('img2.inv.tooSmall') : t('img2.unsupported'))
       }
     }
-    lastSingleBlob.value = jobs.value.length === 1 && jobs.value[0].blob ? jobs.value[0].blob : null
+    lastSingleBlob.value = snapshot.length === 1 && snapshot[0].blob ? snapshot[0].blob : null
   } finally { generating.value = false }
 }
 

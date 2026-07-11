@@ -86,6 +86,20 @@ describe('watermark handler', () => {
   it('404s resolve when the binding is absent', async () => {
     expect((await watermark(req('/api/watermark/anything00'), {})).status).toBe(404)
   })
+  it('405s GET on the bare register path and POST on an id path', async () => {
+    const env = { WATERMARKS: kvMock() }
+    expect((await watermark(req('/api/watermark'), env)).status).toBe(405)
+    expect((await watermark(req('/api/watermark/SOMEID0000', { method: 'POST' }), env)).status).toBe(405)
+  })
+  it('404s a record whose stored value is not valid JSON', async () => {
+    const env = { WATERMARKS: kvMock() }
+    env.WATERMARKS._m.set('BADJSON000', '{not json')
+    expect((await watermark(req('/api/watermark/BADJSON000'), env)).status).toBe(404)
+  })
+  it('404s a malformed (undecodable) id instead of throwing', async () => {
+    const env = { WATERMARKS: kvMock() }
+    expect((await watermark(new Request('https://x/api/watermark/%'), env)).status).toBe(404)
+  })
 })
 
 import worker from '../index.js'

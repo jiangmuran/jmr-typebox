@@ -76,5 +76,9 @@ export async function watermark(request, env) {
   const rest = url.pathname.slice('/api/watermark'.length) // '' | '/' | '/<id>'
   if (rest === '' || rest === '/') return register(request, env)
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
-  return resolve(decodeURIComponent(rest.slice(1)), env)
+  // A malformed percent-escape (e.g. /api/watermark/%) makes decodeURIComponent throw URIError;
+  // on this public GET that would surface as a 500. Treat an undecodable id as a clean miss.
+  let id
+  try { id = decodeURIComponent(rest.slice(1)) } catch { return json({ error: 'not_found' }, 404) }
+  return resolve(id, env)
 }
