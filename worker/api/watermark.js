@@ -33,3 +33,48 @@ export function validateRegisterBody(body) {
   }
   return { ok: true, records: out }
 }
+
+const cors = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type',
+}
+function json(obj, status = 200) {
+  return Response.json(obj, { status, headers: { ...cors, 'cache-control': status === 200 ? 'public, max-age=60' : 'no-store' } })
+}
+
+async function register(request, env) {
+  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
+  if (!env || !env.WATERMARKS) return json({ error: 'unavailable' }, 503)
+  let body
+  try { body = await request.json() } catch { return json({ error: 'invalid_json' }, 400) }
+  const v = validateRegisterBody(body)
+  if (!v.ok) return json({ error: v.error }, 400)
+  const now = Date.now()
+  const ids = []
+  for (const rec of v.records) {
+    let id = makeId()
+    for (let t = 0; t < 3 && (await env.WATERMARKS.get(id)) !== null; t++) id = makeId()
+    await env.WATERMARKS.put(id, JSON.stringify({ v: 1, content: rec.content, timestamp: rec.timestamp, version: rec.version, createdAt: now }))
+    ids.push(id)
+  }
+  return json({ ids })
+}
+
+async function resolve(id, env) {
+  if (!env || !env.WATERMARKS) return json({ error: 'not_found' }, 404)
+  const raw = await env.WATERMARKS.get(id)
+  if (raw === null) return json({ error: 'not_found' }, 404)
+  let rec
+  try { rec = JSON.parse(raw) } catch { return json({ error: 'not_found' }, 404) }
+  return json(rec)
+}
+
+export async function watermark(request, env) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
+  const url = new URL(request.url)
+  const rest = url.pathname.slice('/api/watermark'.length) // '' | '/' | '/<id>'
+  if (rest === '' || rest === '/') return register(request, env)
+  if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405)
+  return resolve(decodeURIComponent(rest.slice(1)), env)
+}
