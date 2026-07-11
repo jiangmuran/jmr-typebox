@@ -19,9 +19,19 @@ not_found_handling = "single-page-application"
 name = "RATE_LIMITER"
 class_name = "RateLimiter"
 
+# Phase 3: admin auth state (bootstrap token, passkeys, one-time links, NCM cookie, IP allowlist).
+# A SINGLETON instance — idFromName('singleton') in worker/lib/musicAuth.js#callAuth.
+[[durable_objects.bindings]]
+name = "MUSIC_AUTH"
+class_name = "MusicAuth"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RateLimiter"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["MusicAuth"]
 
 # Invisible-watermark verify records (id -> {content,timestamp,version,createdAt}).
 # Create the namespace and paste its printed id here:
@@ -30,4 +40,17 @@ new_sqlite_classes = ["RateLimiter"]
 # it is only required for production deploy.
 [[kv_namespaces]]
 binding = "WATERMARKS"
-id = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create"
+id = "51c35a9ea1ab4dc396865493d7b19b79"
+
+# ─── Music player secrets (optional but required for the /api/music/* surface) ───────────────
+# Set with:  npx wrangler secret put NCM_COOKIE    (paste your MUSIC_U cookie from devtools)
+#           npx wrangler secret put ALLOWED_IPS    (comma-separated, e.g. "1.2.3.4,5.6.7.8")
+#           npx wrangler secret put AUTH_SECRET    (random 32+ char string for JWT signing)
+#           npx wrangler secret put BOOTSTRAP_TOKEN (one-time token to bind the first passkey)
+# Without NCM_COOKIE: search/playlist/lyric still work (anonymous), but song/url/stream fail.
+# Without ALLOWED_IPS: /api/music/* is OPEN to any IP (only rate-limited); /api/admin/* is
+#                      hard-closed (returns 403 to everyone). Set ALLOWED_IPS in production.
+# Without AUTH_SECRET: /api/auth/* + /api/admin/* return 503 (admin surface disabled).
+# Without BOOTSTRAP_TOKEN: the /admin page shows "set BOOTSTRAP_TOKEN first" instead of the
+#                          bind-passkey flow. Set it ONCE, then bind a passkey, then it's dead.
+# These are read at runtime via env.* — no entry needed here.

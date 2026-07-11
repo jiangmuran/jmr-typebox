@@ -35,7 +35,9 @@ function onKey(e) {
 
 onMounted(() => {
   // Every route becomes a navigation command — new tools are findable automatically.
-  registerCommands(routes.map(r => ({
+  // Skip routes marked inCommandPalette:false in ROUTE_META (e.g. /admin, which is auth-gated
+  // and not meant to be discoverable by accident).
+  registerCommands(routes.filter(r => !r.path.includes(':') && ROUTE_META[r.path]?.inCommandPalette !== false).map(r => ({
     id: 'nav:' + r.path,
     title: ROUTE_META[r.path]?.h1 || r.path,
     group: 'Navigate',
