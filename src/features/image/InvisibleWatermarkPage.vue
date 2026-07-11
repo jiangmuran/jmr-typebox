@@ -9,7 +9,8 @@ import ImageDropZone from './ImageDropZone.vue'
 import SendToMenu from '../../components/SendToMenu.vue'
 import { pickImageFiles, imageFilesFromEvent, downloadBlob } from './canvasUtils'
 import { decodeImageBlob, embedImageBlob } from './invisibleWatermarkCanvas'
-import { SERVICE, makeJob, duplicateJobs, jobFileName, fitContent, contentByteLength, CONTENT_MAX } from './invisibleWatermark'
+import { SERVICE, makeJob, duplicateJobs, jobFileName, fitContent, contentByteLength, CONTENT_MAX, FORMAT_VERSION } from './invisibleWatermark'
+import { registerRecords } from './watermarkApi'
 
 const { meta: m } = useRouteHead()
 const { t, locale } = useI18n()
@@ -41,9 +42,15 @@ const generating = ref(false)
 const embedDragOver = ref(false)
 const lastSingleBlob = ref(null)
 
+// When on, content is registered server-side and the returned id (not the raw text) is embedded,
+// which lifts the 16-byte offline cap. CONTENT_MAX_BYTES is a sane client-side guard only.
+const registerOn = ref(false)
+const CONTENT_MAX_BYTES = 2048
+
 // 16-byte cap; contentByteLength counts UTF-8 bytes so CJK (~3 bytes/char) shrinks the meter faster.
+// Meaningful offline only — with registerOn the cap is lifted, so the meter is hidden.
 const bytesLeft = computed(() => CONTENT_MAX - contentByteLength(uniform.value))
-function onUniformInput() { uniform.value = fitContent(uniform.value, CONTENT_MAX) }
+function onUniformInput() { if (!registerOn.value) uniform.value = fitContent(uniform.value, CONTENT_MAX) }
 
 function addFiles(files) {
   lastSingleBlob.value = null                        // a new drop invalidates any prior single result
@@ -71,12 +78,23 @@ async function generate() {
   generating.value = true
   const stamp = Math.floor(Date.now() / 1000)   // one "now" for the whole batch
   try {
-    for (const job of jobs.value) {
+    // Register mode: batch-register every job's content up-front, then embed the returned
+    // ids (flags:1) instead of the raw text — one bad backend response aborts before any embed.
+    let ids = null
+    if (registerOn.value) {
+      const records = jobs.value.map(j => ({ content: j.content || uniform.value, timestamp: stamp, version: FORMAT_VERSION }))
+      if (records.some(r => contentByteLength(r.content) > CONTENT_MAX_BYTES)) { showToast(t('img2.inv.registerFailed')); return }
+      try { ids = await registerRecords(records) }
+      catch { showToast(t('img2.inv.registerFailed')); return }
+    }
+    for (let i = 0; i < jobs.value.length; i++) {
+      const job = jobs.value[i]
       // Per-job try/catch: one bad image (e.g. too small for a pass) must not abort the batch.
       try {
         job.status = 'working'
-        const content = fitContent(job.content || uniform.value, CONTENT_MAX)
-        const blob = await embedImageBlob(job.source, { content, timestamp: stamp })
+        const blob = registerOn.value
+          ? await embedImageBlob(job.source, { content: ids[i], timestamp: stamp, flags: 1 })
+          : await embedImageBlob(job.source, { content: fitContent(job.content || uniform.value, CONTENT_MAX), timestamp: stamp })
         if (job.url) URL.revokeObjectURL(job.url)   // free the prior result URL before replacing it
         job.blob = blob
         job.url = URL.createObjectURL(blob)
@@ -130,9 +148,14 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
     <template v-else>
       <div class="card card-stack">
         <div class="ctrl">
-          <div class="ctrl-label"><span>{{ t('img2.inv.uniform') }}</span><span class="val">{{ t('img2.inv.bytesLeft').replace('{n}', bytesLeft) }}</span></div>
+          <div class="ctrl-label"><span>{{ t('img2.inv.uniform') }}</span><span v-if="!registerOn" class="val">{{ t('img2.inv.bytesLeft').replace('{n}', bytesLeft) }}</span></div>
           <input type="text" v-model="uniform" @input="onUniformInput" class="text-input" :placeholder="t('img2.inv.content')" />
           <p class="hint">{{ t('img2.inv.contentHint') }}</p>
+          <label class="check reg-toggle">
+            <input type="checkbox" v-model="registerOn" />
+            <span>{{ t('img2.inv.register') }}</span>
+          </label>
+          <p v-if="registerOn" class="hint reg-note">{{ t('img2.inv.registerHint') }}</p>
         </div>
       </div>
 
@@ -199,6 +222,8 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
 .dup-n input { width: 56px; }
 .hint { color: var(--text-tertiary); font-size: 12px; }
 .robust { margin-top: 10px; }
+.reg-toggle { margin-top: 12px; }
+.reg-note { margin-top: 6px; }
 
 /* Phones: collapse the 5-column job row into stacked bands (thumb/name/status,
    then the content input, then actions) and stack the decode card's rows. */
