@@ -128,6 +128,19 @@ describe('encode/decode round-trip (clean)', () => {
     expect(got).toMatchObject({ ok: true, content: 'trace-A', timestamp: 1_700_000_000 })
     expect(got.confidence).toBeGreaterThan(0.9)
   })
+  it('recovers from a screenshot-like image (large flat white area + dark text)', () => {
+    // Regression: pure white/black regions saturate luma, clamping the QIM perturbation away — the
+    // mark is destroyed unless adaptive headroom pulls luma off the rails. This class (screenshots,
+    // documents, logos) failed to decode its OWN output before the fix.
+    const w = 384, h = 384
+    const px = new Uint8ClampedArray(w * h * 4)
+    for (let i = 0; i < px.length; i += 4) { px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = 255 }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (x % 8 < 2 && y % 18 < 11) { const i = (y * w + x) * 4; px[i] = px[i + 1] = px[i + 2] = 12 }
+    }
+    const rec = packRecord({ version: FORMAT_VERSION, timestamp: 1_700_000_000, content: 'shot' })
+    expect(decode(encode(px, w, h, rec), w, h)).toMatchObject({ ok: true, content: 'shot' })
+  })
   it('reports ok:false on an unmarked image', () => {
     const w = 256, h = 256
     expect(decode(gradient(w, h), w, h).ok).toBe(false)

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import JSZip from 'jszip'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
@@ -7,7 +7,7 @@ import { useToast } from '../../composables/useToast'
 import ImageShell from './ImageShell.vue'
 import ImageDropZone from './ImageDropZone.vue'
 import SendToMenu from '../../components/SendToMenu.vue'
-import { pickImageFiles, imageFilesFromEvent, downloadBlob } from './canvasUtils'
+import { pickImageFiles, imageFilesFromEvent, downloadBlob, copyImageToClipboard } from './canvasUtils'
 import { decodeImageBlob, embedImageBlob } from './invisibleWatermarkCanvas'
 import { SERVICE, makeJob, duplicateJobs, jobFileName, fitContent, contentByteLength, CONTENT_MAX, FORMAT_VERSION } from './invisibleWatermark'
 import { registerRecords, resolveWatermark } from './watermarkApi'
@@ -130,9 +130,28 @@ async function downloadZip() {
 }
 function downloadOne(job, i) { if (job.blob) downloadBlob(job.blob, jobFileName(job.name, fitContent(job.content || uniform.value), i)) }
 
+// Copy a result straight to the clipboard — the drop zone advertises paste, so offer the inverse.
+async function copyResult(job) {
+  if (!job.blob) return
+  try { await copyImageToClipboard(job.blob); showToast(t('img2.copied')) }
+  catch { showToast(t('img2.copyUnsupported')) }
+}
+
+// Cmd/Ctrl+V anywhere on the page: embed mode queues the pasted image(s); decode mode reads the first.
+function onPaste(e) {
+  const files = imageFilesFromEvent(e)
+  if (!files.length) return
+  e.preventDefault()
+  if (mode.value === 'decode') readBlob(files[0])
+  else addFiles(files)
+}
+onMounted(() => window.addEventListener('paste', onPaste))
 // Free every outstanding result URL on navigate-away (row-level revokes only cover
-// remove/versionize/regenerate, not unmount).
-onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectURL(job.url) })
+// remove/versionize/regenerate, not unmount), and drop the paste listener.
+onUnmounted(() => {
+  window.removeEventListener('paste', onPaste)
+  for (const job of jobs.value) if (job.url) URL.revokeObjectURL(job.url)
+})
 </script>
 
 <template>
@@ -177,12 +196,12 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
           <div class="ctrl-label"><span>{{ t('img2.inv.uniform') }}</span><span v-if="!registerOn" class="val">{{ t('img2.inv.bytesLeft').replace('{n}', bytesLeft) }}</span></div>
           <input type="text" v-model="uniform" @input="onUniformInput" class="text-input" :placeholder="t('img2.inv.content')" />
           <p class="hint">{{ t('img2.inv.contentHint') }}</p>
-          <label class="check reg-toggle">
-            <input type="checkbox" v-model="registerOn" />
-            <span>{{ t('img2.inv.register') }}</span>
-          </label>
-          <p v-if="registerOn" class="hint reg-note">{{ t('img2.inv.registerHint') }}</p>
         </div>
+        <label class="reg-toggle">
+          <input type="checkbox" v-model="registerOn" />
+          <span>{{ t('img2.inv.register') }}</span>
+        </label>
+        <p v-if="registerOn" class="hint reg-note">{{ t('img2.inv.registerHint') }}</p>
       </div>
 
       <ImageDropZone
@@ -205,6 +224,7 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
           </span>
           <div class="job-actions">
             <button class="btn small" @click="makeVersions(job)">{{ t('img2.inv.duplicate') }}</button>
+            <button v-if="job.blob" class="btn small" @click="copyResult(job)">{{ t('img2.copy') }}</button>
             <button v-if="job.url" class="btn small" @click="downloadOne(job, i)">{{ t('img2.download') }}</button>
             <button class="link-btn" @click="removeJob(job.id)">{{ t('img2.remove') }}</button>
           </div>
@@ -248,7 +268,8 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
 .dup-n input { width: 56px; }
 .hint { color: var(--text-tertiary); font-size: 12px; }
 .robust { margin-top: 10px; }
-.reg-toggle { margin-top: 12px; }
+.reg-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.reg-toggle input { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .reg-note { margin-top: 6px; }
 
 /* Phones: collapse the 5-column job row into stacked bands (thumb/name/status,

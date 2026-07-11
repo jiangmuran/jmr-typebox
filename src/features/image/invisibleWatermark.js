@@ -195,19 +195,46 @@ function _writeBlock(Y, w, bx, by, blk) {
   for (let r = 0; r < 8; r++) for (let cc = 0; cc < 8; cc++) Y[(by * 8 + r) * w + (bx * 8 + cc)] = blk[r * 8 + cc]
 }
 
+// A block can only carry the QIM mark if its luma has headroom. Where pixels are pinned near
+// 0/255 (flat white/black — screenshots, documents, logos) the perturbation clamps away, so the
+// block reads a constant wrong bit. Skip such blocks in BOTH encode (leave them pristine, so pure
+// white stays pure white) and decode (so they don't poison the majority vote). Same test on the
+// same pixels keeps the k-index aligned between the two passes.
+function _blockReliable(blk) {
+  let clipped = 0
+  for (let p = 0; p < 64; p++) if (blk[p] <= 2 || blk[p] >= 253) clipped++
+  return clipped <= 32
+}
+
+// Luma headroom (see encode). Keeps flat white/black regions embeddable so the mark survives on
+// screenshots, documents, and logos. White 255→249, black 0→6 — barely perceptible.
+export const HEADROOM = 6
+
 export function encode(pixels, w, h, record, opts = {}) {
   const delta = opts.delta ?? DELTA
   const coef = opts.coefIndex ?? COEF_INDEX
   if (capacityBlocks(w, h) < RECORD_BITS) throw new Error('image too small for one watermark pass')
   const bits = bytesToBits(record)
   const { Y, Cb, Cr } = toYCbCr(pixels, w, h)
+  // Adaptive luma headroom: pull luma off the 0/255 rails ONLY when the image has extensive flat
+  // white/black area (screenshots, documents, logos), where the QIM perturbation would otherwise
+  // clamp away and carry no mark. Photos have little saturation, so they stay pristine (full
+  // invisibility). When applied, white 255→249 / black 0→6 — barely perceptible.
+  let clipped = 0
+  for (let i = 0; i < Y.length; i++) if (Y[i] <= 2 || Y[i] >= 253) clipped++
+  if (clipped > Y.length * 0.12) {
+    const sc = (255 - 2 * HEADROOM) / 255
+    for (let i = 0; i < Y.length; i++) Y[i] = Y[i] * sc + HEADROOM
+  }
   const bw = Math.floor(w / 8), bh = Math.floor(h / 8)
   let k = 0
   for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
     const blk = _readBlock(Y, w, bx, by)
-    const d = dct8x8(blk)
-    d[coef] = embedCoef(d[coef], bits[k % RECORD_BITS], delta)
-    _writeBlock(Y, w, bx, by, idct8x8(d))
+    if (_blockReliable(blk)) {
+      const d = dct8x8(blk)
+      d[coef] = embedCoef(d[coef], bits[k % RECORD_BITS], delta)
+      _writeBlock(Y, w, bx, by, idct8x8(d))
+    }
     k++
   }
   // Embedding only perturbs luma; carry the source alpha through so transparent
@@ -227,9 +254,12 @@ export function decode(pixels, w, h, opts = {}) {
   const counts = new Uint32Array(RECORD_BITS)
   let k = 0
   for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
-    const d = dct8x8(_readBlock(Y, w, bx, by))
-    votes[k % RECORD_BITS] += extractCoef(d[coef], delta) ? 1 : -1
-    counts[k % RECORD_BITS]++
+    const blk = _readBlock(Y, w, bx, by)
+    if (_blockReliable(blk)) {
+      const d = dct8x8(blk)
+      votes[k % RECORD_BITS] += extractCoef(d[coef], delta) ? 1 : -1
+      counts[k % RECORD_BITS]++
+    }
     k++
   }
   const bits = new Uint8Array(RECORD_BITS)
