@@ -24,13 +24,16 @@ describe('route meta', () => {
 
 describe('routes', () => {
   it('produces one route per path with a tab + name', () => {
-    expect(routes.length).toBe(ALL_PATHS.length)
+    // Every ROUTE_META path yields one static route; plus the single dynamic /w/:id verify
+    // route (appended in routes.js, intentionally NOT in ROUTE_META so vite-ssg skips it).
+    expect(routes.filter(r => !r.path.includes(':')).length).toBe(ALL_PATHS.length)
     for (const r of routes) {
       expect(typeof r.component).toBe('function') // lazy import
       expect(r.meta.tab).toBeTruthy()
       expect(r.name).toBeTruthy()
     }
     expect(routes.find(r => r.path === '/').name).toBe('home')
+    expect(routes.find(r => r.path === '/w/:id').name).toBe('verify')
   })
 
   it('maps paths to the correct owning tab', () => {
