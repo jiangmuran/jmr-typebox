@@ -87,3 +87,17 @@ describe('watermark handler', () => {
     expect((await watermark(req('/api/watermark/anything00'), {})).status).toBe(404)
   })
 })
+
+import worker from '../index.js'
+
+describe('watermark via worker.fetch', () => {
+  const env = { WATERMARKS: kvMock(), ASSETS: { fetch: async () => new Response('static') } }
+  it('registers then resolves end-to-end through the router', async () => {
+    const reg = await worker.fetch(req('/api/watermark', { method: 'POST', body: { records: [{ content: 'roundtrip', timestamp: 9, version: 1 }] } }), env)
+    expect(reg.status).toBe(200)
+    const { ids } = await reg.json()
+    const got = await worker.fetch(req('/api/watermark/' + ids[0]), env)
+    expect(got.status).toBe(200)
+    expect((await got.json())).toMatchObject({ content: 'roundtrip', timestamp: 9 })
+  })
+})

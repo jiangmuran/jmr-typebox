@@ -22,3 +22,12 @@ class_name = "RateLimiter"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RateLimiter"]
+
+# Invisible-watermark verify records (id -> {content,timestamp,version,createdAt}).
+# Create the namespace and paste its printed id here:
+#   npx wrangler kv namespace create WATERMARKS
+# Local `wrangler dev` and unit tests do not need the id (Miniflare / a mock provide the binding);
+# it is only required for production deploy.
+[[kv_namespaces]]
+binding = "WATERMARKS"
+id = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create"

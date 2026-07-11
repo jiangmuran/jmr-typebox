@@ -4,6 +4,7 @@ import { preview } from './api/preview.js'
 import { proxyAI } from './api/ai.js'
 import { uploadImage } from './api/upload.js'
 import { asrTranscribe } from './api/asr.js'
+import { watermark } from './api/watermark.js'
 import { clientIp, rateLimit, tooManyRequests } from './lib/rateLimit.js'
 
 // Per-IP request budget (requests / 60s) for the abuse-prone proxy endpoints. The open URL
@@ -17,6 +18,7 @@ const RATE_CFG = {
   '/api/ai': { name: 'ai', limit: 60 },
   '/api/upload': { name: 'upload', limit: 20 },
   '/api/asr': { name: 'asr', limit: 20 },
+  '/api/watermark': { name: 'watermark', limit: 20 },
 }
 const RATE_WINDOW_MS = 60_000
 
@@ -77,6 +79,7 @@ export default {
     if (url.pathname === '/api/ai') return proxyAI(request)
     if (url.pathname === '/api/upload') return uploadImage(request, env)
     if (url.pathname === '/api/asr') return asrTranscribe(request, env)
+    if (url.pathname === '/api/watermark' || url.pathname.startsWith('/api/watermark/')) return watermark(request, env)
     if (url.pathname.startsWith('/api/')) {
       return new Response('Not found', { status: 404 })
     }
