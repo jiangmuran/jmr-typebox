@@ -10,7 +10,7 @@ import SendToMenu from '../../components/SendToMenu.vue'
 import { pickImageFiles, imageFilesFromEvent, downloadBlob } from './canvasUtils'
 import { decodeImageBlob, embedImageBlob } from './invisibleWatermarkCanvas'
 import { SERVICE, makeJob, duplicateJobs, jobFileName, fitContent, contentByteLength, CONTENT_MAX, FORMAT_VERSION } from './invisibleWatermark'
-import { registerRecords } from './watermarkApi'
+import { registerRecords, resolveWatermark } from './watermarkApi'
 
 const { meta: m } = useRouteHead()
 const { t, locale } = useI18n()
@@ -20,14 +20,23 @@ const mode = ref('embed')          // 'embed' | 'decode'
 
 // ---- Decode ----
 const decoding = ref(false)
-const result = ref(null)           // { ok, content, timestamp, version, confidence } | { ok:false } | null
+const result = ref(null)           // { ok, content, timestamp, version, confidence, flags } | { ok:false } | null
 const dragOver = ref(false)
+const resolved = ref(null)         // { content, timestamp, version } from the server, when registered
+const verifyId = ref('')
 
 async function readBlob(blob) {
   if (!blob) return
-  decoding.value = true; result.value = null
-  try { result.value = await decodeImageBlob(blob) }
-  catch { result.value = { ok: false } }
+  decoding.value = true; result.value = null; resolved.value = null; verifyId.value = ''
+  try {
+    result.value = await decodeImageBlob(blob)
+    // Registered records (flags bit 0) embed the server id, not the raw text — resolve it to the
+    // full stored content and a verify-page link. A backend miss/failure just leaves resolved null.
+    if (result.value?.ok && (result.value.flags & 1)) {
+      verifyId.value = result.value.content
+      try { resolved.value = await resolveWatermark(verifyId.value) } catch { resolved.value = null }
+    }
+  } catch { result.value = { ok: false } }
   finally { decoding.value = false }
 }
 async function pickDecode() { const f = await pickImageFiles({ multiple: false }); if (f[0]) readBlob(f[0]) }
@@ -136,9 +145,21 @@ onUnmounted(() => { for (const job of jobs.value) if (job.url) URL.revokeObjectU
       />
       <div v-if="decoding" class="ctrl">{{ t('img2.inv.generating') }}</div>
       <div v-else-if="result && result.ok" class="card info-card">
-        <div class="info-row"><span class="k">{{ t('img2.inv.fldContent') }}</span><span class="v mono">{{ result.content || '—' }}</span></div>
+        <div class="info-row">
+          <span class="k">{{ t('img2.inv.fldContent') }}</span>
+          <span class="v mono">{{ (result.flags & 1) ? (resolved ? resolved.content : ('#' + verifyId)) : (result.content || '—') }}</span>
+        </div>
+        <div v-if="result.flags & 1" class="info-row">
+          <span class="k">{{ t('img2.inv.fldService') }}</span>
+          <span class="v">
+            <template v-if="resolved">
+              {{ t('img2.inv.registered') }} · <router-link :to="'/w/' + verifyId">{{ t('img2.inv.viewVerify') }}</router-link>
+            </template>
+            <template v-else>{{ t('img2.inv.regNotFound') }}</template>
+          </span>
+        </div>
         <div class="info-row"><span class="k">{{ t('img2.inv.fldTime') }}</span><span class="v">{{ fmtTime(result.timestamp) }}</span></div>
-        <div class="info-row"><span class="k">{{ t('img2.inv.fldService') }}</span><span class="v mono">{{ SERVICE }}</span></div>
+        <div v-if="!(result.flags & 1)" class="info-row"><span class="k">{{ t('img2.inv.fldService') }}</span><span class="v mono">{{ SERVICE }}</span></div>
         <div class="info-row"><span class="k">{{ t('img2.inv.fldVersion') }}</span><span class="v">v{{ result.version }}</span></div>
         <div class="info-row"><span class="k">{{ t('img2.inv.fldConfidence') }}</span><span class="v">{{ Math.round(result.confidence * 100) }}%</span></div>
       </div>
