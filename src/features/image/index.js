@@ -201,6 +201,12 @@ export default {
       'img2.inv.viewVerify': 'Open verify page',
       'img2.inv.regNotFound': 'Marked as registered, but no record was found.',
       'img2.inv.robustNote': 'Survives JPEG re-compression, rescaling, and colour shifts. Not crop, rotation, or AI re-generation.',
+
+      // Verify page (/w/:id)
+      'img2.verify.title': 'Watermark record',
+      'img2.verify.loading': 'Looking up…',
+      'img2.verify.notFound': 'No record found for this id.',
+      'img2.verify.service': 'Marked by box.muran.tech',
     },
     zh: {
       // Shared
@@ -387,6 +393,12 @@ export default {
       'img2.inv.viewVerify': '打开验证页',
       'img2.inv.regNotFound': '标记为已注册，但未找到记录。',
       'img2.inv.robustNote': '可抵抗 JPEG 重压缩、缩放与调色；不抗裁剪、旋转或 AI 重绘。',
+
+      // Verify page (/w/:id)
+      'img2.verify.title': '水印记录',
+      'img2.verify.loading': '查询中…',
+      'img2.verify.notFound': '未找到该 id 对应的记录。',
+      'img2.verify.service': '由 box.muran.tech 标记',
     },
   },
 }

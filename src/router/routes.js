@@ -24,9 +24,17 @@ function componentFor(p) {
   return () => import('../pages/ToolStub.vue')
 }
 
-export const routes = ALL_PATHS.map(path => ({
-  path,
-  name: path === '/' ? 'home' : path.replace(/^\//, '').replace(/\//g, '-'),
-  component: componentFor(path),
-  meta: { tab: tabOf(path), path },
-}))
+export const routes = [
+  ...ALL_PATHS.map(path => ({
+    path,
+    name: path === '/' ? 'home' : path.replace(/^\//, '').replace(/\//g, '-'),
+    component: componentFor(path),
+    meta: { tab: tabOf(path), path },
+  })),
+  {
+    path: '/w/:id',
+    name: 'verify',
+    component: () => import('../features/image/VerifyPage.vue'),
+    meta: { tab: 'tools', path: '/w' },
+  },
+]

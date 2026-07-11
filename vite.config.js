@@ -10,6 +10,8 @@ export default defineConfig({
   ssgOptions: {
     script: 'async',
     formatting: 'minify',
+    // Dynamic param routes (e.g. /w/:id) can't be prerendered — serve them via the SPA fallback.
+    includedRoutes: (paths) => paths.filter(p => !p.includes(':')),
   },
   test: {
     environment: 'jsdom',
