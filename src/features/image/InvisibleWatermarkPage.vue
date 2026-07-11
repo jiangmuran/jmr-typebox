@@ -74,7 +74,7 @@ function removeJob(id) {
   jobs.value = jobs.value.filter(j => j.id !== id)
 }
 function makeVersions(job) {
-  const dups = duplicateJobs({ ...job, content: job.content || uniform.value }, Math.min(50, Math.max(2, dupCount.value)))
+  const dups = duplicateJobs({ ...job, content: job.content || uniform.value }, Math.min(50, Math.max(2, dupCount.value)), registerOn.value ? CONTENT_MAX_BYTES : CONTENT_MAX)
     .map(d => ({ ...d, source: job.source, name: job.name }))
   const i = jobs.value.findIndex(j => j.id === job.id)
   if (job.url) URL.revokeObjectURL(job.url)           // the source row is replaced; free its object URL
@@ -110,7 +110,8 @@ async function generate() {
           : await embedImageBlob(job.source, { content: fitContent(job.content || uniform.value, CONTENT_MAX), timestamp: stamp })
         if (job.url) URL.revokeObjectURL(job.url)   // free the prior result URL before replacing it
         job.blob = blob
-        job.url = URL.createObjectURL(blob)
+        // Skip the object URL for a row removed mid-run (the snapshot still holds it) — avoids a leak.
+        if (jobs.value.includes(job)) job.url = URL.createObjectURL(blob)
         job.status = 'done'
       } catch (err) {
         job.status = 'error'

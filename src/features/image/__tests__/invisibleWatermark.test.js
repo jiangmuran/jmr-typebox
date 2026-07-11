@@ -233,6 +233,13 @@ describe('job model', () => {
     for (const j of jobs) expect(contentByteLength(j.content)).toBeLessThanOrEqual(CONTENT_MAX)
     expect(new Set(jobs.map(j => j.content)).size).toBe(3)
   })
+  it('honors a larger byte budget so register-mode versions keep long content', () => {
+    // With registerOn the content lives server-side (cap 2048), so a long base must NOT be
+    // truncated to CONTENT_MAX — otherwise register + "make N versions" silently loses content.
+    const longBase = '内容'.repeat(20) // 120 UTF-8 bytes, far over CONTENT_MAX (16)
+    const jobs = duplicateJobs(makeJob('imgA', longBase), 2, 2048)
+    expect(jobs.map(j => j.content)).toEqual([`${longBase} #1`, `${longBase} #2`])
+  })
   it('builds safe filenames', () => {
     expect(jobFileName('photo.jpg', 'trace A/1', 0)).toBe('photo__trace-a-1__1.png')
     expect(jobFileName('photo', '', 4, 'png')).toBe('photo__5.png')

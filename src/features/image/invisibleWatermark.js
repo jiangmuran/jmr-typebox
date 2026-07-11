@@ -292,8 +292,8 @@ export function makeJob(source, content = '') {
 // Reserve room for the widest suffix (` #n`) up front so a near-cap base isn't
 // re-truncated by fitContent at generate time — which would drop every suffix and
 // collapse all versions to one identical mark, defeating traitor-tracing.
-export function duplicateJobs(job, n) {
-  const base = fitContent(job.content, CONTENT_MAX - contentByteLength(' #' + n))
+export function duplicateJobs(job, n, maxBytes = CONTENT_MAX) {
+  const base = fitContent(job.content, maxBytes - contentByteLength(' #' + n))
   const out = []
   for (let i = 1; i <= n; i++) {
     out.push({ id: ++_jobSeq, source: job.source, content: `${base} #${i}`.trim(), status: 'idle' })
