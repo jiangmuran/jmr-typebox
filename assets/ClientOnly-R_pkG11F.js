@@ -1,1 +1,0 @@
-import{m as a,P as t,r}from"./app-DUa_02z8.js";const u={__name:"ClientOnly",setup(n){const e=r(!1);return a(()=>{e.value=!0}),(s,o)=>e.value?t(s.$slots,"default",{key:0}):t(s.$slots,"fallback",{key:1})}};export{u as _};
