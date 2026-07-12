@@ -5,7 +5,19 @@ import { proxyAI } from './api/ai.js'
 import { uploadImage } from './api/upload.js'
 import { asrTranscribe } from './api/asr.js'
 import { watermark } from './api/watermark.js'
+import { music, adminNcm } from './api/music.js'
+import { auth } from './api/auth.js'
+import { admin } from './api/admin.js'
+import { stats } from './api/stats.js'
 import { clientIp, rateLimit, tooManyRequests } from './lib/rateLimit.js'
+import { parseAllowlist, isAllowed, forbidden } from './lib/ipGuard.js'
+import { callAuth, MusicAuth } from './lib/musicAuth.js'
+import { verifySession, readSessionCookie } from './lib/jwt.js'
+import { recordRequest, logEvent } from './lib/metrics.js'
+
+// Re-export the MusicAuth DO class so wrangler's `class_name = "MusicAuth"` can resolve it from
+// the main entry (Workers requires DO classes to be exported from the entry module).
+export { MusicAuth }
 
 // Per-IP request budget (requests / 60s) for the abuse-prone proxy endpoints. The open URL
 // fetch + OG preview are the prime "刷接口" targets; the AI relay is more generous since the
@@ -36,6 +48,30 @@ async function checkLimit(env, cfg, key) {
   }
   const rl = rateLimit(`${cfg.name}:${key}`, cfg.limit, RATE_WINDOW_MS)
   return { limited: !rl.ok, retryAfter: rl.retryAfter || 60 }
+}
+
+// 401 JSON helper for the session guard.
+function unauthorized(reason) {
+  return Response.json(
+    { error: 'unauthorized', reason },
+    { status: 401, headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' } }
+  )
+}
+
+// Phase 4: wrap every admin/music/auth handler in this so the dashboard's counters + recent
+// request list stay current. Records the final HTTP status (including 403/429/401 from the gates)
+// + latency. Fire-and-forget on the metrics side; never throws.
+async function withMetrics(path, ip, fn) {
+  const start = Date.now()
+  try {
+    const res = await fn()
+    recordRequest(path, ip, res.status, Date.now() - start)
+    return res
+  } catch (e) {
+    recordRequest(path, ip, 500, Date.now() - start)
+    logEvent('error', 'handler threw', { path, error: String(e && e.message || e).slice(0, 200) })
+    throw e
+  }
 }
 
 // Durable Object: a sliding-window counter keyed by its id (`name:ip`). Strongly consistent across
@@ -80,6 +116,91 @@ export default {
     if (url.pathname === '/api/upload') return uploadImage(request, env)
     if (url.pathname === '/api/asr') return asrTranscribe(request, env)
     if (url.pathname === '/api/watermark' || url.pathname.startsWith('/api/watermark/')) return watermark(request, env)
+
+    // ---- /api/auth/* (WebAuthn bootstrap / login / one-time-link / logout) ----
+    // IP allowlist still applies (auth routes are admin-tier); no session needed (these routes
+    // are what ESTABLISH the session). Rate-limited under the 'auth' bucket.
+    if (url.pathname.startsWith('/api/auth/')) {
+      return withMetrics(url.pathname, clientIp(request), async () => {
+        const allowlist = parseAllowlist(env?.ALLOWED_IPS)
+        if (!isAllowed(request, allowlist, 'admin')) return forbidden(clientIp(request))
+        if (request.method !== 'OPTIONS') {
+          const { limited, retryAfter } = await checkLimit(env, { name: 'auth', limit: 30 }, clientIp(request))
+          if (limited) return tooManyRequests(retryAfter)
+        }
+        return auth(request, env)
+      })
+    }
+
+    // ---- /api/admin/* (dashboard data + NCM QR login + stats) ----
+    // Triple gate: IP allowlist → valid session cookie → rate limit. The DO-stored NCM cookie
+    // (set via QR login) takes precedence over env.NCM_COOKIE here so adminNcm sees the freshest
+    // token. Falls back to env.NCM_COOKIE when the DO has none (deploy-time secret path).
+    if (url.pathname.startsWith('/api/admin/')) {
+      return withMetrics(url.pathname, clientIp(request), async () => {
+        const allowlist = parseAllowlist(env?.ALLOWED_IPS)
+        if (!isAllowed(request, allowlist, 'admin')) return forbidden(clientIp(request))
+
+        // Session check — ALL /api/admin/* requires a valid session (read AND write).
+        const token = readSessionCookie(request)
+        const v = await verifySession(env, token)
+        if (!v.ok) return unauthorized(v.reason)
+
+        // Resolve effective NCM cookie: DO > env. Copy env so we don't mutate the original.
+        let adminEnv = env
+        try {
+          const doCookie = await callAuth(env, 'getNcmCookie')
+          if (doCookie.cookie && doCookie.cookie !== env?.NCM_COOKIE) {
+            adminEnv = { ...env, NCM_COOKIE: doCookie.cookie }
+          }
+        } catch { /* DO unavailable — fall back to env */ }
+
+        if (request.method !== 'OPTIONS') {
+          const mCfg = url.pathname.startsWith('/api/admin/ncm/qrcode/check/')
+            ? { name: 'admin_qr_check', limit: 30 }   // polled every ~2s during QR scan
+            : { name: 'admin', limit: 30 }
+          const { limited, retryAfter } = await checkLimit(env, mCfg, clientIp(request))
+          if (limited) return tooManyRequests(retryAfter)
+        }
+
+        // Dispatch within /api/admin/. Stats routes go to the stats handler; NCM QR routes to
+        // adminNcm; everything else to admin.
+        if (url.pathname.startsWith('/api/admin/stats')) return stats(request, env)
+        if (url.pathname.startsWith('/api/admin/ncm/')) return adminNcm(request, adminEnv)
+        return admin(request, adminEnv)
+      })
+    }
+
+    // ---- /api/music/* (public-ish music data + stream) ----
+    // IP gate (optional). Cookie resolution: DO-stored cookie (from QR login) takes precedence
+    // over env.NCM_COOKIE (deploy-time secret). WITHOUT this, a user who logged in via the admin
+    // QR scan would see all VIP songs fail with 502 — because the music routes would carry NO
+    // cookie at all (env.NCM_COOKIE was never set via `wrangler secret put`).
+    if (url.pathname.startsWith('/api/music/')) {
+      return withMetrics(url.pathname, clientIp(request), async () => {
+        const allowlist = parseAllowlist(env?.ALLOWED_IPS)
+        if (!isAllowed(request, allowlist, 'music')) return forbidden(clientIp(request))
+
+        // Resolve effective NCM cookie: DO > env.
+        let musicEnv = env
+        try {
+          const doCookie = await callAuth(env, 'getNcmCookie')
+          if (doCookie.cookie && doCookie.cookie !== env?.NCM_COOKIE) {
+            musicEnv = { ...env, NCM_COOKIE: doCookie.cookie }
+          }
+        } catch { /* DO unavailable — fall back to env */ }
+
+        if (request.method !== 'OPTIONS') {
+          const mCfg = url.pathname.startsWith('/api/music/stream/')
+            ? { name: 'music_stream', limit: 20 }
+            : { name: 'music', limit: 60 }
+          const { limited, retryAfter } = await checkLimit(env, mCfg, clientIp(request))
+          if (limited) return tooManyRequests(retryAfter)
+        }
+        return music(request, musicEnv)
+      })
+    }
+
     if (url.pathname.startsWith('/api/')) {
       return new Response('Not found', { status: 404 })
     }

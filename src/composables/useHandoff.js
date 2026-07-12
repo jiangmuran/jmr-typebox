@@ -9,8 +9,14 @@ import { ref } from 'vue'
 //   const h = handoff.take('image')        // in the target's onMounted
 //
 // `kind` is a coarse type the target filters on: 'image' | 'audio' | 'video' | 'av' | 'text' | 'subtitle'.
+//
+// Phase 3 bugfix: `auxiliary` — an optional secondary File that travels WITH the main payload.
+// This exists so Transcribe's "Send to subtitles" can ship the ORIGINAL video/audio as the main
+// payload (so the subtitle studio has something to preview/burn into) while attaching the
+// generated .srt as auxiliary (auto-loaded into the segment list on arrival). The target reads
+// `h.auxiliary` after take().
 
-const pending = ref(null) // { payload, kind, from, name } | null
+const pending = ref(null) // { payload, kind, from, name, auxiliary } | null
 
 // Which targets make sense for a given kind — drives the "Send to →" menu. Route + i18n key + the
 // kind the target expects. Kept here so any module's send menu stays consistent.
@@ -23,6 +29,7 @@ export const HANDOFF_TARGETS = {
   audio: [
     { route: '/media/compress', i18n: 'handoff.toCompress', kind: 'av' },
     { route: '/media/transcribe', i18n: 'handoff.toTranscribe', kind: 'av' },
+    { route: '/media/subtitles', i18n: 'handoff.toSubtitles', kind: 'av' },
     { route: '/media/metadata', i18n: 'handoff.toAudioMeta', kind: 'av' },
     { route: '/media/player', i18n: 'handoff.toPlayer', kind: 'av' },
   ],
@@ -42,9 +49,11 @@ export const HANDOFF_TARGETS = {
 }
 
 export function useHandoff() {
-  // Stage a payload (File | Blob | string) for the next module.
-  function send(payload, { kind = '', from = '', name = '', handle = null } = {}) {
-    pending.value = { payload, kind, from, name: name || payload?.name || '', handle }
+  // Stage a payload (File | Blob | string) for the next module. `auxiliary` is an optional
+  // secondary File that travels with the main payload (e.g. a transcript .srt alongside the
+  // source video, so the subtitle studio can open both in one shot).
+  function send(payload, { kind = '', from = '', name = '', handle = null, auxiliary = null } = {}) {
+    pending.value = { payload, kind, from, name: name || payload?.name || '', handle, auxiliary }
   }
   // Consume the staged payload if its kind matches (or no filter). One-shot: clears after taking.
   function take(kinds) {

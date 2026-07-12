@@ -1,29 +1,50 @@
 <script setup>
-// Persistent bottom mini-player, mounted by MediaShell so it stays visible across ALL audio
-// sub-tabs (Convert / Edit / Subtitles / Player) and keeps the one shared <audio> playing. Compact
-// transport + progress + a tap-target that opens the full Now-Playing (/media/player). Client-only
-// content (the store touches Audio/IndexedDB) — MediaShell renders it inside <ClientOnly>.
-import { computed } from 'vue'
+// Persistent bottom mini-player. Phase 2 redesign:
+//   • Slightly stronger blur + a subtle hairline accent on the seek bar (the album cover IS the
+//     thumb when there's a current track).
+//   • Prefetch state indicator on the right (✓ cached / ⏳ fetching / — idle) so the user can
+//     see at a glance whether the next track is warmed up — important because NCM tracks need
+//     a network fetch before they can play.
+//   • Long-press on the artwork opens the full-screen lyrics view (/media/lyrics).
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePlayerStore } from './usePlayerStore'
 import { formatTime, initialOf, hashHue } from './playerHelpers'
+import { useI18n } from '../../composables/useI18n'
 
 const store = usePlayerStore()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
-const t = store.currentTrack
-const visible = computed(() => !!store.currentId.value && !!t.value)
+const t_ = store.currentTrack
+const visible = computed(() => !!store.currentId.value && !!t_.value)
 const onPlayer = computed(() => (route.meta?.path || route.path) === '/media/player')
 const progress = computed(() => (store.duration.value ? store.currentTime.value / store.duration.value : 0))
 
+// Map the store's prefetchState ('idle' | 'fetching' | 'cached' | 'error') to a tiny UI badge.
+const prefetchBadge = computed(() => {
+  switch (store.prefetchState.value) {
+    case 'cached': return { icon: '✓', cls: 'ok', title: t('media.player.nextCached') }
+    case 'fetching': return { icon: '⏳', cls: 'fetching', title: t('media.player.nextFetching') }
+    case 'error': return { icon: '!', cls: 'err', title: t('media.player.nextError') }
+    default: return null
+  }
+})
+
 function openPlayer() { if (!onPlayer.value) router.push('/media/player') }
+function openLyrics() { router.push('/media/lyrics') }
 function onSeek(e) {
   const bar = e.currentTarget
   const rect = bar.getBoundingClientRect()
   const r = (e.clientX - rect.left) / (rect.width || 1)
   store.seekRatio(Math.max(0, Math.min(1, r)))
 }
+
+// Long-press the artwork to jump to full-screen lyrics.
+let pressTimer = null
+function onArtTouchStart() { pressTimer = setTimeout(openLyrics, 500) }
+function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
 </script>
 
 <template>
@@ -31,25 +52,30 @@ function onSeek(e) {
     <div v-if="visible" class="mini" :class="{ 'on-player': onPlayer }">
       <div class="mini-seek" @click="onSeek"><div class="mini-seek-fill" :style="{ width: (progress * 100) + '%' }"></div></div>
       <div class="mini-body">
-        <button class="mini-art" :class="{ clickable: !onPlayer }" @click="openPlayer" :title="onPlayer ? '' : 'Open player'">
+        <button class="mini-art"
+          :class="{ clickable: !onPlayer }"
+          @click="openPlayer"
+          @touchstart.passive="onArtTouchStart" @touchend="onArtTouchEnd" @touchmove="onArtTouchEnd"
+          :title="onPlayer ? '' : 'Open player'">
           <img v-if="store.coverUrl.value" :src="store.coverUrl.value" alt="" />
-          <span v-else class="mini-art-ph" :style="{ '--ph-hue': hashHue(t.title || t.name) }">{{ initialOf(t.title || t.name) }}</span>
+          <span v-else class="mini-art-ph" :style="{ '--ph-hue': hashHue(t_.title || t_.name) }">{{ initialOf(t_.title || t_.name) }}</span>
         </button>
         <button class="mini-meta" :class="{ clickable: !onPlayer }" @click="openPlayer">
-          <span class="mini-title">{{ t.title }}</span>
-          <span class="mini-sub">{{ t.artist || formatTime(store.currentTime.value) + ' / ' + formatTime(store.duration.value) }}</span>
+          <span class="mini-title">{{ t_.title }}</span>
+          <span class="mini-sub">{{ t_.artist || formatTime(store.currentTime.value) + ' / ' + formatTime(store.duration.value) }}</span>
         </button>
         <div class="mini-controls">
-          <button class="mini-btn" @click="store.prev()" aria-label="Previous">
+          <button class="mini-btn" @click="store.prev()" :aria-label="t('media.player.prev')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
           </button>
-          <button class="mini-btn play" @click="store.toggle()" :aria-label="store.isPlaying.value ? 'Pause' : 'Play'">
+          <button class="mini-btn play" @click="store.toggle()" :aria-label="store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
             <svg v-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
             <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </button>
-          <button class="mini-btn" @click="store.next()" aria-label="Next">
+          <button class="mini-btn" @click="store.next()" :aria-label="t('media.player.next')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
           </button>
+          <span v-if="prefetchBadge" class="mini-prefetch" :class="prefetchBadge.cls" :title="prefetchBadge.title">{{ prefetchBadge.icon }}</span>
         </div>
       </div>
     </div>
@@ -57,8 +83,10 @@ function onSeek(e) {
 </template>
 
 <style scoped>
-.mini { position: sticky; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--bar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-top: 1px solid var(--border-light); }
-.mini-seek { height: 4px; background: var(--surface-hover); cursor: pointer; position: relative; }
+/* Slightly stronger blur than v1 (40px vs 20px) for the "floating glass" feel; also a hint of
+   saturate(180%) to keep the album cover legible through it. */
+.mini { position: sticky; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--bar-bg); backdrop-filter: saturate(180%) blur(40px); -webkit-backdrop-filter: saturate(180%) blur(40px); border-top: 1px solid var(--border-light); }
+.mini-seek { height: 3px; background: var(--surface-hover); cursor: pointer; position: relative; }
 .mini-seek-fill { height: 100%; background: var(--accent); transition: width 0.15s linear; }
 .mini-seek:hover { height: 6px; }
 .mini-body { display: flex; align-items: center; gap: 12px; padding: 8px 14px; max-width: 1120px; margin: 0 auto; }
@@ -80,6 +108,13 @@ function onSeek(e) {
 .mini-btn.play { background: var(--text); color: var(--bg); }
 .mini-btn.play:hover { opacity: 0.9; background: var(--text); }
 .mini-btn.play svg { width: 20px; height: 20px; }
+
+/* Prefetch status badge — small, monochrome, in the surface-active circle. */
+.mini-prefetch { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--surface-active); color: var(--text-secondary); margin-left: 4px; }
+.mini-prefetch.ok { color: var(--status-ok); }
+.mini-prefetch.fetching { color: var(--status-warn); animation: pulse 1.2s ease-in-out infinite; }
+.mini-prefetch.err { color: var(--status-warn); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 .mini-up-enter-active, .mini-up-leave-active { transition: transform 0.25s var(--ease-out), opacity 0.25s; }
 .mini-up-enter-from, .mini-up-leave-to { transform: translateY(100%); opacity: 0; }

@@ -25,6 +25,10 @@ const STYLE_PROPS = [
   'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
   'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing',
   'textTransform', 'textIndent', 'whiteSpace', 'wordSpacing', 'tabSize',
+  // Text-shaping props that change glyph advances/wrapping. They must match the textarea or the
+  // accumulated advance drifts on wide glyphs — most visibly with a custom editor font that has
+  // ligatures/kerning (e.g. Fira Code). Copying the computed value is a no-op when equal.
+  'fontKerning', 'fontFeatureSettings', 'fontVariantLigatures', 'textRendering',
 ]
 
 let raf = 0
@@ -34,13 +38,28 @@ function syncStyles() {
   if (!el || !ov || typeof window === 'undefined') return
   const cs = window.getComputedStyle(el)
   for (const p of STYLE_PROPS) ov.style[p] = cs[p]
-  // Wrapping behaviour must match a textarea: wrap long words, preserve whitespace + newlines.
+  // Wrapping behaviour must match a textarea: wrap long words, preserve whitespace + newlines,
+  // and break between CJK the same way (word-break/line-break normal).
   ov.style.whiteSpace = 'pre-wrap'
   ov.style.overflowWrap = 'break-word'
   ov.style.wordBreak = cs.wordBreak || 'normal'
-  // Match the textarea's box exactly (it's the next sibling inside the same positioned parent).
-  ov.style.width = el.offsetWidth + 'px'
-  ov.style.height = el.offsetHeight + 'px'
+  ov.style.lineBreak = cs.lineBreak || 'auto'
+  // Never let a UA text-size-adjust rescale the mirror's glyphs relative to the textarea.
+  ov.style.webkitTextSizeAdjust = ov.style.textSizeAdjust = cs.webkitTextSizeAdjust || cs.textSizeAdjust || '100%'
+  // Match the textarea's TRUE text box. A <textarea> wraps its text at the *content* width =
+  // clientWidth − horizontal padding, and clientWidth already EXCLUDES the vertical scrollbar.
+  // offsetWidth (used previously) includes the border AND the scrollbar, so when a scrollbar is
+  // present the mirror was ~scrollbar-width wider → it wrapped a column late. That drift is
+  // invisible on ASCII (which breaks at spaces) but very visible on CJK/emoji lines, which can
+  // break between any two glyphs. Force border-box and rebuild the border-box width from
+  // clientWidth + borders so the mirror's content box is identical with or without a scrollbar.
+  ov.style.boxSizing = 'border-box'
+  const bl = parseFloat(cs.borderLeftWidth) || 0
+  const br = parseFloat(cs.borderRightWidth) || 0
+  const bt = parseFloat(cs.borderTopWidth) || 0
+  const bb = parseFloat(cs.borderBottomWidth) || 0
+  ov.style.width = (el.clientWidth + bl + br) + 'px'
+  ov.style.height = (el.clientHeight + bt + bb) + 'px'
   ov.style.left = el.offsetLeft + 'px'
   ov.style.top = el.offsetTop + 'px'
   // Keep the mirror scrolled in lockstep with the textarea.

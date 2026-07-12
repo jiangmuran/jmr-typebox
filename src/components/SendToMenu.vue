@@ -11,6 +11,7 @@ const props = defineProps({
   payload: { default: null },                 // File | Blob | string to hand off
   kind: { type: String, required: true },     // 'image' | 'audio' | 'video' | 'text' | 'subtitle'
   from: { type: String, default: '' },        // origin route (excluded from the target list)
+  auxiliary: { default: null },               // optional secondary File (e.g. .srt alongside a video)
 })
 const { t } = useI18n()
 const router = useRouter()
@@ -21,7 +22,7 @@ const targets = computed(() => handoff.targetsFor(props.kind).filter(tg => tg.ro
 function go(target) {
   open.value = false
   if (props.payload == null) return
-  handoff.send(props.payload, { kind: target.kind, from: props.from })
+  handoff.send(props.payload, { kind: target.kind, from: props.from, auxiliary: props.auxiliary })
   router.push(target.route)
 }
 </script>

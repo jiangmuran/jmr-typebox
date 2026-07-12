@@ -349,6 +349,18 @@ onMounted(async () => {
     } else {
       const f = p instanceof File ? p : new File([p], taken.name || 'media', { type: p?.type || '' })
       if (media.set(f)) showToast(t('handoff.received')) // the media.file watcher runs onMediaLoaded
+      // Phase 3 bugfix: if the handoff carried an auxiliary subtitle file (Transcribe's "Send to
+      // subtitles" ships the source video as payload + the .srt as auxiliary), auto-import it now
+      // so the user lands on a ready-to-proofread state instead of an empty segment list.
+      const aux = taken.auxiliary
+      if (aux instanceof Blob) {
+        try {
+          const auxText = await aux.text()
+          if (auxText && importSubText(auxText, aux.name || 'transcript.srt')) {
+            step.value = 'proofread'
+          }
+        } catch { /* auxiliary best-effort */ }
+      }
     }
   }
 

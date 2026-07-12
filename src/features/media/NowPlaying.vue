@@ -1,7 +1,11 @@
 <script setup>
-// Now-Playing panel: artwork (ID3 cover / monochrome letter placeholder / waveform), full transport
-// (prev · play/pause · next, shuffle, repeat-off/all/one, speed, A–B repeat), the waveform doubling
-// as the SEEK bar, volume, and a "Send to Edit/Convert" action. Binds entirely to the shared store.
+// Now-Playing panel — the visual centerpiece of the player. Phase 2 redesign:
+//   • Big rotating artwork (the album cover IS the focal point; rotates slowly while playing,
+//     slows to a near-stop when paused to suggest a turntable winding down).
+//   • Sentence-level navigation buttons (⏮⋮ ⏭⋮) next to the standard ⏮ ⏯ ⏭ transport, so users
+//     can jump to the PREVIOUS or NEXT lyric line, not just ±5s.
+//   • A "go full-screen lyrics" button (top-right) that routes to /media/lyrics.
+//   • The EMBED iframe branch (NetEase/Bilibili/YouTube) is GONE — that surface was deleted.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from './usePlayerStore'
@@ -9,8 +13,8 @@ import { useMediaPool } from './useMediaPool'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import MediaWaveform from './MediaWaveform.vue'
-import EmbedPlayer from './EmbedPlayer.vue'
 import { formatTime, initialOf, hashHue } from './playerHelpers'
+import { parseLrc, parseYrc, prevLineIndex, nextLineIndex, timeOfLine } from './lrc'
 
 const store = usePlayerStore()
 const pool = useMediaPool()
@@ -21,21 +25,32 @@ const { showToast } = useToast()
 const emit = defineEmits(['edit-tags'])
 
 const track = store.currentTrack
-const embed = store.currentEmbed
-// When an ONLINE entry is selected we show its official iframe instead of the file transport.
-const showingEmbed = computed(() => !!embed.value)
 const hasTrack = computed(() => !!track.value)
 
-// Artwork view mode: 'art' (cover/placeholder) or 'wave'. Auto-prefer cover when available.
+// Artwork view mode: 'art' (rotating cover) or 'wave' (waveform). Cover is the default.
 const artMode = ref('art')
 
-// Waveform peaks for the current track (decoded best-effort; doubles as the seek bar).
 const peaks = ref(null)
 const wfLoading = ref(false)
 const playRatio = computed(() => (store.duration.value ? store.currentTime.value / store.duration.value : 0))
 
 const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
-const repeatLabel = computed(() => store.repeat.value)
+
+// Synced lyric lines for sentence-level navigation (parsed from the current track's lrc/yrc).
+// Re-parsed only when the lyric text changes (cheap binary search per call elsewhere).
+const lyricLines = computed(() => {
+  const yrc = store.liveLyrics.value?.yrc
+  if (yrc) {
+    const parsed = parseYrc(yrc)
+    if (parsed.synced && parsed.lines.length) return parsed.lines
+  }
+  const original = store.liveLyrics.value?.original
+  if (original) {
+    const parsed = parseLrc(original)
+    if (parsed.synced) return parsed.lines
+  }
+  return []
+})
 
 // Decode waveform when the track changes (pull the blob from IndexedDB).
 watch(() => store.currentId.value, async (id) => {
@@ -54,19 +69,35 @@ watch(() => store.currentId.value, async (id) => {
 
 function onSeek(sec) { store.seek(sec) }
 
+// Jump to the previous/next LYRIC line (not the previous/next track). Falls back to ±5s when no
+// synced lyrics are loaded.
+function prevLine() {
+  const lines = lyricLines.value
+  if (!lines.length) return store.seek(Math.max(0, store.currentTime.value - 5))
+  const i = prevLineIndex(lines, store.currentTime.value)
+  if (i >= 0) store.seek(timeOfLine(lines, i))
+  else store.seek(0)
+}
+function nextLine() {
+  const lines = lyricLines.value
+  if (!lines.length) return store.seek(store.currentTime.value + 5)
+  const i = nextLineIndex(lines, store.currentTime.value)
+  if (i >= 0) store.seek(timeOfLine(lines, i))
+}
+
 async function sendTo(tab) {
   if (!track.value) return
   try {
     const db = await import('./mediaDb')
     const blob = await db.getTrackBlob(track.value.id)
-    if (!blob) return
+    if (!blob) { showToast(t('media.failed')); return }
     const file = new File([blob], track.value.name, { type: track.value.type || blob.type })
     pool.handOff(file, { source: 'player', tab })
     router.push(tab === 'edit' ? '/media/edit' : '/media/convert')
   } catch { showToast(t('media.failed')) }
 }
 
-// A–B repeat display.
+// A–B repeat state machine.
 const abState = computed(() => {
   if (store.abStart.value != null && store.abEnd.value != null) return 'set'
   if (store.abStart.value != null) return 'a'
@@ -78,7 +109,11 @@ function toggleAB() {
   else store.clearAB()
 }
 
-// Keyboard transport (space / arrows) when the player view is focused.
+function openFullScreenLyrics() {
+  router.push('/media/lyrics')
+}
+
+// Keyboard transport + sentence nav (arrows = ±5s; Shift+arrows = track; ↑↓ = line).
 function onKey(e) {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
   if (e.code === 'Space') { e.preventDefault(); store.toggle() }
@@ -86,6 +121,11 @@ function onKey(e) {
   else if (e.code === 'ArrowLeft' && e.shiftKey) store.prev()
   else if (e.code === 'ArrowRight') store.seek(store.currentTime.value + 5)
   else if (e.code === 'ArrowLeft') store.seek(Math.max(0, store.currentTime.value - 5))
+  else if (e.code === 'ArrowUp') { e.preventDefault(); prevLine() }
+  else if (e.code === 'ArrowDown') { e.preventDefault(); nextLine() }
+  else if (e.code === 'KeyL') openFullScreenLyrics()
+  else if (e.code === 'KeyA') store.setA()
+  else if (e.code === 'KeyB') store.setB()
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -93,10 +133,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="np">
-    <!-- ONLINE entry: render the platform's OFFICIAL embed player (playback-only iframe) -->
-    <EmbedPlayer v-if="showingEmbed" :entry="embed" />
-
-    <div v-else-if="!hasTrack" class="np-empty">
+    <div v-if="!hasTrack" class="np-empty">
       <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 30V12l20-4v18"/><circle cx="14" cy="30" r="4"/><circle cx="34" cy="26" r="4"/></svg>
       <p>{{ t('media.player.nothingPlaying') }}</p>
     </div>
@@ -104,9 +141,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <template v-else>
       <!-- Artwork / waveform stage -->
       <div class="np-stage">
-        <button class="np-mode" @click="artMode = artMode === 'art' ? 'wave' : 'art'" :title="t('media.player.toggleArt')">
+        <button class="np-mode np-mode-art" @click="artMode = artMode === 'art' ? 'wave' : 'art'" :title="t('media.player.toggleArt')">
           <svg v-if="artMode === 'art'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12h3l2-5 3 9 2.5-7 1.5 5h6"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="8" cy="9" r="1.6"/><path d="M21 15l-5-4-4 3-2-1.5L3 16"/></svg>
+        </button>
+        <button class="np-mode np-mode-full" @click="openFullScreenLyrics" :title="t('media.player.fullLyrics')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h16"/><circle cx="18" cy="12" r="2"/></svg>
         </button>
         <div v-show="artMode === 'art'" class="np-art">
           <img v-if="store.coverUrl.value" :src="store.coverUrl.value" alt="" />
@@ -128,14 +168,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </button>
       </div>
 
-      <!-- Seek bar (waveform doubles as seek; this slim bar is always visible too) -->
+      <!-- Seek bar -->
       <div class="np-seek">
         <span class="np-time">{{ formatTime(store.currentTime.value) }}</span>
         <MediaWaveform class="np-seekwave" :peaks="peaks" :duration="store.duration.value" :play-ratio="playRatio" :selectable="false" :loading="wfLoading" :height="44" @seek="onSeek" />
         <span class="np-time">{{ formatTime(store.duration.value) }}</span>
       </div>
 
-      <!-- Transport -->
+      <!-- Transport: shuffle · prev-track · line-prev · play · line-next · next-track · repeat -->
       <div class="np-transport">
         <button class="t-btn" :class="{ on: store.shuffle.value }" @click="store.toggleShuffle()" :title="t('media.player.shuffle')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/><path d="M16 21h5v-5"/><path d="M21 21L3 3"/></svg>
@@ -143,20 +183,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <button class="t-btn big" @click="store.prev()" :title="t('media.player.prev')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
         </button>
+        <button class="t-btn line-nav" @click="prevLine" :title="t('media.player.prevLine')" :disabled="!lyricLines.length">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          <span class="line-dots">⋮</span>
+        </button>
         <button class="t-btn play" @click="store.toggle()" :title="store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
           <svg v-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="t-btn line-nav" @click="nextLine" :title="t('media.player.nextLine')" :disabled="!lyricLines.length">
+          <span class="line-dots">⋮</span>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
         </button>
         <button class="t-btn big" @click="store.next()" :title="t('media.player.next')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
         </button>
         <button class="t-btn" :class="{ on: store.repeat.value !== 'off' }" @click="store.cycleRepeat()" :title="t('media.player.repeat')">
-          <svg v-if="repeatLabel !== 'one'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <svg v-if="store.repeat.value !== 'one'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15" font-size="9" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">1</text></svg>
         </button>
       </div>
 
-      <!-- Secondary controls: volume, speed, A–B, send-to -->
+      <!-- Secondary controls -->
       <div class="np-controls">
         <div class="np-vol">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path v-if="store.volume.value > 0.5" d="M16 8a5 5 0 0 1 0 8"/><path v-if="store.volume.value > 0" d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
@@ -193,10 +241,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-empty p { font-size: 14px; }
 
 .np-stage { position: relative; }
-.np-mode { position: absolute; top: 10px; right: 10px; z-index: 2; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 9px; background: color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter: blur(8px); color: var(--text-secondary); cursor: pointer; }
+.np-mode { position: absolute; top: 10px; z-index: 2; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 9px; background: color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter: blur(8px); color: var(--text-secondary); cursor: pointer; transition: color 0.15s; }
 .np-mode:hover { color: var(--text); }
 .np-mode svg { width: 18px; height: 18px; }
-.np-art { aspect-ratio: 1; width: 100%; max-width: 340px; margin: 0 auto; border-radius: 16px; overflow: hidden; background: var(--surface-hover); box-shadow: var(--shadow-md); }
+.np-mode-art { right: 10px; }
+.np-mode-full { right: 50px; }
+
+/* Album art — square, no rotation (user requested static). */
+.np-art { aspect-ratio: 1; width: 100%; max-width: min(360px, 75vw); margin: 0 auto; border-radius: 16px; overflow: hidden; background: var(--surface-hover); box-shadow: var(--shadow-md); }
 .np-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .np-art-ph { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 120px; font-weight: 800; color: var(--text); background: linear-gradient(150deg, color-mix(in srgb, hsl(var(--ph-hue, 40), 28%, 50%) 26%, var(--surface)), var(--surface-hover)); letter-spacing: -2px; }
 .np-wave { display: flex; align-items: center; min-height: 200px; }
@@ -214,7 +266,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-time { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 34px; }
 .np-seek .np-time:last-child { text-align: right; }
 
-.np-transport { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.np-transport { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .t-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 12px; transition: all 0.15s; }
 .t-btn:hover { color: var(--text); background: var(--surface-hover); }
 .t-btn.on { color: var(--accent); }
@@ -223,6 +275,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .t-btn.play { width: 60px; height: 60px; background: var(--text); color: var(--bg); border-radius: 50%; }
 .t-btn.play:hover { opacity: 0.92; background: var(--text); }
 .t-btn.play svg { width: 28px; height: 28px; }
+
+/* Line-nav buttons: smaller, with a "⋮" decoration that distinguishes them from track prev/next. */
+.t-btn.line-nav { width: 40px; height: 40px; position: relative; }
+.t-btn.line-nav svg { width: 18px; height: 18px; }
+.t-btn.line-nav .line-dots { position: absolute; bottom: 4px; font-size: 11px; font-weight: 700; line-height: 1; color: var(--accent); opacity: 0.85; }
+.t-btn.line-nav:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .np-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .np-vol { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 200px; color: var(--text-secondary); }
@@ -241,9 +299,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .send-btn svg { width: 15px; height: 15px; }
 
 @media (max-width: 768px) {
-  .np-art { max-width: 78vw; }
-  .np-art-ph { font-size: 26vw; }
   .t-btn { width: 48px; height: 48px; }
   .t-btn.play { width: 66px; height: 66px; }
+  .t-btn.line-nav { width: 42px; height: 42px; }
 }
 </style>

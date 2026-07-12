@@ -126,10 +126,12 @@ describe('media engine modules are SSG/node-safe at import', () => {
     expect(typeof meta.readTags).toBe('function')
     expect(await meta.readTags(null)).toMatchObject({ hasCover: false }) // null in → safe empty
 
-    const embed = await import('../embed')
-    expect(typeof embed.parseEmbed).toBe('function')
-    expect(typeof embed.isAllowedEmbedUrl).toBe('function')
-    expect(embed.parseEmbed('not a url')).toBeNull() // pure string parsing, no globals needed
+    // Phase 2: the embed module was deleted; instead, ncmClient is the network surface and it's
+    // a pure URL-builder (no globals touched at import).
+    const ncm = await import('../ncmClient')
+    expect(typeof ncm.search).toBe('function')
+    expect(typeof ncm.parseNcmLink).toBe('function')
+    expect(ncm.parseNcmLink('not a url')).toBeNull()
   })
 
   it('writeTags is exposed by audioRunner (player export-tagged-file path)', async () => {

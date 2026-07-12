@@ -12,10 +12,17 @@ import './styles/tool-kit.css'
 export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
   registerFeatures() // Phase 1 suites register their commands here
 
-  // Remember last position: save the route on each navigation, and (if enabled) resume it
-  // when the user lands on the root. Client-only; never runs during SSG prerender.
+  // Phase 3: admin route guard. /admin handles its own auth state machine (bind/login/dashboard)
+  // so we DON'T redirect away when there's no session — but we DO hide the route from the command
+  // palette navigation entries (filtered in useCommands). What we DO here: strip ?otp= from the
+  // URL once consumed (handled inside AdminPage.vue itself).
+  // Client-only; never runs during SSG prerender.
   if (typeof window !== 'undefined') {
-    router.afterEach(to => save('last', to.path))
+    router.afterEach(to => {
+      // /admin isn't the kind of route we want to "remember as last position" — otherwise users
+      // landing on / next time would auto-resume into the admin surface.
+      if (!to.path.startsWith('/admin')) save('last', to.path)
+    })
     router.isReady().then(() => {
       try {
         const { settings } = useSettings()
