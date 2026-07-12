@@ -19,25 +19,17 @@ not_found_handling = "single-page-application"
 name = "RATE_LIMITER"
 class_name = "RateLimiter"
 
-# Phase 3 (NOT LANDED): admin auth state for the music surface. The MusicAuth class
-# (worker/lib/musicAuth.js) is not in the repo yet — with the binding + migration active,
-# `wrangler dev` and `wrangler deploy` fail with "Durable Objects ... not exported: MusicAuth".
-# Re-enable this block together with the code that exports the class.
-# [[durable_objects.bindings]]
-# name = "MUSIC_AUTH"
-# class_name = "MusicAuth"
+# Phase 3: admin auth state (bootstrap token, passkeys, one-time links, NCM cookie, IP allowlist).
+# A SINGLETON instance — idFromName('singleton') in worker/lib/musicAuth.js#callAuth.
+[[durable_objects.bindings]]
+name = "MUSIC_AUTH"
+class_name = "MusicAuth"
 
-# RateLimiter already exists in production with live objects — re-declaring it as a new
-# class fails deploy with code 10074 ("already depended on by existing Durable Objects").
-# The deployed script carries no migration tag, so any [[migrations]] entry here gets
-# replayed from scratch on deploy. Introduce future DO classes with a fresh tag when needed.
-# [[migrations]]
-# tag = "v1"
-# new_sqlite_classes = ["RateLimiter"]
-
-# [[migrations]]
-# tag = "v2"
-# new_sqlite_classes = ["MusicAuth"]
+# NO new-class migrations here on purpose: BOTH RateLimiter and MusicAuth already exist in
+# production with live objects, and the deployed script carries no migration tag — so any
+# [[migrations]] new_sqlite_classes entry gets replayed on deploy and Cloudflare rejects it
+# (code 10074 "already depended on by existing Durable Objects"). Introduce FUTURE DO classes
+# with a fresh tag; don't re-declare these two.
 
 # Invisible-watermark verify records (id -> {content,timestamp,version,createdAt}).
 # Create the namespace and paste its printed id here:
