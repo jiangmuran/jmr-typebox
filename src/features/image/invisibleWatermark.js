@@ -331,10 +331,23 @@ export function duplicateJobs(job, n, maxBytes = CONTENT_MAX) {
   return out
 }
 
-// Safe download filename: base__content__idx.ext, content slugified to [a-z0-9-];
-// an empty/blank content collapses to base__idx.ext. index is 0-based, shown 1-based.
+// A generated result is only current while the inputs it was produced from are unchanged.
+// job.embedded snapshots { content, registered } at generate time; comparing against the row's
+// current effective content (and the register toggle) tells the UI whether the stored blob
+// still matches what's on screen — stale rows lose their checkmark and get re-generated,
+// instead of silently serving a blob that embeds different content than the visible text.
+export function jobFresh(job, uniform = '', registered = false) {
+  return job.status === 'done' && !!job.embedded &&
+    job.embedded.content === (job.content || uniform) &&
+    !!job.embedded.registered === !!registered
+}
+
+// Safe download filename: base__content__idx.ext, content slugified to [a-z0-9-] and capped at
+// 40 chars (registered content can be 2KB — that must not become the filename); an empty/blank
+// content collapses to base__idx.ext. index is 0-based, shown 1-based.
 export function jobFileName(baseName, content, index, ext = 'png') {
   const base = String(baseName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
-  const slug = String(content || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const slug = String(content || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '')
   return slug ? `${base}__${slug}__${index + 1}.${ext}` : `${base}__${index + 1}.${ext}`
 }

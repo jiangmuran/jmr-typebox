@@ -257,4 +257,37 @@ describe('job model', () => {
     expect(jobFileName('photo.jpg', 'trace A/1', 0)).toBe('photo__trace-a-1__1.png')
     expect(jobFileName('photo', '', 4, 'png')).toBe('photo__5.png')
   })
+  it('caps the filename slug so 2KB registered content cannot become the filename', () => {
+    const name = jobFileName('photo', 'word '.repeat(400), 0)
+    const slug = name.split('__')[1]
+    expect(slug.length).toBeLessThanOrEqual(40)
+    expect(slug.endsWith('-')).toBe(false)
+  })
+})
+
+import { jobFresh } from '../invisibleWatermark'
+
+describe('jobFresh (result-currency check)', () => {
+  const done = (content, embedded) => ({ ...makeJob('img', content), status: 'done', embedded })
+
+  it('is fresh only while the embedded snapshot matches the current effective content', () => {
+    const j = done('trace-A', { content: 'trace-A', registered: false })
+    expect(jobFresh(j, '', false)).toBe(true)
+    j.content = 'trace-B' // user edited the row after generating
+    expect(jobFresh(j, '', false)).toBe(false)
+  })
+  it('rows inheriting the uniform content go stale when the uniform text changes', () => {
+    const j = done('', { content: 'batch-1', registered: false })
+    expect(jobFresh(j, 'batch-1', false)).toBe(true)
+    expect(jobFresh(j, 'batch-2', false)).toBe(false)
+  })
+  it('flipping the register toggle invalidates results (embedding differs)', () => {
+    const j = done('trace-A', { content: 'trace-A', registered: false })
+    expect(jobFresh(j, '', true)).toBe(false)
+  })
+  it('never fresh without a completed embed snapshot', () => {
+    expect(jobFresh(makeJob('img', 'x'), '', false)).toBe(false)
+    expect(jobFresh({ ...makeJob('img', 'x'), status: 'done' }, '', false)).toBe(false)
+    expect(jobFresh({ ...makeJob('img', 'x'), status: 'error', embedded: { content: 'x', registered: false } }, '', false)).toBe(false)
+  })
 })

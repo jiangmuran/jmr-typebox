@@ -142,10 +142,21 @@ export function imageFileFromEvent(e) {
   return null
 }
 
-// Pull all image Files from a drop/picker event (for batch flows).
+// Pull all image Files from a drop/paste event (for batch flows). Paste events carry files on
+// clipboardData (sometimes only as items), drop events on dataTransfer — check all three.
 export function imageFilesFromEvent(e) {
   const out = []
-  const files = e.dataTransfer?.files
+  const files = e.dataTransfer?.files || e.clipboardData?.files
   if (files) for (const f of files) if (f.type.startsWith('image/')) out.push(f)
+  if (out.length) return out
+  const items = e.clipboardData?.items || e.dataTransfer?.items
+  if (items) {
+    for (const it of items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile()
+        if (f) out.push(f)
+      }
+    }
+  }
   return out
 }
