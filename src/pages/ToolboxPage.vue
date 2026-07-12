@@ -31,14 +31,16 @@ const passphrase = ref('')
 
 const opLabel = op => (locale.value === 'zh' ? op.zh : op.en)
 
+// On failure the output MUST be cleared, not left holding the previous result —
+// a stale AES decryption shown after a wrong passphrase reads as "decryption worked".
 function runOp(op) {
   try { output.value = op.fn(input.value) }
-  catch { showToast(t('tool.invalid')) }
+  catch { output.value = ''; showToast(t('tool.invalid')) }
 }
 
 async function runAes(kind) {
   try { output.value = kind === 'enc' ? await aesEncrypt(input.value, passphrase.value) : await aesDecrypt(input.value, passphrase.value) }
-  catch { showToast(t('tool.invalid')) }
+  catch { output.value = ''; showToast(t('tool.invalid')) }
 }
 
 // hash (live)
@@ -300,7 +302,7 @@ function onDrop(e) {
       <!-- Operation buttons -->
       <div class="tb-ops">
         <template v-if="def.mode === 'transform'">
-          <button v-for="(op, i) in def.ops" :key="i" class="btn op" @click="runOp(op)">{{ opLabel(op) }}</button>
+          <button v-for="(op, i) in def.ops" :key="i" class="btn op" :class="{ primary: i === 0 }" @click="runOp(op)">{{ opLabel(op) }}</button>
         </template>
         <template v-else-if="def.mode === 'aes'">
           <button class="btn primary op" @click="runAes('enc')">{{ t('tool.encrypt') }}</button>
@@ -699,5 +701,8 @@ function onDrop(e) {
 @media (max-width: 640px) {
   .tb-actions button { padding: 9px 13px; font-size: 12.5px; }
   .toolbox { padding: 20px 14px 56px; }
+  /* Give the size slider its own full-width row so the value never clips at the edge. */
+  .qr-size { min-width: 100%; }
+  .qr-val { padding-right: 2px; }
 }
 </style>

@@ -116,7 +116,9 @@ async function saveEdits() {
       gpsLon: lonRaw,
     }
     const blob = await writeJpegMetadata(file, payload)
-    const name = saveName(file, 'meta')
+    // Metadata writing is JPEG-only; give the produced name a real extension —
+    // a bare "photo-meta" otherwise downloads extensionless (or with a browser-guessed one).
+    const name = withExtension(saveName(file, 'meta'), 'jpg')
     produced.value = { blob, name, label: t('img2.meta.savedReady') }
     // Re-read the produced blob so the view reflects the saved state.
     const reread = await readAllMetadata(blobToFile(blob, name))
