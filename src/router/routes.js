@@ -35,6 +35,15 @@ export const routes = [
     path: '/w/:id',
     name: 'verify',
     component: () => import('../features/image/VerifyPage.vue'),
-    meta: { tab: 'tools', path: '/w' },
+    meta: { tab: 'image', path: '/w' },
+  },
+  // Catch-all 404 — unknown paths previously rendered an empty shell. Excluded from SSG
+  // prerender (path contains ':') and from the palette/route-count logic for the same reason.
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('../pages/NotFoundPage.vue'),
+    // tab 'none' matches no top-nav id, so nothing highlights on a 404.
+    meta: { tab: 'none', path: '/404' },
   },
 ]
