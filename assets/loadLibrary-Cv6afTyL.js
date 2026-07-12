@@ -1,1 +1,0 @@
-import{a as s}from"./app-DxzfUqOj.js";const e=s({}),c=s({}),r=new Map;function h(t,n,i={}){if(r.has(t))return r.get(t);e[t]="loading",c[t]={sizeMB:i.sizeMB||0};const o=Promise.resolve().then(n).then(a=>(e[t]="ready",a)).catch(a=>{throw e[t]="error",r.delete(t),a});return r.set(t,o),o}export{e as a,c as b,h as l};
