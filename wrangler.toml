@@ -27,9 +27,13 @@ class_name = "RateLimiter"
 # name = "MUSIC_AUTH"
 # class_name = "MusicAuth"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["RateLimiter"]
+# RateLimiter already exists in production with live objects — re-declaring it as a new
+# class fails deploy with code 10074 ("already depended on by existing Durable Objects").
+# The deployed script carries no migration tag, so any [[migrations]] entry here gets
+# replayed from scratch on deploy. Introduce future DO classes with a fresh tag when needed.
+# [[migrations]]
+# tag = "v1"
+# new_sqlite_classes = ["RateLimiter"]
 
 # [[migrations]]
 # tag = "v2"
