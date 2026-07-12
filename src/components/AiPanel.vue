@@ -354,8 +354,7 @@ function useSuggestion(id) {
 .aip-tool-ic svg { width: 13px; height: 13px; }
 .aip-tool-name { font-weight: 600; color: var(--text); font-family: var(--font-mono); font-size: 11px; }
 .aip-tool-res { color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.aip-tspin { width: 11px; height: 11px; border: 1.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: aiSpin 0.7s linear infinite; }
-@keyframes aiSpin { to { transform: rotate(360deg); } }
+.aip-tspin { width: 11px; height: 11px; border: 1.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 .aip-thinking { display: inline-flex; gap: 4px; padding: 10px 12px; }
 .aip-thinking span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); animation: aiBounce 1.2s infinite; }

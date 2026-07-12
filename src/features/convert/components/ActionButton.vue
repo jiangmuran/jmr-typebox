@@ -32,6 +32,5 @@ const cls = computed(() => (props.variant === 'primary' ? 'btn cta' : 'btn'))
 <style scoped>
 /* Visual styling comes from the global .btn / .btn.cta. Only the busy spinner
    is component-local. */
-.ab-spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; opacity: 0.7; animation: abSpin 0.7s linear infinite; }
-@keyframes abSpin { to { transform: rotate(360deg); } }
+.ab-spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; opacity: 0.7; animation: tb-spin 0.7s linear infinite; }
 </style>

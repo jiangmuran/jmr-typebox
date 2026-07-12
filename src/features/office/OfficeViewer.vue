@@ -171,8 +171,7 @@ onBeforeUnmount(() => {})
 .oe-icons svg { width: 40px; height: 40px; color: var(--text-tertiary); }
 .oe-drop h3 { font-size: 15px; font-weight: 650; }
 .oe-drop p { font-size: 13px; color: var(--text-secondary); }
-.oe-spin { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: oeSpin 0.7s linear infinite; }
-@keyframes oeSpin { to { transform: rotate(360deg); } }
+.oe-spin { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 .oe-error { margin-top: 12px; font-size: 13px; color: #c0392b; }
 

@@ -122,8 +122,7 @@ async function pasteIn() {
 .cv-libhint { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
 .cv-privacy { display: flex; align-items: center; gap: 5px; margin-top: 18px; font-size: 12px; color: var(--text-tertiary); }
 .cv-privacy svg { width: 13px; height: 13px; flex-shrink: 0; }
-.cv-spinner { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: cvSpin 0.7s linear infinite; }
-@keyframes cvSpin { to { transform: rotate(360deg); } }
+.cv-spinner { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 /* Phones: grow the input-pane action chips (Open file / Paste / Clear) to a comfortable tap height. */
 @media (max-width: 640px) {

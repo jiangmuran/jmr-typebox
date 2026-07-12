@@ -41,13 +41,9 @@
   max-width: var(--page-narrow);
   margin: 0 auto;
   padding: 28px 24px 56px;
-  animation: toolIn 0.32s var(--ease-out);
+  animation: tb-rise var(--dur-3) var(--ease-out);
 }
 .tool-wrap.wide { max-width: var(--page-wide); }
-@keyframes toolIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 /* Page header — converged target: 24px / 750 / -0.5px for all tool pages. */
 .tool-head { margin-bottom: 20px; }
@@ -60,7 +56,7 @@
 /* Image-shell aliases — the image pages still use .img-wrap / .img-head /
    .img-body in their templates; these map onto the converged kit so they line
    up with every other tool without touching each page. */
-.img-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; max-width: var(--page-wide); margin: 0 auto; padding: 28px 24px 56px; animation: toolIn 0.32s var(--ease-out); }
+.img-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; max-width: var(--page-wide); margin: 0 auto; padding: 28px 24px 56px; animation: tb-rise var(--dur-3) var(--ease-out); }
 .img-wrap.wide { max-width: var(--page-wide); }
 .img-head { margin-bottom: 20px; }
 .img-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; line-height: 1.2; }
@@ -108,7 +104,7 @@
   min-height: 34px; padding: 6px 12px; border: none; border-radius: 6px;
   font-size: 12.5px; font-weight: 500; white-space: nowrap;
   background: transparent; color: var(--text-secondary);
-  cursor: pointer; transition: all 0.15s; font-family: var(--font-sans);
+  cursor: pointer; transition: all var(--dur-1); font-family: var(--font-sans);
   text-decoration: none; text-align: center;
 }
 .segbar-item:hover { color: var(--text); }
@@ -122,7 +118,7 @@
 .seg button {
   flex: 1; min-height: 34px; padding: 6px 12px; border: none; border-radius: 6px;
   font-size: 12.5px; font-weight: 500; background: transparent; color: var(--text-secondary);
-  cursor: pointer; transition: all 0.15s; font-family: var(--font-sans); white-space: nowrap;
+  cursor: pointer; transition: all var(--dur-1); font-family: var(--font-sans); white-space: nowrap;
 }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
@@ -130,7 +126,7 @@
 /* Sub-tool nav (image pages) — a segbar that sits above the page header. */
 .img-nav { display: flex; gap: 3px; margin-bottom: 18px; background: var(--surface-hover); padding: 3px; border-radius: 10px; overflow-x: auto; scrollbar-width: none; }
 .img-nav::-webkit-scrollbar { display: none; }
-.img-nav-item { flex: 1; text-align: center; white-space: nowrap; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+.img-nav-item { flex: 1; text-align: center; white-space: nowrap; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all var(--dur-1); min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
 .img-nav-item:hover { color: var(--text); }
 .img-nav-item.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 
@@ -145,7 +141,7 @@
 .num-input {
   width: 100%; padding: 9px 11px; border: 1px solid var(--border-light);
   border-radius: var(--radius-sm); background: var(--surface-hover); color: var(--text);
-  font-size: 13px; outline: none; transition: border-color 0.15s;
+  font-size: 13px; outline: none; transition: border-color var(--dur-1);
 }
 .text-input { font-family: var(--font-sans); }
 .num-input { font-family: var(--font-mono); font-size: 12.5px; }
@@ -166,9 +162,9 @@
 .grid9 button {
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--border-light); border-radius: var(--radius-sm);
-  background: var(--surface-hover); cursor: pointer; transition: all 0.15s;
+  background: var(--surface-hover); cursor: pointer; transition: all var(--dur-1);
 }
-.grid9 button span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); transition: all 0.15s; }
+.grid9 button span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); transition: all var(--dur-1); }
 .grid9 button:hover { border-color: var(--accent); }
 .grid9 button.on { background: var(--accent-bg); border-color: var(--accent); }
 .grid9 button.on span { background: var(--accent); }
@@ -182,7 +178,7 @@
   min-height: 40px; padding: 10px 16px; border: 1px solid var(--border);
   border-radius: var(--radius); background: var(--surface); color: var(--text);
   font-size: 13px; font-weight: 500; font-family: var(--font-sans);
-  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  cursor: pointer; transition: all var(--dur-1); white-space: nowrap;
 }
 .btn:hover:not(:disabled) { background: var(--surface-hover); }
 .btn:active:not(:disabled) { transform: scale(0.98); }
@@ -209,7 +205,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; border: 1px solid var(--border-light);
   border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary);
-  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  cursor: pointer; transition: all var(--dur-1); flex-shrink: 0;
 }
 .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }

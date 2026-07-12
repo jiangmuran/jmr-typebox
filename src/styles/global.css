@@ -33,8 +33,23 @@
   --radius: 10px;
   --radius-sm: 6px;
   --radius-lg: 14px;
+  /* ---- Motion system ----
+     ONE set of durations + easings for the whole app, so every surface animates with the
+     same rhythm. Before this, ~15 ad-hoc durations and 6 different easing curves were sprinkled
+     across components; new/converged code should use these tokens instead of raw values.
+       --dur-1  micro   — hovers, taps, tiny state flips
+       --dur-2  base    — the default for most transitions (menus, toggles, cards)
+       --dur-3  slow    — panel/page entrances, deliberate moves
+       --ease-out    — decelerate; the default for entrances & most transitions
+       --ease-in-out — symmetric; for things that move and settle (sliding panels)
+       --ease-spring — a gentle overshoot for playful pops (badges, added-to-list). Use sparingly. */
+  --dur-1: 0.12s;
+  --dur-2: 0.2s;
+  --dur-3: 0.32s;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition: var(--dur-2) var(--ease-out);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
   /* Two canonical content widths — single source of truth so navigating tool→tool
      never makes the column jump. Single-column tools use narrow; 2-col workbenches use wide. */
@@ -110,9 +125,21 @@ body {
   body { height: auto; overflow: visible; background: #fff; }
 }
 
+/* ========== Shared motion primitives ========== */
+/* Canonical keyframes — reuse these instead of redefining a per-component spin/fade. The spin
+   keyframe alone was duplicated under 8 different names across ~15 files. */
+@keyframes tb-spin { to { transform: rotate(360deg); } }
+@keyframes tb-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes tb-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+
+/* Utility: a spinner ring. Pair with a border + border-top-color at the call site for size/colour. */
+.u-spin { animation: tb-spin 0.7s linear infinite; }
+/* Utility: the standard content entrance (fade + slight rise). */
+.u-rise { animation: tb-rise var(--dur-3) var(--ease-out); }
+
 /* ========== Route transition ========== */
 /* Fade the outgoing page out (mode=out-in); the incoming page plays its own entrance animation. */
-.page-leave-active { transition: opacity 0.15s var(--ease-out); }
+.page-leave-active { transition: opacity var(--dur-1) var(--ease-out); }
 .page-leave-to { opacity: 0; }
 
 /* ========== Reduced Motion ========== */

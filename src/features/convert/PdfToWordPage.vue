@@ -149,7 +149,7 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
 .upload-zone p { font-size: 13px; color: var(--text-secondary); }
 
 .loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 56px 0; }
-.cv-spinner-lg { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: cvSpin 0.7s linear infinite; }
+.cv-spinner-lg { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .loading p { color: var(--text-secondary); font-size: 13px; }
 .prog { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
 
@@ -166,7 +166,6 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
 
 .cv-run { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .cv-libhint { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
-.cv-spinner { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: cvSpin 0.7s linear infinite; }
-@keyframes cvSpin { to { transform: rotate(360deg); } }
+.cv-spinner { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .cv-note { margin-top: 16px; font-size: 12px; color: var(--text-tertiary); line-height: 1.5; }
 </style>

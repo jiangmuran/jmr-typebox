@@ -426,8 +426,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 
 .staged { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); }
 .stage-text { flex: 1; font-weight: 600; }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; flex-shrink: 0; }
 
 .progress { display: flex; align-items: center; gap: 10px; }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }

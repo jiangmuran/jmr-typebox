@@ -138,6 +138,5 @@ onBeforeUnmount(() => { ro?.disconnect?.() })
 .wf-canvas { display: block; width: 100%; }
 .wf-canvas.interactive { cursor: text; }
 .wf-loading, .wf-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); font-size: 13px; pointer-events: none; }
-.wf-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: wfspin 0.7s linear infinite; }
-@keyframes wfspin { to { transform: rotate(360deg); } }
+.wf-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 </style>

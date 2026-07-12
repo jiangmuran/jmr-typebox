@@ -159,8 +159,7 @@ function downloadAs(ext, mime) {
 
 /* Loading */
 .loading-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .loading-state p { color: var(--text-secondary); font-size: 13px; }
 .progress-text { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
 

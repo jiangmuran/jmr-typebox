@@ -797,10 +797,9 @@ onUnmounted(() => {
 .ai-menu .ai-mi { width: 17px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px; color: var(--accent); }
 .ai-menu .ai-mi svg { width: 14px; height: 14px; }
 .ai-progress { position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; align-items: center; gap: 9px; padding: 8px 12px 8px 14px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 11px; box-shadow: var(--shadow-lg); font-size: 12px; color: var(--text-secondary); }
-.ai-progress-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: aiSpin 0.7s linear infinite; }
+.ai-progress-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .ai-progress button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .ai-progress button:hover { background: var(--surface-hover); }
-@keyframes aiSpin { to { transform: rotate(360deg); } }
 
 .drag-overlay { position: fixed; inset: 8px; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--accent-bg); border: 2px dashed var(--accent); border-radius: 16px; font-size: 14px; font-weight: 500; color: var(--accent); backdrop-filter: blur(8px); pointer-events: none; }
 .drag-overlay svg { width: 32px; height: 32px; opacity: 0.7; }

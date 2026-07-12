@@ -266,10 +266,9 @@ function onPlugin(p) { emit('apply', p); emit('close') }
 .ctx-ai-go:disabled { opacity: 0.5; cursor: default; }
 
 .ctx-ai-busy { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 12px; color: var(--text-secondary); }
-.ctx-ai-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: aiSpin 0.7s linear infinite; flex-shrink: 0; }
+.ctx-ai-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; flex-shrink: 0; }
 .ctx-ai-stop { margin-left: auto; padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .ctx-ai-stop:hover { background: var(--surface-hover); }
-@keyframes aiSpin { to { transform: rotate(360deg); } }
 
 /* Result popup (explain) */
 .ai-result-scrim { position: fixed; inset: 0; z-index: 408; }

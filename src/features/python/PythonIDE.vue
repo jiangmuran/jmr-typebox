@@ -1170,9 +1170,8 @@ onBeforeUnmount(() => {
 .m-run-lbl { display: inline-flex; align-items: center; gap: 7px; }
 .m-run-lbl svg { width: 13px; height: 13px; }
 .run-kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.18); color: inherit; border: none; }
-.run-spin { width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); border-radius: 50%; animation: spin 0.7s linear infinite; }
+.run-spin { width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .run-spin.small { width: 13px; height: 13px; border-color: color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); }
-@keyframes spin { to { transform: rotate(360deg); } }
 /* Stop button — danger-tinted, replaces Run while a program is executing. */
 .tb-btn.stop { padding: 8px 15px; border: none; background: var(--danger, #e5484d); color: #fff; font-weight: 650; }
 .tb-btn.stop:hover { filter: brightness(1.06); }

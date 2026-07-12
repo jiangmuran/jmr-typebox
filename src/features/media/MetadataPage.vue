@@ -497,8 +497,7 @@ const infoRows = computed(() => {
 
 /* Reading */
 .reading { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-secondary); padding: 4px 2px; }
-.spinner { width: 15px; height: 15px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 15px; height: 15px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 /* Section heading */
 .sec-h { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-bottom: 11px; }
