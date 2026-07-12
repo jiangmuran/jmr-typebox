@@ -9,6 +9,7 @@ import { useToast } from '../../composables/useToast.js'
 import { libLoadState } from '../../utils/loadLibrary.js'
 import ClientOnly from '../../components/ClientOnly.vue'
 import ActionButton from './components/ActionButton.vue'
+import ConvertNav from '../../components/ConvertNav.vue'
 import { stripExt, withExt, deriveTitle, downloadBlob, fileKind } from './utils/fileHelpers.js'
 
 const { meta: m } = useRouteHead()
@@ -81,6 +82,7 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
     <h1 class="sr-only">{{ m.h1 }}</h1>
     <ClientOnly>
       <main class="p2w" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop="onDrop">
+        <ConvertNav />
         <header class="cv-head">
           <h2>{{ t('convert.pdfToWord.title') }}</h2>
           <p>{{ t('convert.pdfToWord.sub') }}</p>

@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import { libLoadState, libMeta } from '../../../utils/loadLibrary.js'
 import ThemePicker from './ThemePicker.vue'
+import ConvertNav from '../../../components/ConvertNav.vue'
 
 const props = defineProps({
   t: { type: Function, required: true },
@@ -46,6 +47,7 @@ async function pasteIn() {
     @dragleave="emit('dragleave', $event)"
     @drop="emit('drop', $event)"
   >
+    <ConvertNav />
     <header class="cv-head">
       <h2>{{ title }}</h2>
       <p>{{ subtitle }}</p>
@@ -91,6 +93,11 @@ async function pasteIn() {
     </p>
 
     <slot name="footer" />
+
+    <p class="cv-privacy">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+      {{ t('privacy.note') }}
+    </p>
   </main>
 </template>
 
@@ -113,6 +120,8 @@ async function pasteIn() {
 .cv-run { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 
 .cv-libhint { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.cv-privacy { display: flex; align-items: center; gap: 5px; margin-top: 18px; font-size: 12px; color: var(--text-tertiary); }
+.cv-privacy svg { width: 13px; height: 13px; flex-shrink: 0; }
 .cv-spinner { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: cvSpin 0.7s linear infinite; }
 @keyframes cvSpin { to { transform: rotate(360deg); } }
 

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '../composables/useI18n'
+import { combo } from '../utils/platform'
 
 const emit = defineEmits(['close', 'set-locale'])
 const { t, setLocale, locale } = useI18n()
@@ -82,7 +83,7 @@ function dismiss() {
               </div>
               <div class="feat">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><line x1="13" y1="13" x2="17.5" y2="17.5"/></svg>
-                <div><strong>{{ t('welcome.tip.k.t') }}</strong><span>{{ t('welcome.tip.k.d') }}</span></div>
+                <div><strong>{{ t('welcome.tip.k.t').replace('{k}', combo('K')) }}</strong><span>{{ t('welcome.tip.k.d') }}</span></div>
               </div>
             </div>
 

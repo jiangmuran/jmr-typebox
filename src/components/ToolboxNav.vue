@@ -15,6 +15,7 @@ const TOOLS = [
   { id: 'totp', to: '/tools/totp' },
   { id: 'qr', to: '/tools/qr' },
   { id: 'word-count', to: '/tools/word-count' },
+  { id: 'office', to: '/office' },
 ]
 const navEl = ref(null)
 function revealActive() {

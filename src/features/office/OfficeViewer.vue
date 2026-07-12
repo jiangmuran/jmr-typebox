@@ -12,6 +12,7 @@ import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import ClientOnly from '../../components/ClientOnly.vue'
+import ToolboxNav from '../../components/ToolboxNav.vue'
 import SheetViewer from './SheetViewer.vue'
 import SlideViewer from './SlideViewer.vue'
 import { isXlsxName, isPptxName, isOfficeName, baseName, officeKind } from './officeHelpers'
@@ -105,6 +106,7 @@ onBeforeUnmount(() => {})
       <!-- Empty / loading / error state -->
       <main v-else class="office-empty">
         <div class="oe-inner">
+          <ToolboxNav />
           <h2 class="oe-title">{{ t('office.title') }}</h2>
           <p class="oe-sub">{{ t('office.sub') }}</p>
 

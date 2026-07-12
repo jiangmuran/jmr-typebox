@@ -183,7 +183,8 @@ export default {
       'img2.inv.registerHint': 'Registered content becomes publicly viewable at box.muran.tech and can be any length.',
       'img2.inv.registerFailed': 'Registration failed — the backend may be unavailable.',
       'img2.inv.uniform': 'Content for all',
-      'img2.inv.duplicate': 'Make N versions',
+      'img2.inv.overCap': 'Over the 16-byte limit by {n} — will be shortened',
+      'img2.inv.duplicate': 'Make {n} versions',
       'img2.inv.versions': 'Versions',
       'img2.inv.generate': 'Generate',
       'img2.inv.generating': 'Generating…',
@@ -203,8 +204,13 @@ export default {
 
       // Verify page (/w/:id)
       'img2.verify.title': 'Watermark record',
+      'img2.verify.intro': 'Someone embedded an invisible watermark in an image and registered it on this site. This page shows the public record behind that mark.',
       'img2.verify.loading': 'Looking up…',
       'img2.verify.notFound': 'No record found for this id.',
+      'img2.verify.notFoundDesc': 'The id may be mistyped, or this watermark was never registered here.',
+      'img2.verify.fldId': 'Record id',
+      'img2.verify.cta': 'Check an image for a watermark',
+      'img2.verify.ctaHint': 'Got an image? Read its invisible watermark right in your browser — nothing is uploaded.',
       'img2.verify.service': 'Marked by box.muran.tech',
     },
     zh: {
@@ -374,7 +380,8 @@ export default {
       'img2.inv.registerHint': '注册后内容将在 box.muran.tech 公开可查，且长度不限。',
       'img2.inv.registerFailed': '注册失败 —— 后端可能不可用。',
       'img2.inv.uniform': '统一内容',
-      'img2.inv.duplicate': '生成 N 个版本',
+      'img2.inv.overCap': '超出 16 字节上限 {n} 字节，生成时将截断',
+      'img2.inv.duplicate': '生成 {n} 个版本',
       'img2.inv.versions': '版本数',
       'img2.inv.generate': '生成',
       'img2.inv.generating': '生成中…',
@@ -394,8 +401,13 @@ export default {
 
       // Verify page (/w/:id)
       'img2.verify.title': '水印记录',
+      'img2.verify.intro': '有人在一张图片中嵌入了隐水印，并在本站注册了它。本页展示该水印对应的公开记录。',
       'img2.verify.loading': '查询中…',
       'img2.verify.notFound': '未找到该 id 对应的记录。',
+      'img2.verify.notFoundDesc': '可能是 id 输入有误，或这个水印从未在本站注册。',
+      'img2.verify.fldId': '记录 id',
+      'img2.verify.cta': '检测你手里的图片',
+      'img2.verify.ctaHint': '手里有图？直接在浏览器里读取它的隐水印 —— 不会上传任何文件。',
       'img2.verify.service': '由 box.muran.tech 标记',
     },
   },

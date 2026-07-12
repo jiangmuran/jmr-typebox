@@ -9,6 +9,7 @@ import WelcomeDialog from './WelcomeDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
 import CommandPalette from './CommandPalette.vue'
 import { useSettings } from '../composables/useSettings'
+import { combo } from '../utils/platform'
 
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
@@ -73,7 +74,7 @@ function openSettings() { settingsOpen.value = true }
 
       <div class="topbar-spacer"></div>
 
-      <button class="topbar-btn" @click="paletteOpen = true" :title="t('cmdk.open') + ' (⌘K)'">
+      <button class="topbar-btn" @click="paletteOpen = true" :title="t('cmdk.open') + ' (' + combo('K') + ')'">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke-linecap="round"/></svg>
       </button>
 

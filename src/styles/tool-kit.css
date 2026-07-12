@@ -192,6 +192,11 @@
 .btn.primary:hover:not(:disabled) { opacity: 0.9; background: var(--text); }
 .btn.cta { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 .btn.cta:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* Disabled filled buttons go neutral gray instead of a half-transparent fill —
+   a 50%-opacity gold/dark button reads as "muted but clickable", not disabled. */
+.btn.primary:disabled, .btn.cta:disabled {
+  background: var(--surface-hover); color: var(--text-tertiary); border-color: var(--border-light); opacity: 1;
+}
 .btn.block { width: 100%; }
 .btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .dl-row { display: flex; gap: 8px; margin-top: 12px; }
@@ -259,6 +264,12 @@
   .tool-head p, .img-head p { font-size: 12.5px; }
   .img-nav { margin-bottom: 14px; }
   .img-nav-item { padding: 10px 14px; font-size: 13px; }
+  /* The 7–10-tab sub-navs always overflow on phones and their scrollbar is hidden;
+     fade both edges so it's visible that the row scrolls (content slides under the fade). */
+  .img-nav {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+  }
 
   /* Stack paired controls so sliders get full width and stay grabbable. */
   .ctrl-row { grid-template-columns: 1fr; gap: 14px; }

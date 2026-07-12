@@ -1,4 +1,5 @@
 <script setup>
+import { combo } from '../utils/platform'
 const emit = defineEmits(['insert', 'insert-line'])
 function ins(b, a, p) { emit('insert', b, a, p) }
 function insL(p, ph) { emit('insert-line', p, ph) }
@@ -6,8 +7,8 @@ function insL(p, ph) { emit('insert-line', p, ph) }
 
 <template>
   <div class="md-toolbar">
-    <button @click="ins('**','**','bold')" title="Bold (⌘B)"><strong>B</strong></button>
-    <button @click="ins('*','*','italic')" title="Italic (⌘I)"><em>I</em></button>
+    <button @click="ins('**','**','bold')" :title="`Bold (${combo('B')})`"><strong>B</strong></button>
+    <button @click="ins('*','*','italic')" :title="`Italic (${combo('I')})`"><em>I</em></button>
     <button @click="ins('~~','~~','text')" title="Strikethrough" class="tb-s"><s>S</s></button>
     <div class="tb-sep"></div>
 
@@ -17,7 +18,7 @@ function insL(p, ph) { emit('insert-line', p, ph) }
     <div class="tb-sep"></div>
 
     <!-- Link -->
-    <button @click="ins('[','](url)', 'text')" title="Link (⌘K)">
+    <button @click="ins('[','](url)', 'text')" :title="`Link (${combo('K')})`">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
         <path d="M6.5 8.5a3.5 3.5 0 0 0 5.3.4l2-2a3.5 3.5 0 0 0-5-5l-1.2 1.2"/>
         <path d="M9.5 7.5a3.5 3.5 0 0 0-5.3-.4l-2 2a3.5 3.5 0 0 0 5 5l1.2-1.2"/>
@@ -32,7 +33,7 @@ function insL(p, ph) { emit('insert-line', p, ph) }
     <div class="tb-sep"></div>
 
     <!-- Inline code -->
-    <button @click="ins('`','`','code')" title="Code (⌘E)">
+    <button @click="ins('`','`','code')" :title="`Code (${combo('E')})`">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="10 12.5 14 8 10 3.5"/><polyline points="6 3.5 2 8 6 12.5"/>
       </svg>
