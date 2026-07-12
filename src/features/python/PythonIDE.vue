@@ -1140,8 +1140,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .ide {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
-  width: 100%; max-width: 1320px; margin: 0 auto; padding: 12px 14px 14px;
-  animation: tbIn 0.3s var(--ease-out);
+  width: 100%; max-width: var(--page-wide); margin: 0 auto; padding: 12px 14px 14px;
+ 
   min-width: 0; overflow-x: hidden;   /* never let an inner panel cause horizontal overflow */
 }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

@@ -50,6 +50,12 @@ const cacheCap = ref(DEFAULT_CACHE_CAP)
 const ready = ref(false)
 const busy = ref(false)
 const buffering = ref(false)        // audio is waiting on data (slow stream / mid-track stall)
+// Global background-import task (caching a whole online playlist). Lives in the store — NOT in the
+// playlist drawer — so it survives closing the drawer / leaving the page, stays visible in the
+// mini-player, and is cancellable from anywhere. Runs with bounded concurrency so it neither
+// blocks the UI (the old foreground loop) nor hammers the network invisibly.
+const importState = ref({ running: false, total: 0, done: 0, ok: 0, failed: 0, currentTitle: '', playlistName: '' })
+let _importCancel = false
 
 // PHASE 2: NCM live lyric bundle for the current track. Fields update atomically on track change.
 // Parsed views are recomputed by the lyrics panel; the store only holds the raw strings.
@@ -78,10 +84,15 @@ const previewRec = ref(null)
 // ---- derived ----
 const currentTrack = computed(() => tracks.value.find((t) => t.id === currentId.value) || (previewRec.value && previewRec.value.id === currentId.value ? previewRec.value : null))
 const currentIndex = computed(() => queue.value.indexOf(currentId.value))
+// The "library" (no playlist) shows only tracks whose bytes actually live on the device: local
+// uploads (always) + NCM songs that were downloaded (cached). Metadata-only NCM records — e.g.
+// dumped in by "play all" on an online playlist — are excluded so the local library isn't
+// polluted with online tracks. A named playlist shows exactly what the user put in it.
+const libraryTracks = computed(() => tracks.value.filter((t) => t.source === 'local' || t.inLibrary))
 const activeTracks = computed(() => {
-  if (!activePlaylistId.value) return tracks.value
+  if (!activePlaylistId.value) return libraryTracks.value
   const pl = playlists.value.find((p) => p.id === activePlaylistId.value)
-  if (!pl) return tracks.value
+  if (!pl) return libraryTracks.value
   const byId = new Map(tracks.value.map((t) => [t.id, t]))
   return pl.trackIds.map((id) => byId.get(id)).filter(Boolean)
 })
@@ -200,15 +211,27 @@ export function usePlayerStore() {
     return added
   }
 
-  // PHASE 2: add a NCM song to the library (metadata only — no bytes yet).
+  // PHASE 2: register a NCM song as a track record (metadata only — no bytes yet). `toLibrary`
+  // marks it as an explicit library member: only "+"/import/download set it, so "play all" (which
+  // registers records just to build a queue) leaves them out of the Files view. Re-adding an
+  // existing track with toLibrary=true promotes it into the library.
   // Dedupes by ncmId in-memory (fast, no IDB round-trip that could hang).
-  async function addNcmTrack(ncmSong) {
+  async function addNcmTrack(ncmSong, { toLibrary = false } = {}) {
     if (!ncmSong?.id) return null
     // Check in-memory tracks first (no IDB await — IDB can hang on v1→v2 upgrade blocked).
     const existing = tracks.value.find((t) => t.ncmId === String(ncmSong.id))
-    if (existing) return existing
+    if (existing) {
+      if (toLibrary && !existing.inLibrary) {
+        tracks.value = tracks.value.map((t) => (t.id === existing.id ? { ...t, inLibrary: true } : t))
+        const promoted = tracks.value.find((t) => t.id === existing.id)
+        db.putTrack({ ...promoted }, _blobCache.get(existing.id) || null).catch(() => {})
+        return promoted
+      }
+      return existing
+    }
     const rec = makeNcmTrack(ncmSong)
     if (!rec) return null
+    if (toLibrary) rec.inLibrary = true
     tracks.value = [...tracks.value, rec]
     if (!activePlaylistId.value) queue.value = [...queue.value, rec.id]
     // Fire-and-forget persist — NEVER await.
@@ -253,10 +276,14 @@ export function usePlayerStore() {
       const blob = await resp.blob()
       if (!blob || !blob.size) throw new Error('empty blob')
       _blobCache.set(id, blob)
+      // Bytes are on the device now (for resume/offline), but this does NOT put the track in the
+      // library — only an explicit add does. So playing/prefetching an online song never pollutes
+      // the local "Files" view. Persist the blob keyed to whatever inLibrary the record already has.
       tracks.value = tracks.value.map((t) => (t.id === id ? { ...t, size: blob.size } : t))
       cacheBytes.value = totalSize(tracks.value)
+      const cur = tracks.value.find((t) => t.id === id) || rec
       // Fire-and-forget persist — NEVER await this (IDB may be blocked)
-      db.putTrack({ ...rec, size: blob.size, blob }, blob).catch(() => {})
+      db.putTrack({ ...cur, size: blob.size, blob }, blob).catch(() => {})
       return true
     } catch {
       return false
@@ -265,6 +292,33 @@ export function usePlayerStore() {
       if (!background) busy.value = false
     }
   }
+
+  // Import (download + add to library) a batch of NCM songs in the background. Bounded concurrency
+  // (3 at a time) keeps it responsive without flooding the network; progress is reactive via
+  // importState and it's cancellable via cancelImport(). Returns when done or cancelled.
+  async function importNcmSongs(ncmSongs, { name = '', concurrency = 3 } = {}) {
+    const songs = (ncmSongs || []).filter((s) => s?.id)
+    if (!songs.length || importState.value.running) return
+    _importCancel = false
+    importState.value = { running: true, total: songs.length, done: 0, ok: 0, failed: 0, currentTitle: '', playlistName: name }
+    let idx = 0
+    async function worker() {
+      while (!_importCancel && idx < songs.length) {
+        const s = songs[idx++]
+        importState.value = { ...importState.value, currentTitle: s.name || '' }
+        try {
+          const rec = await addNcmTrack(s, { toLibrary: true })
+          const ok = rec && await ensurePlayable(rec.id, { background: true })
+          importState.value = { ...importState.value, done: importState.value.done + 1, ok: importState.value.ok + (ok ? 1 : 0), failed: importState.value.failed + (ok ? 0 : 1) }
+        } catch {
+          importState.value = { ...importState.value, done: importState.value.done + 1, failed: importState.value.failed + 1 }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, songs.length) }, worker))
+    importState.value = { ...importState.value, running: false, currentTitle: '' }
+  }
+  function cancelImport() { _importCancel = true }
 
   async function removeTrack(id) {
     await db.deleteTrack(id)
@@ -635,13 +689,14 @@ export function usePlayerStore() {
     // state
     tracks, playlists, activePlaylistId, queue, currentId, isPlaying, currentTime, duration,
     volume, rate, shuffle, repeat, abStart, abEnd, search, coverUrl, cacheBytes,
-    cacheCap, ready, busy, buffering, liveLyrics, prefetchState, previewRec,
+    cacheCap, ready, busy, buffering, importState, liveLyrics, prefetchState, previewRec,
     // derived
     currentTrack, currentIndex, activeTracks, cacheUsedPct, isCurrentNcm,
     // lifecycle
     init,
     // library
     addFile, addFiles, addNcmTrack, playNcmPreview, ensurePlayable, getBlobFor, removeTrack, clearCache, setCacheCap,
+    importNcmSongs, cancelImport,
     // playback
     loadTrack, play, pause, toggle, stop, seek, seekRatio, setVolume, setRate,
     toggleShuffle, cycleRepeat, next, prev, playTrack,

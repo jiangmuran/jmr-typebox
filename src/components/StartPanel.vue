@@ -66,7 +66,7 @@ const CARDS = [
 </template>
 
 <style scoped>
-.start { max-width: 760px; margin: 0 auto; padding: 6vh 24px 40px; width: 100%; overflow-y: auto; animation: startIn 0.4s var(--ease-out); }
+.start { max-width: 760px; margin: 0 auto; padding: 6vh 24px 40px; width: 100%; overflow-y: auto; }
 @keyframes startIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .start-hero { text-align: center; margin-bottom: 32px; }
 .start-logo { width: 44px; height: 44px; }

@@ -18,7 +18,9 @@ const router = useRouter()
 const { t } = useI18n()
 
 const t_ = store.currentTrack
-const visible = computed(() => !!store.currentId.value && !!t_.value)
+// Visible when a track is loaded OR a background import is running (so its progress is reachable).
+const visible = computed(() => (!!store.currentId.value && !!t_.value) || store.importState.value.running)
+const hasTrack = computed(() => !!store.currentId.value && !!t_.value)
 const onPlayer = computed(() => (route.meta?.path || route.path) === '/media/player')
 const progress = computed(() => (store.duration.value ? store.currentTime.value / store.duration.value : 0))
 
@@ -50,8 +52,15 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
 <template>
   <transition name="mini-up">
     <div v-if="visible" class="mini" :class="{ 'on-player': onPlayer }">
-      <div class="mini-seek" @click="onSeek"><div class="mini-seek-fill" :style="{ width: (progress * 100) + '%' }"></div></div>
-      <div class="mini-body">
+      <!-- Background playlist-import progress: visible from any page, cancellable. -->
+      <div v-if="store.importState.value.running" class="mini-import">
+        <span class="mi-spin"></span>
+        <span class="mi-text">{{ t('media.player.importing') }} {{ store.importState.value.done }}/{{ store.importState.value.total }}<template v-if="store.importState.value.currentTitle"> · {{ store.importState.value.currentTitle }}</template></span>
+        <div class="mi-bar"><div class="mi-fill" :style="{ width: (store.importState.value.total ? store.importState.value.done / store.importState.value.total * 100 : 0) + '%' }"></div></div>
+        <button class="mi-cancel" :title="t('media.player.importCancel')" @click="store.cancelImport()">✕</button>
+      </div>
+      <div v-if="hasTrack" class="mini-seek" @click="onSeek"><div class="mini-seek-fill" :style="{ width: (progress * 100) + '%' }"></div></div>
+      <div v-if="hasTrack" class="mini-body">
         <button class="mini-art"
           :class="{ clickable: !onPlayer }"
           @click="openPlayer"
@@ -90,7 +99,16 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
 .mini-seek { height: 3px; background: var(--surface-hover); cursor: pointer; position: relative; }
 .mini-seek-fill { height: 100%; background: var(--accent); transition: width var(--dur-1) linear; }
 .mini-seek:hover { height: 6px; }
-.mini-body { display: flex; align-items: center; gap: 12px; padding: 8px 14px; max-width: 1120px; margin: 0 auto; }
+.mini-body { display: flex; align-items: center; gap: 12px; padding: 8px 14px; max-width: var(--page-wide); margin: 0 auto; }
+
+/* Background-import progress strip (above the seek bar). */
+.mini-import { display: flex; align-items: center; gap: 10px; padding: 7px 14px; max-width: var(--page-wide); margin: 0 auto; border-bottom: 1px solid var(--border-light); }
+.mi-spin { width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; flex-shrink: 0; }
+.mi-text { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mi-bar { flex: 1; min-width: 40px; max-width: 160px; height: 3px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
+.mi-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-2) var(--ease-out); }
+.mi-cancel { flex-shrink: 0; border: none; background: none; color: var(--text-tertiary); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.mi-cancel:hover { color: var(--text); background: var(--surface-hover); }
 
 .mini-art { width: 42px; height: 42px; flex-shrink: 0; border: none; padding: 0; border-radius: 8px; overflow: hidden; background: var(--surface-hover); cursor: default; }
 .mini-art.clickable { cursor: pointer; }

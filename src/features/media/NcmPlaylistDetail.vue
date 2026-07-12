@@ -26,12 +26,13 @@ const tracks = ref([])        // full track list
 const loading = ref(true)
 const error = ref('')
 
-// Import progress.
-const importing = ref(false)
-const importDone = ref(0)
-const importTotal = ref(0)
-const importCurrent = ref('')
-let importCancel = false
+// Import progress now lives in the store (global task) so it survives closing this drawer and is
+// visible + cancellable from the mini-player. These computeds mirror the store for this drawer's
+// own progress bar.
+const importing = computed(() => store.importState.value.running)
+const importDone = computed(() => store.importState.value.done)
+const importTotal = computed(() => store.importState.value.total)
+const importCurrent = computed(() => store.importState.value.currentTitle)
 
 async function load() {
   loading.value = true
@@ -83,30 +84,14 @@ async function playAll() {
   }
 }
 
-// Sequentially cache every track in the playlist. Updates the progress bar; cancellable.
-async function importAll() {
+// Hand the whole playlist to the store's background import task (throttled + cancellable + visible
+// in the mini-player). Fire-and-forget: the user can close the drawer and it keeps going.
+function importAll() {
   if (!tracks.value.length || importing.value) return
-  importing.value = true
-  importCancel = false
-  importDone.value = 0
-  importTotal.value = tracks.value.length
-  try {
-    for (const s of tracks.value) {
-      if (importCancel) break
-      importCurrent.value = `${s.name} - ${(s.ar || []).map(a => a.name).join(' / ')}`
-      try {
-        const rec = await store.addNcmTrack(s)
-        if (rec) await store.ensurePlayable(rec.id, { background: true })
-      } catch { /* keep going even if one fails */ }
-      importDone.value++
-    }
-    showToast(importCancel ? t('media.ncm.importCancelled') : t('media.ncm.importDone'))
-  } finally {
-    importing.value = false
-    importCurrent.value = ''
-  }
+  showToast(t('media.ncm.importStarted'))
+  store.importNcmSongs(tracks.value, { name: meta.value?.name || '' })
 }
-function cancelImport() { importCancel = true }
+function cancelImport() { store.cancelImport() }
 
 const importProgress = computed(() => {
   if (!importTotal.value) return 0
@@ -122,7 +107,7 @@ async function playSong(song) {
   if (!ok) showToast(t('media.ncm.playFailed'))
 }
 async function cacheSong(song) {
-  const rec = await store.addNcmTrack(song)
+  const rec = await store.addNcmTrack(song, { toLibrary: true })
   if (!rec) return
   await store.ensurePlayable(rec.id, { background: false })
   showToast(t('media.ncm.added'))

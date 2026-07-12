@@ -137,7 +137,7 @@ async function playSong(song) {
 async function addSong(song) {
   loadingId.value = song.id
   try {
-    const rec = await store.addNcmTrack(song)
+    const rec = await store.addNcmTrack(song, { toLibrary: true })
     if (!rec) return
     await store.ensurePlayable(rec.id, { background: true, br: bitrate.value })
     cacheFlags.value = { ...cacheFlags.value, [song.id]: true }
@@ -149,19 +149,46 @@ async function addSong(song) {
   }
 }
 
-// Download — fetch blob → browser download. No dynamic import, no caching side-effects.
-async function downloadSong(song) {
+// Which row's download menu (audio / lyrics) is open.
+const dlMenuFor = ref(null)
+function baseFileName(song) {
+  const safeName = String(song.name || 'audio').replace(/[\/\\:*?"<>|]/g, '_')
+  const artists = (song.ar || []).map((a) => a.name).filter(Boolean).join(', ')
+  return artists ? `${safeName} - ${artists}` : safeName
+}
+
+// Download the AUDIO (mp3/flac depending on the quality picker).
+async function downloadAudio(song) {
+  dlMenuFor.value = null
   loadingId.value = song.id
   try {
     const resp = await fetch(streamUrl(song.id, bitrate.value))
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const blob = await resp.blob()
     if (!blob || !blob.size) throw new Error('empty blob')
-    const safeName = String(song.name || 'audio').replace(/[\/\\:*?"<>|]/g, '_')
-    const artists = (song.ar || []).map((a) => a.name).filter(Boolean).join(', ')
     const ext = bitrate.value >= 999000 ? 'flac' : 'mp3'
-    const fname = artists ? `${safeName} - ${artists}.${ext}` : `${safeName}.${ext}`
+    const fname = `${baseFileName(song)}.${ext}`
     downloadBlob(blob, fname)
+    showToast('✓ ' + fname)
+  } catch (e) {
+    showToast(String(e?.message || e))
+  } finally {
+    loadingId.value = null
+  }
+}
+
+// Download the LYRICS as an .lrc subtitle file (original lyric text from NCM).
+async function downloadLyrics(song) {
+  dlMenuFor.value = null
+  loadingId.value = song.id
+  try {
+    const resp = await fetch(`/api/music/lyric/${song.id}`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const data = await resp.json()
+    const lrc = data?.lrc?.lyric || ''
+    if (!lrc.trim()) { showToast(t('media.ncm.noLyrics')); return }
+    const fname = `${baseFileName(song)}.lrc`
+    downloadBlob(new Blob([lrc], { type: 'text/plain' }), fname)
     showToast('✓ ' + fname)
   } catch (e) {
     showToast(String(e?.message || e))
@@ -286,10 +313,16 @@ function coverUrl(item) {
             <svg v-if="!cacheFlags[item.id]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             <svg v-else viewBox="0 0 24 24" fill="none" stroke="var(--status-ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           </button>
-          <!-- Download -->
-          <button class="row-act" @click="downloadSong(item)" :disabled="loadingId === item.id" :title="t('media.download')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          </button>
+          <!-- Download: menu to choose audio (mp3/flac) or lyrics (.lrc) -->
+          <div class="row-send-wrap">
+            <button class="row-act" @click="dlMenuFor = dlMenuFor === item.id ? null : item.id" :disabled="loadingId === item.id" :title="t('media.download')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </button>
+            <div v-if="dlMenuFor === item.id" class="row-send-menu" @click.stop>
+              <button class="row-send-item" @click="downloadAudio(item)">{{ t('media.ncm.dlAudio') }} ({{ bitrate >= 999000 ? 'FLAC' : 'MP3' }})</button>
+              <button class="row-send-item" @click="downloadLyrics(item)">{{ t('media.ncm.dlLyrics') }} (.lrc)</button>
+            </div>
+          </div>
           <!-- Send to -->
           <div class="row-send-wrap">
             <button class="row-act" @click="sendMenuFor = sendMenuFor === item.id ? null : item.id" :disabled="loadingId === item.id" :title="t('handoff.sendTo')">
@@ -301,7 +334,7 @@ function coverUrl(item) {
           </div>
         </div>
       </div>
-      <div v-if="sendMenuFor" class="menu-scrim" @click="sendMenuFor = null"></div>
+      <div v-if="sendMenuFor || dlMenuFor" class="menu-scrim" @click="sendMenuFor = null; dlMenuFor = null"></div>
     </div>
 
     <div v-else-if="type === 1000" class="ncm-list">

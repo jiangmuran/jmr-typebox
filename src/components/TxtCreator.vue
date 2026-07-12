@@ -73,7 +73,7 @@ function onDrop(e) {
 
 <style scoped>
 .tool-panel { flex: 1; overflow-y: auto; background: var(--bg); }
-.tool-inner { max-width: 680px; margin: 0 auto; padding: 24px 20px 40px; animation: toolIn 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.tool-inner { max-width: 680px; margin: 0 auto; padding: 24px 20px 40px; }
 @keyframes toolIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .card {

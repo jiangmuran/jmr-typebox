@@ -84,7 +84,7 @@ export function hashHue(str) {
 // `urlExpiresAt` so the store can decide whether to fetch fresh bytes from NCM or play straight
 // from IndexedDB. Local-file records default to source='local' and are byte-for-byte identical to
 // the v1 shape — old tests / callers continue to work unchanged.
-export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = Date.now(), source = 'local', ncmId = '', urlExpiresAt = 0 } = {}) {
+export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = Date.now(), source = 'local', ncmId = '', urlExpiresAt = 0, inLibrary = source !== 'ncm' } = {}) {
   return {
     id: id || uid('trk'),
     name: name || 'audio',
@@ -101,6 +101,11 @@ export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = 
     source: source === 'ncm' ? 'ncm' : 'local',
     ncmId: ncmId ? String(ncmId) : '',
     urlExpiresAt: Number(urlExpiresAt) || 0,
+    // Whether the user has EXPLICITLY put this track in their library (local upload, or an online
+    // song added via "+" / import / download). Merely playing, previewing, or prefetching an
+    // online song does NOT set this — so the "Files" library never fills up with online tracks the
+    // user only listened to. The library view = local uploads + inLibrary tracks.
+    inLibrary: !!inLibrary,
   }
 }
 

@@ -62,8 +62,9 @@ watch(activeIdx, async () => {
   const active = root.querySelector('[data-active="true"]')
   if (!active) return
   // Manual scroll — scrollIntoView would scroll ALL ancestors (including the page), causing the
-  // whole viewport to jump. We only want to scroll the lyrics container.
-  const target = active.offsetTop - root.clientHeight / 2 + active.clientHeight / 2
+  // whole viewport to jump. Keep the active line ~1/4 down (reads more naturally than dead-centre —
+  // the upcoming lines stay visible below).
+  const target = active.offsetTop - root.clientHeight / 4 + active.clientHeight / 2
   root.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
 })
 

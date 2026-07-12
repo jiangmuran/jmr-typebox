@@ -52,20 +52,29 @@ const lyricLines = computed(() => {
   return []
 })
 
-// Decode waveform when the track changes. getBlobFor resolves memory-cached bytes too, so
-// freshly streamed NCM tracks (not yet persisted to IDB) get a waveform as well.
-watch(() => store.currentId.value, async (id) => {
-  peaks.value = null
-  if (!id) return
+// Decode the waveform when the track changes. Also re-run when `buffering` flips false: an NCM
+// track commits its id BEFORE its bytes finish streaming (instant-identity), so the first attempt
+// finds no blob — we retry once the stream lands (this is why the waveform used to appear only
+// after a manual refresh). A per-track guard prevents a stale decode from overwriting a newer one.
+let _wfToken = 0
+async function decodeWaveform(id) {
+  if (!id) { peaks.value = null; return }
+  const token = ++_wfToken
   wfLoading.value = true
   try {
     const blob = await store.getBlobFor(id)
-    if (!blob) return
+    if (!blob || token !== _wfToken) return
     const { decodeToPeaks } = await import('./waveform')
     const res = await decodeToPeaks(blob, 1200)
-    if (store.currentId.value === id) { peaks.value = res.peaks; if (res.duration) store.duration.value = res.duration }
-  } catch { peaks.value = null } finally { wfLoading.value = false }
-}, { immediate: true })
+    if (token === _wfToken && store.currentId.value === id) {
+      peaks.value = res.peaks
+      if (res.duration) store.duration.value = res.duration
+    }
+  } catch { if (token === _wfToken) peaks.value = null } finally { if (token === _wfToken) wfLoading.value = false }
+}
+watch(() => store.currentId.value, (id) => { peaks.value = null; decodeWaveform(id) }, { immediate: true })
+// Retry once the streamed bytes arrive (buffering true → false with peaks still empty).
+watch(() => store.buffering.value, (b) => { if (!b && !peaks.value && store.currentId.value) decodeWaveform(store.currentId.value) })
 
 function onSeek(sec) { store.seek(sec) }
 

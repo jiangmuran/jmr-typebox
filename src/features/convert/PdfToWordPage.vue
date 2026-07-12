@@ -136,7 +136,7 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
 <style scoped>
 .route-page { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.p2w { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: cvIn 0.3s var(--ease-out); }
+.p2w { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; }
 @keyframes cvIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .cv-head { margin-bottom: 20px; }
 .cv-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }

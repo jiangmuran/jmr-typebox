@@ -138,7 +138,12 @@ body {
 .u-rise { animation: tb-rise var(--dur-3) var(--ease-out); }
 
 /* ========== Route transition ========== */
-/* Fade the outgoing page out (mode=out-in); the incoming page plays its own entrance animation. */
+/* ONE entrance for EVERY route (mode=out-in): the outgoing page fades out, the incoming page
+   fades + rises in — uniformly. Previously only SOME pages animated (via their own wrapper
+   keyframe) while the default editor/txt/image pages just popped in, so switching tabs felt
+   like a hard reload. Pages must NOT define their own route-root entrance animation now — this
+   transition is the single source of it. */
+.page-enter-active { animation: tb-rise var(--dur-2) var(--ease-out); }
 .page-leave-active { transition: opacity var(--dur-1) var(--ease-out); }
 .page-leave-to { opacity: 0; }
 

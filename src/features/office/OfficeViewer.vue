@@ -159,7 +159,7 @@ onBeforeUnmount(() => {})
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 .office-empty { flex: 1; overflow-y: auto; display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px; }
-.oe-inner { width: 100%; max-width: var(--page-narrow); animation: tbIn 0.3s var(--ease-out); }
+.oe-inner { width: 100%; max-width: var(--page-narrow); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .oe-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .oe-sub { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }

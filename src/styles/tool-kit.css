@@ -41,7 +41,6 @@
   max-width: var(--page-narrow);
   margin: 0 auto;
   padding: 28px 24px 56px;
-  animation: tb-rise var(--dur-3) var(--ease-out);
 }
 .tool-wrap.wide { max-width: var(--page-wide); }
 
@@ -56,7 +55,7 @@
 /* Image-shell aliases — the image pages still use .img-wrap / .img-head /
    .img-body in their templates; these map onto the converged kit so they line
    up with every other tool without touching each page. */
-.img-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; max-width: var(--page-wide); margin: 0 auto; padding: 28px 24px 56px; animation: tb-rise var(--dur-3) var(--ease-out); }
+.img-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; max-width: var(--page-wide); margin: 0 auto; padding: 28px 24px 56px; }
 .img-wrap.wide { max-width: var(--page-wide); }
 .img-head { margin-bottom: 20px; }
 .img-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; line-height: 1.2; }

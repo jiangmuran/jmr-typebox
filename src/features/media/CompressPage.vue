@@ -416,7 +416,7 @@ const crfLabel = computed(() => {
 .media-navwrap { max-width: var(--page-wide); margin: 0 auto; width: 100%; padding: 22px 24px 0; }
 @media (max-width: 560px) { .media-navwrap { padding: 16px 16px 0; } }
 
-.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-wide); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); display: flex; flex-direction: column; gap: 16px; }
+.media { flex: 1; overflow-y: auto; padding: 20px 24px 48px; max-width: var(--page-wide); margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 16px; }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .media-head { margin-bottom: 2px; }
 .media-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }

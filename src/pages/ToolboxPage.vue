@@ -614,7 +614,7 @@ function onDrop(e) {
 </template>
 
 <style scoped>
-.toolbox { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.toolbox { flex: 1; overflow-y: auto; padding: 28px 24px 56px; max-width: var(--page-narrow); margin: 0 auto; width: 100%; }
 /* RSA is a 2-column workbench, so its page gets the wide content width. */
 .toolbox.wide { max-width: var(--page-wide); }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

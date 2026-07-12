@@ -141,9 +141,8 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
 
 <style scoped>
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.player { flex: 1; max-width: 1120px; margin: 0 auto; width: 100%; padding: 22px 24px 28px; animation: tbIn 0.3s var(--ease-out); }
+.player { flex: 1; max-width: var(--page-wide); margin: 0 auto; width: 100%; padding: 22px 24px 28px; }
 @media (max-width: 768px) { .player { padding: 16px 16px 22px; } }
-@keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ---------- DESKTOP ---------- */
 .pl-desktop { display: flex; flex-direction: column; gap: 14px; }

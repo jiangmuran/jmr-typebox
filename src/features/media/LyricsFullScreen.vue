@@ -8,7 +8,7 @@
 //   • Double-tap = play/pause (single tap = show/hide controls, so these don't fight).
 //   • Sentence-nav buttons always visible on touch devices (no ↑↓ keys).
 //   • KTV mode (yrc) renders per-syllable highlighting.
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from './usePlayerStore'
 import { useI18n } from '../../composables/useI18n'
@@ -48,6 +48,19 @@ const activeWordIdx = computed(() => {
 
 const hasTrack = computed(() => !!store.currentTrack.value)
 const coverUrl = computed(() => store.coverUrl.value || '')
+
+// Auto-scroll the active line to ~1/4 down the stage (not centre, not top) as playback advances —
+// this view previously never scrolled, so the current line kept drifting to the top and off-screen.
+const stageEl = ref(null)
+watch(activeIdx, async () => {
+  await nextTick()
+  const root = stageEl.value
+  if (!root) return
+  const active = root.querySelector('[data-active="true"]')
+  if (!active) return
+  const target = active.offsetTop - root.clientHeight / 4 + active.clientHeight / 2
+  root.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+})
 
 // Wake lock so the screen stays on while lyrics are showing.
 let wakeLock = null
@@ -167,24 +180,38 @@ function lineScale(i) {
         <p>{{ t('media.player.nothingPlaying') }}</p>
       </div>
 
-      <!-- Lyric stage -->
-      <div v-else-if="lines.length" class="fls-stage" @click="onBackdropClick">
-        <div class="fls-lines" :class="{ ktv: isKtv }">
-          <div v-for="(line, i) in lines" :key="i"
-            class="fls-line"
-            :class="{ active: i === activeIdx }"
-            :style="{ opacity: lineOpacity(i), transform: `scale(${lineScale(i)})` }">
-            <template v-if="isKtv">
-              <span v-for="(w, wi) in line.words" :key="wi" class="fls-word" :class="{ on: i === activeIdx && wi <= activeWordIdx }">{{ w.text }}</span>
-            </template>
-            <template v-else>{{ line.text || '·' }}</template>
+      <!-- Main area: on desktop a two-column [cover + meta | lyrics] layout; on mobile the cover
+           panel is hidden (cover lives in the blurred backdrop) and lyrics fill the screen. -->
+      <div v-else class="fls-main">
+        <aside class="fls-cover-panel">
+          <div class="fls-cover">
+            <img v-if="coverUrl" :src="coverUrl" alt="" />
+            <span v-else class="fls-cover-ph">♪</span>
+          </div>
+          <div class="fls-cover-title">{{ store.currentTrack.value?.title || '' }}</div>
+          <div class="fls-cover-artist">{{ store.currentTrack.value?.artist || '' }}</div>
+        </aside>
+
+        <!-- Lyric stage -->
+        <div v-if="lines.length" ref="stageEl" class="fls-stage" @click="onBackdropClick">
+          <div class="fls-lines" :class="{ ktv: isKtv }">
+            <div v-for="(line, i) in lines" :key="i"
+              class="fls-line"
+              :class="{ active: i === activeIdx }"
+              :data-active="i === activeIdx"
+              :style="{ opacity: lineOpacity(i), transform: `scale(${lineScale(i)})` }">
+              <template v-if="isKtv">
+                <span v-for="(w, wi) in line.words" :key="wi" class="fls-word" :class="{ on: i === activeIdx && wi <= activeWordIdx }">{{ w.text }}</span>
+              </template>
+              <template v-else>{{ line.text || '·' }}</template>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Plain text fallback (no synced lyrics) -->
-      <div v-else class="fls-stage" @click="onBackdropClick">
-        <div class="fls-plain">{{ (store.liveLyrics.value?.original || '').split('\n').slice(0, 12).join('\n') || t('media.lyrics.empty') }}</div>
+        <!-- Plain text fallback (no synced lyrics) -->
+        <div v-else class="fls-stage" @click="onBackdropClick">
+          <div class="fls-plain">{{ (store.liveLyrics.value?.original || '').split('\n').slice(0, 40).join('\n') || t('media.lyrics.empty') }}</div>
+        </div>
       </div>
 
       <!-- Bottom transport -->
@@ -242,8 +269,17 @@ function lineScale(i) {
 .fls-artist { font-size: 12px; opacity: 0.65; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fls-top-spacer { width: 40px; flex-shrink: 0; }
 
-.fls-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 24px; position: relative; z-index: 1; overflow-y: auto; cursor: pointer; }
-.fls-lines { width: 100%; max-width: 760px; margin: 0 auto; padding: 80px 0; text-align: center; }
+/* Main area holds the (desktop-only) cover panel + the lyric stage. */
+.fls-main { flex: 1; min-height: 0; display: flex; position: relative; z-index: 1; }
+
+/* Cover panel — DESKTOP ONLY (hidden ≤899px; the cover still shows as the blurred backdrop). */
+.fls-cover-panel { display: none; }
+
+/* A real scroll container (no flex-centering — that clips the top and blocks scroll-to-top).
+   The active line is JS-scrolled to ~1/4 down; the tall padding lets the first/last lines reach it. */
+.fls-stage { flex: 1; min-height: 0; padding: 0 24px; position: relative; z-index: 1; overflow-y: auto; cursor: pointer; scrollbar-width: none; }
+.fls-stage::-webkit-scrollbar { display: none; }
+.fls-lines { width: 100%; max-width: 760px; margin: 0 auto; padding: 25vh 0 60vh; text-align: center; }
 .fls-line { font-size: clamp(20px, 4.5vw, 32px); font-weight: 700; letter-spacing: -0.01em; line-height: 1.55; color: #fff; margin: 12px 0; transition: opacity 0.35s var(--ease-out), transform 0.35s var(--ease-out), color 0.3s; }
 .fls-line.active { color: var(--accent); text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 50%, transparent); }
 
@@ -272,6 +308,30 @@ function lineScale(i) {
 .fls-btn svg { width: 20px; height: 20px; }
 .fls-btn.play { width: 60px; height: 60px; background: var(--accent); color: var(--accent-text); }
 .fls-btn.play:hover { background: var(--accent-hover); }
+
+/* ---------- DESKTOP (≥900px): cover on the left, lyrics on the right, left-aligned ---------- */
+@media (min-width: 900px) {
+  /* align-items: stretch (default) so the lyric stage fills the height and scrolls INTERNALLY;
+     the cover panel centers itself vertically within its own column. */
+  .fls-main { max-width: 1200px; margin: 0 auto; width: 100%; gap: 56px; padding: 8px 48px 24px; }
+  .fls-cover-panel { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; flex: 0 0 300px; }
+  .fls-cover { width: 300px; height: 300px; border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.06); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .fls-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .fls-cover-ph { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 90px; color: rgba(255,255,255,0.4); }
+  .fls-cover-title { margin-top: 22px; font-size: 22px; font-weight: 750; letter-spacing: -0.4px; max-width: 300px; }
+  .fls-cover-artist { margin-top: 6px; font-size: 14px; opacity: 0.7; max-width: 300px; }
+  /* Lyrics read as a left-aligned column beside the cover (not centered on the whole screen). */
+  .fls-stage { padding: 0; }
+  .fls-lines { margin: 0; max-width: none; text-align: left; padding: 30vh 0 55vh; }
+  .fls-line { font-size: clamp(22px, 2vw, 30px); margin: 14px 0; }
+  .fls-lines.ktv .fls-line { font-size: clamp(24px, 2.2vw, 32px); }
+  /* Mouse users get persistent controls — the auto-hide cinema mode is for touch only. */
+  .fls.hide-controls .fls-top,
+  .fls.hide-controls .fls-bottom { opacity: 1; transform: none; pointer-events: auto; }
+  .fls-progress, .fls-controls { max-width: 1104px; }
+  /* The centered top title is redundant with the cover panel on desktop. */
+  .fls-title-block { visibility: hidden; }
+}
 
 @media (max-width: 768px) {
   .fls-top { padding: 14px 16px; }

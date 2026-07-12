@@ -668,7 +668,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 </template>
 
 <style scoped>
-.wb { width: 100%; animation: tbIn 0.3s var(--ease-out); }
+.wb { width: 100%; }
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .wb-head { margin-bottom: 18px; }
 .wb-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
