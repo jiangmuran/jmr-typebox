@@ -47,6 +47,20 @@ export async function generateRsaKeys(purpose = 'encrypt', modulusLength = 2048)
   return { publicKey: toPem(spki, 'PUBLIC KEY'), privateKey: toPem(pkcs8, 'PRIVATE KEY') }
 }
 
+// Recompute the public key from a PKCS#8 private key. RSA's SPKI (SubjectPublicKeyInfo)
+// is algorithm-agnostic — it only carries the modulus n and exponent e — so importing
+// the private key under RSA-OAEP and re-exporting the public half yields the very same
+// `-----BEGIN PUBLIC KEY-----` PEM that generateRsaKeys produced, whether the pair was
+// made for encryption (OAEP) or signing (PSS). Lets a user restore "my public key" when
+// only the private key survived. Throws on an invalid/non-RSA private key.
+export async function deriveRsaPublicKey(privPem) {
+  const priv = await crypto.subtle.importKey('pkcs8', fromPem(privPem), { name: 'RSA-OAEP', hash: 'SHA-256' }, true, ['decrypt'])
+  const jwk = await crypto.subtle.exportKey('jwk', priv)
+  const pubKey = await crypto.subtle.importKey('jwk', { kty: 'RSA', n: jwk.n, e: jwk.e, ext: true }, { name: 'RSA-OAEP', hash: 'SHA-256' }, true, ['encrypt'])
+  const spki = await crypto.subtle.exportKey('spki', pubKey)
+  return toPem(spki, 'PUBLIC KEY')
+}
+
 const importPub = (pem, purpose) =>
   crypto.subtle.importKey('spki', fromPem(pem), ALG[purpose], false, [purpose === 'encrypt' ? 'encrypt' : 'verify'])
 const importPriv = (pem, purpose) =>

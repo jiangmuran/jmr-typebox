@@ -159,10 +159,16 @@ async function pasteQrImage() {
 async function copyDecoded() { if (!qrDecoded.value) return; try { await navigator.clipboard.writeText(qrDecoded.value); showToast(t('toast.copied')) } catch {} }
 
 // RSA — encrypt/decrypt (OAEP) or sign/verify (PSS). Keys are PEM. rsa.js is lazy-loaded.
+// TWO distinct public-key slots, to match the real mental model:
+//   • rsaPub / rsaPriv  — MY OWN keys (my identity; my public key is the one I share).
+//   • rsaOtherPub       — the OTHER party's public key (theirs): the recipient's key I
+//                          encrypt to, or the sender's key I verify a signature against.
+// Encrypt & verify read the OTHER party's key; decrypt & sign read MY private key.
 const rsaPurpose = ref('encrypt') // 'encrypt' | 'sign'
 const rsaBits = ref(2048)
-const rsaPub = ref('')
-const rsaPriv = ref('')
+const rsaPub = ref('')        // my public key (to share)
+const rsaPriv = ref('')       // my private key (secret)
+const rsaOtherPub = ref('')   // the other party's public key (recipient to encrypt / sender to verify)
 const rsaInput = ref('')
 const rsaOut = ref('') // ciphertext / plaintext, or the signature (sign purpose)
 const rsaMsg = ref('')
@@ -177,14 +183,30 @@ async function genRsa() {
     showToast(t('tool.rsa.generated'))
   } catch { showToast(t('tool.rsa.failed')) } finally { rsaBusy.value = false }
 }
+// Recompute MY public key from MY private key (strong binding: the public key is not
+// independent — it lives inside the private key). silent = auto-fill (no toast).
+async function derivePub(silent = false) {
+  if (!rsaPriv.value.trim()) { if (!silent) showToast(t('tool.rsa.deriveNeedPriv')); return }
+  try {
+    const { deriveRsaPublicKey } = await import('../tools/text/rsa')
+    rsaPub.value = await deriveRsaPublicKey(rsaPriv.value)
+    if (!silent) showToast(t('tool.rsa.derived'))
+  } catch { if (!silent) showToast(t('tool.rsa.deriveFail')) }
+}
+// Auto-derive: a private key is present but the public field is empty → fill it in.
+watch(rsaPriv, () => {
+  if (def.value.mode !== 'rsa') return
+  if (rsaPriv.value.trim() && !rsaPub.value.trim()) derivePub(true)
+})
+async function pasteOther() { try { rsaOtherPub.value = await navigator.clipboard.readText() } catch {} }
 async function runRsa(op) {
   rsaMsg.value = ''; rsaOk.value = false
   try {
     const rsa = await import('../tools/text/rsa')
-    if (op === 'encrypt') rsaOut.value = await rsa.rsaEncrypt(rsaInput.value, rsaPub.value)
-    else if (op === 'decrypt') rsaOut.value = await rsa.rsaDecrypt(rsaInput.value, rsaPriv.value)
-    else if (op === 'sign') rsaOut.value = await rsa.rsaSign(rsaInput.value, rsaPriv.value)
-    else if (op === 'verify') { const ok = await rsa.rsaVerify(rsaInput.value, rsaOut.value, rsaPub.value); rsaOk.value = ok; rsaMsg.value = ok ? t('tool.rsa.valid') : t('tool.rsa.invalid') }
+    if (op === 'encrypt') rsaOut.value = await rsa.rsaEncrypt(rsaInput.value, rsaOtherPub.value)         // recipient's public key (theirs)
+    else if (op === 'decrypt') rsaOut.value = await rsa.rsaDecrypt(rsaInput.value, rsaPriv.value)        // my private key
+    else if (op === 'sign') rsaOut.value = await rsa.rsaSign(rsaInput.value, rsaPriv.value)              // my private key
+    else if (op === 'verify') { const ok = await rsa.rsaVerify(rsaInput.value, rsaOut.value, rsaOtherPub.value); rsaOk.value = ok; rsaMsg.value = ok ? t('tool.rsa.valid') : t('tool.rsa.invalid') } // sender's public key (theirs)
   } catch { rsaMsg.value = t('tool.rsa.failed') }
 }
 
@@ -416,10 +438,17 @@ function onDrop(e) {
         </details>
 
         <div class="rsa-grid">
-          <!-- LEFT: keys + keychain -->
+          <!-- LEFT: MY keys (my identity) + keychain -->
           <div class="rsa-col">
+            <div class="rsa-block-head">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.6"/><path d="M3.2 13.4a4.9 4.9 0 0 1 9.6 0"/></svg>
+              <strong>{{ t('tool.rsa.myKeys') }}</strong>
+              <span class="rsa-tag mine">{{ t('tool.rsa.mine') }}</span>
+            </div>
+            <p class="rsa-block-hint">{{ t('tool.rsa.myKeysHint') }}</p>
+
             <div class="tb-pane">
-              <div class="tb-pane-head"><span>{{ t('tool.rsa.pub') }}</span><div class="tb-actions"><button @click="copyText(rsaPub)">{{ t('tool.copy') }}</button></div></div>
+              <div class="tb-pane-head"><span>{{ t('tool.rsa.myPub') }}</span><div class="tb-actions"><button @click="copyText(rsaPub)">{{ t('tool.copy') }}</button></div></div>
               <textarea v-model="rsaPub" class="rsa-key" spellcheck="false" placeholder="-----BEGIN PUBLIC KEY-----"></textarea>
             </div>
 
@@ -441,9 +470,19 @@ function onDrop(e) {
             </button>
 
             <div class="tb-pane">
-              <div class="tb-pane-head"><span>{{ t('tool.rsa.priv') }}</span><div class="tb-actions"><button @click="copyText(rsaPriv)">{{ t('tool.copy') }}</button></div></div>
+              <div class="tb-pane-head"><span>{{ t('tool.rsa.myPriv') }}</span><div class="tb-actions"><button @click="copyText(rsaPriv)">{{ t('tool.copy') }}</button></div></div>
               <textarea v-model="rsaPriv" class="rsa-key" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
             </div>
+
+            <!-- Recompute the public key from the private key (strong binding) -->
+            <div class="rsa-derive">
+              <button class="btn small" :disabled="!rsaPriv" @click="derivePub(false)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 2v3h-3"/></svg>
+                {{ t('tool.rsa.derive') }}
+              </button>
+              <span class="rsa-derive-hint">{{ t('tool.rsa.deriveHint') }}</span>
+            </div>
+
             <div class="rsa-genrow">
               <label>{{ t('tool.rsa.size') }}<select v-model.number="rsaBits"><option :value="2048">2048</option><option :value="4096">4096</option></select></label>
               <button class="btn" :disabled="rsaBusy" @click="genRsa">{{ rsaBusy ? '…' : t('tool.rsa.gen') }}</button>
@@ -527,8 +566,22 @@ function onDrop(e) {
             </div>
           </div>
 
-          <!-- RIGHT: operation -->
+          <!-- RIGHT: the OTHER party's public key + the operation -->
           <div class="rsa-col">
+            <!-- Encrypt needs the recipient's key; verify needs the sender's key. Either way it's THEIRS. -->
+            <div class="rsa-other-wrap">
+              <div class="rsa-block-head">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.6" cy="10.4" r="3"/><path d="M7.7 8.3 13.6 2.4M11.2 4.8l1.6 1.6M12.6 3.4 14.2 5"/></svg>
+                <strong>{{ rsaPurpose === 'encrypt' ? t('tool.rsa.recipientPub') : t('tool.rsa.senderPub') }}</strong>
+                <span class="rsa-tag theirs">{{ t('tool.rsa.theirs') }}</span>
+              </div>
+              <div class="tb-pane rsa-other">
+                <div class="tb-pane-head"><span>{{ t('tool.rsa.pub') }}</span><div class="tb-actions"><button @click="pasteOther">{{ t('tool.paste') }}</button><button @click="copyText(rsaOtherPub)">{{ t('tool.copy') }}</button></div></div>
+                <textarea v-model="rsaOtherPub" class="rsa-key" spellcheck="false" placeholder="-----BEGIN PUBLIC KEY-----"></textarea>
+              </div>
+              <p class="rsa-block-hint">{{ rsaPurpose === 'encrypt' ? t('tool.rsa.recipientHint') : t('tool.rsa.senderHint') }}</p>
+            </div>
+
             <div class="tb-pane">
               <div class="tb-pane-head"><span>{{ rsaPurpose === 'encrypt' ? t('tool.input') : t('tool.rsa.text') }}</span></div>
               <textarea v-model="rsaInput" class="rsa-io" spellcheck="false" :placeholder="rsaPurpose === 'encrypt' ? t('tool.rsa.inEnc') : t('tool.rsa.inSign')"></textarea>
@@ -544,6 +597,7 @@ function onDrop(e) {
                 <button class="btn" @click="runRsa('verify')">{{ t('tool.rsa.verifyBtn') }}</button>
               </template>
             </div>
+            <p class="rsa-ophint">{{ rsaPurpose === 'encrypt' ? t('tool.rsa.opHintEnc') : t('tool.rsa.opHintSign') }}</p>
 
             <div class="tb-pane">
               <div class="tb-pane-head"><span>{{ rsaPurpose === 'sign' ? t('tool.rsa.sig') : t('tool.output') }}</span><div class="tb-actions"><button @click="copyText(rsaOut)">{{ t('tool.copy') }}</button></div></div>
@@ -620,6 +674,24 @@ function onDrop(e) {
 .rsa-run { display: flex; gap: 8px; flex-wrap: wrap; }
 .rsa-run .btn { flex: 1; min-width: 120px; }
 .rsa-ok { color: var(--status-ok, #34c759); font-weight: 600; }
+
+/* Whose-key blocks: MY keys (left, my identity) vs the OTHER party's public key (right). */
+.rsa-block-head { display: flex; align-items: center; gap: 8px; }
+.rsa-block-head svg { width: 16px; height: 16px; color: var(--text-secondary); flex-shrink: 0; }
+.rsa-block-head strong { font-size: 14px; font-weight: 700; letter-spacing: -0.2px; }
+.rsa-tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+.rsa-tag.mine { color: var(--accent); background: var(--accent-bg); }
+.rsa-tag.theirs { color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border); }
+.rsa-block-hint { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: -4px 0 0; }
+/* The "theirs" region is a tinted card so it reads as clearly separate from my keys. */
+.rsa-other-wrap { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-hover); }
+.rsa-other { background: var(--surface); }
+/* Derive my public key from my private key */
+.rsa-derive { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rsa-derive .btn { flex: 0 0 auto; }
+.rsa-derive-hint { flex: 1 1 150px; min-width: 0; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.4; }
+/* Per-operation reminder of whose key each button reads */
+.rsa-ophint { font-size: 11.5px; color: var(--text-tertiary); line-height: 1.5; padding: 0 2px; margin-top: -2px; }
 
 /* Two-column workbench: keys + keychain (left) · operation (right). */
 .rsa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }

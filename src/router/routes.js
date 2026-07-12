@@ -9,6 +9,9 @@ export function tabOf(p) {
   if (p.startsWith('/convert')) return 'convert'
   if (p.startsWith('/media')) return 'media'
   if (p.startsWith('/python')) return 'python'
+  // /admin has its own pseudo-tab — AppShell won't match any known nav tab, so no tab is
+  // highlighted when on the admin surface (which is exactly what we want).
+  if (p.startsWith('/admin')) return 'admin'
   return 'tools'
 }
 
@@ -21,6 +24,7 @@ function componentFor(p) {
   if (p === '/convert/pdf-to-markdown') return () => import('../pages/PdfToMarkdownPage.vue')
   if (p === '/image/compress' || p === '/image/convert') return () => import('../pages/ImageLegacyPage.vue')
   if (p.startsWith('/tools/')) return () => import('../pages/ToolboxPage.vue')
+  if (p === '/admin') return () => import('../pages/AdminPage.vue')
   return () => import('../pages/ToolStub.vue')
 }
 

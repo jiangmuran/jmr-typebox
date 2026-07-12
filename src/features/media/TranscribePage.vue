@@ -219,15 +219,21 @@ function copyTranscript() {
   navigator.clipboard?.writeText(txt).then(() => showToast(t('media.asr.copied'))).catch(() => {})
 }
 
-// File for the "Send to →" handoff: a subtitle file built from the chosen export format (default
-// .srt → subtitles tool; .txt also flows to the editor as text).
+// File for the "Send to →" handoff. Phase 3 bugfix: we now send the ORIGINAL media file as the
+// payload (so the target tool — usually Subtitles — has the video/audio to preview/burn-in) and
+// attach the generated subtitle file as `auxiliary` (auto-loaded by the target on arrival).
+// Before this fix, only the subtitle file was sent, so the subtitle studio opened empty (no media
+// to overlay captions on). The `handoffFile` computed still constructs the subtitle File as before.
 const handoffFile = computed(() => {
   if (!hasResult.value) return null
   const fmt = exportFmt.value === 'txt' ? 'txt' : exportFmt.value
   const { text, mime, ext } = serializeTranscript(segments.value, fmt)
   return new File([text], `${outBase.value}.${ext}`, { type: mime })
 })
-const handoffKind = computed(() => (exportFmt.value === 'txt' ? 'text' : 'subtitle'))
+// The SendToMenu kind is now the ORIGINAL media kind (video/audio), not 'subtitle' — the menu
+// then offers subtitle-relevant targets (/media/subtitles) AND the destination receives the media
+// as its source with the .srt attached as auxiliary.
+const handoffKind = computed(() => (isVideo.value ? 'video' : 'audio'))
 
 function seekTo(sec) {
   const el = previewEl.value
@@ -357,7 +363,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
                     </div>
                     <button class="ghost-btn" @click="copyTranscript">{{ t('media.asr.copy') }}</button>
                     <button class="btn cta download-btn" @click="exportFile">{{ ti('media.asr.export', { fmt: exportFmt.toUpperCase() }) }}</button>
-                    <SendToMenu :payload="handoffFile" :kind="handoffKind" from="/media/transcribe" />
+                    <SendToMenu :payload="media.file.value" :kind="handoffKind" :auxiliary="handoffFile" from="/media/transcribe" />
                   </div>
                 </div>
 

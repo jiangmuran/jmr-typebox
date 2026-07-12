@@ -1,19 +1,32 @@
 // The music PLAYER store — a module-singleton composable holding all reactive player state and
-// orchestrating the audio engine + IndexedDB persistence + metadata + lyrics. Shared across the
-// mini-player, Now-Playing, library/queue and lyrics views so playback is continuous across the
-// audio sub-tabs.
+// orchestrating the audio engine + IndexedDB persistence + NCM streaming + lyrics.
+//
+// PHASE 2 redesign (vs the v1 store):
+//   • Track records carry a `source` field ('local' | 'ncm'). Local tracks play straight from
+//     IndexedDB bytes; NCM tracks may or may not have been cached yet — `ensurePlayable()`
+//     materialises them on demand (fetch /api/music/song/url → stream bytes → store blob).
+//   • The EMBED surface (NetEase/Bilibili/YouTube iframes) is GONE — the player is now a real
+//     music player, not an iframe host. Use the search panel to find music.
+//   • Lyrics live in a structured bundle per track (original / translation / romaji / yrc); the
+//     reactive `liveLyrics` ref exposes the parsed views so the lyrics panel can switch between
+//     them without re-parsing.
+//   • Prefetch (the next track in the queue + its lyrics) is wired into the currentId watcher.
 //
 // SSG-SAFETY: only `ref()`s are created at module scope (safe). Nothing touches Audio/IndexedDB/
-// window until init() is called from a client onMounted. All heavy modules (engine, db, metadata)
-// are reached via dynamic import() inside actions.
+// window/fetch until init() is called from a client onMounted.
 import { ref, computed } from 'vue'
 import {
-  makeTrack, makePlaylist, moveItem, nextIndex as calcNext, prevIndex as calcPrev,
-  totalSize, exceedsCap, DEFAULT_CACHE_CAP, addToPlaylist as addId, removeFromList,
-  titleFromName, uid,
+  makeTrack, makeNcmTrack, makePlaylist, moveItem,
+  nextIndex as calcNext, prevIndex as calcPrev,
+  totalSize, exceedsCap, DEFAULT_CACHE_CAP,
+  addToPlaylist as addId, removeFromList, titleFromName, uid,
 } from './playerHelpers'
 import { isAudioInput } from './mediaHelpers'
-import { parseEmbed } from './embed'
+// STATIC imports — these used to be dynamic `await import(...)` inside every function, but that
+// caused intermittent chunk-load failures in production (the dynamic-import chunks sometimes 404'd
+// or never resolved, freezing the entire player with no error). mediaDb + ncmClient are both
+// SSG-safe (no top-level side effects), so importing them statically is correct.
+import * as db from './mediaDb'
 
 // ---- reactive state (singletons) ----
 const tracks = ref([])              // track records (no blobs) — the library
@@ -31,25 +44,37 @@ const repeat = ref('off')           // 'off' | 'one' | 'all'
 const abStart = ref(null)           // A–B repeat (seconds)
 const abEnd = ref(null)
 const search = ref('')
-const lyricsText = ref('')          // raw .lrc/text for the current track
-const coverUrl = ref('')            // object URL of current track cover (or '')
+const coverUrl = ref('')            // object URL or NCM picUrl for the current track
 const cacheBytes = ref(0)
 const cacheCap = ref(DEFAULT_CACHE_CAP)
-const ready = ref(false)            // init() finished (IndexedDB hydrated)
-const busy = ref(false)             // a long op (metadata read / import) in flight
+const ready = ref(false)
+const busy = ref(false)
 
-// ONLINE entries: official-embed players (NetEase/Bilibili/YouTube). These are NOT files — they are
-// just the platform's own iframe URL + a user label. They can't be edited/cached/converted; we only
-// store the embed descriptor. currentEmbedId selects one to show its official iframe player.
-const embeds = ref([])              // [{ id, platform, kind, embedId, embedUrl, title, addedAt }]
-const currentEmbedId = ref('')      // id of the selected online entry ('' = none)
+// PHASE 2: NCM live lyric bundle for the current track. Fields update atomically on track change.
+// Parsed views are recomputed by the lyrics panel; the store only holds the raw strings.
+const liveLyrics = ref({
+  original: '', translation: '', romaji: '', yrc: '',
+})
+
+// PHASE 2: prefetch status, surfaced in MiniPlayer so the user knows the next track is warming.
+// 'idle' | 'fetching' | 'cached' | 'error'
+const prefetchState = ref('idle')
 
 let _engine = null
 let _initPromise = null
 let _positions = {}                 // trackId -> seconds (resume points), mirrored to db
+const _prefetching = new Set()      // trackIds currently being prefetched (dedupe)
+// PHASE 4: in-memory blob cache — fallback when IndexedDB is unavailable (e.g. the v1→v2 upgrade
+// is blocked by another tab). Without this, a NCM track that was just streamed would vanish on
+// the next getTrackBlob call (which returns null when IDB is down), making playback impossible.
+// With this cache, playback works in-memory even when persistence is offline.
+const _blobCache = new Map()
+// Preview track: when the user clicks ▶ on a search result, we play WITHOUT adding to the library.
+// This ref holds that temporary record so currentTrack / MediaSession / lyrics still work.
+const previewRec = ref(null)
 
 // ---- derived ----
-const currentTrack = computed(() => tracks.value.find((t) => t.id === currentId.value) || null)
+const currentTrack = computed(() => tracks.value.find((t) => t.id === currentId.value) || (previewRec.value && previewRec.value.id === currentId.value ? previewRec.value : null))
 const currentIndex = computed(() => queue.value.indexOf(currentId.value))
 const activeTracks = computed(() => {
   if (!activePlaylistId.value) return tracks.value
@@ -59,7 +84,7 @@ const activeTracks = computed(() => {
   return pl.trackIds.map((id) => byId.get(id)).filter(Boolean)
 })
 const cacheUsedPct = computed(() => Math.min(100, Math.round((cacheBytes.value / (cacheCap.value || 1)) * 100)))
-const currentEmbed = computed(() => embeds.value.find((e) => e.id === currentEmbedId.value) || null)
+const isCurrentNcm = computed(() => currentTrack.value?.source === 'ncm')
 
 export function usePlayerStore() {
   // ---------------- init / hydrate ----------------
@@ -68,24 +93,17 @@ export function usePlayerStore() {
     _initPromise = (async () => {
       const engineMod = await import('./audioEngine')
       _engine = engineMod.getEngine()
-      const db = await import('./mediaDb')
 
-      // Hydrate persisted state.
       tracks.value = await db.listTrackRecords()
       playlists.value = await db.listPlaylists()
       _positions = await db.getPositions()
       cacheBytes.value = totalSize(tracks.value)
-      const savedVol = await db.kvGet('volume', 1)
-      volume.value = typeof savedVol === 'number' ? savedVol : 1
-      const savedRate = await db.kvGet('rate', 1)
-      rate.value = typeof savedRate === 'number' ? savedRate : 1
+      volume.value = (await db.kvGet('volume', 1)) ?? 1
+      rate.value = (await db.kvGet('rate', 1)) ?? 1
       shuffle.value = !!(await db.kvGet('shuffle', false))
       repeat.value = (await db.kvGet('repeat', 'off')) || 'off'
-      const cap = await db.kvGet('cacheCap', DEFAULT_CACHE_CAP)
-      cacheCap.value = typeof cap === 'number' ? cap : DEFAULT_CACHE_CAP
-      embeds.value = (await db.kvGet('embeds', [])) || []
+      cacheCap.value = (await db.kvGet('cacheCap', DEFAULT_CACHE_CAP)) || DEFAULT_CACHE_CAP
 
-      // Wire the engine.
       if (_engine) {
         _engine.setVolume(volume.value)
         _engine.setRate(rate.value)
@@ -101,7 +119,6 @@ export function usePlayerStore() {
         wireSession()
       }
 
-      // Default the queue to the library order; restore last track (paused).
       queue.value = tracks.value.map((t) => t.id)
       const last = await db.kvGet('lastTrack', '')
       if (last && tracks.value.some((t) => t.id === last)) {
@@ -124,12 +141,9 @@ export function usePlayerStore() {
   }
 
   // ---------------- library: add / remove ----------------
-  // Add a File to the library: read metadata, persist blob+record to IndexedDB, update state.
-  // Returns the new track record (or null if rejected / over cap).
   async function addFile(file, { autoplay = false } = {}) {
     if (!file) return null
     if (!isAudioInput(file.name, file.type) && !String(file.type).startsWith('audio')) {
-      // Allow anything audio-ish; reject obvious non-audio silently-ish (caller can toast).
       if (!String(file.type).startsWith('audio') && !isAudioInput(file.name, file.type)) return null
     }
     if (exceedsCap(cacheBytes.value, file.size, cacheCap.value)) return { error: 'cap' }
@@ -140,17 +154,14 @@ export function usePlayerStore() {
       try {
         const { readTags } = await import('./metadata')
         const tags = await readTags(file)
-        meta = { title: tags.title, artist: tags.artist, album: tags.album, hasCover: tags.hasCover }
-        if (tags.coverUrl) { try { URL.revokeObjectURL(tags.coverUrl) } catch { /* ignore */ } }
+        meta = { title: tags.title, artist: tags.artist, album: tags.album, hasCover: tags.hasCover, coverUrl: tags.coverUrl }
       } catch { /* metadata best-effort */ }
       if (!meta.title) meta.title = titleFromName(file.name)
 
       const rec = makeTrack({ name: file.name, size: file.size, type: file.type, meta })
-      const db = await import('./mediaDb')
       await db.putTrack(rec, file)
       tracks.value = [...tracks.value, rec]
       cacheBytes.value = totalSize(tracks.value)
-      // Keep queue in sync if we're on the library view.
       if (!activePlaylistId.value) queue.value = [...queue.value, rec.id]
       if (autoplay) await loadTrack(rec.id, { autoplay: true })
       return rec
@@ -159,7 +170,6 @@ export function usePlayerStore() {
     }
   }
 
-  // Add several files (drag-drop multiple). Returns the records added.
   async function addFiles(fileList, opts = {}) {
     const added = []
     let first = true
@@ -170,13 +180,59 @@ export function usePlayerStore() {
     return added
   }
 
+  // PHASE 2: add a NCM song to the library (metadata only — no bytes yet).
+  // Dedupes by ncmId in-memory (fast, no IDB round-trip that could hang).
+  async function addNcmTrack(ncmSong) {
+    if (!ncmSong?.id) return null
+    // Check in-memory tracks first (no IDB await — IDB can hang on v1→v2 upgrade blocked).
+    const existing = tracks.value.find((t) => t.ncmId === String(ncmSong.id))
+    if (existing) return existing
+    const rec = makeNcmTrack(ncmSong)
+    if (!rec) return null
+    tracks.value = [...tracks.value, rec]
+    if (!activePlaylistId.value) queue.value = [...queue.value, rec.id]
+    // Fire-and-forget persist — NEVER await.
+    db.putTrack(rec, null).catch(() => {})
+    return rec
+  }
+
+  // PHASE 2: ensure a track has bytes. For NCM tracks it fetches the audio stream into a Blob.
+  // IMPORTANT: this function MUST NOT do any `await db.*` calls — IDB operations (openDb,
+  // getTrackBlob, putTrack) can hang indefinitely when the v1→v2 upgrade is blocked by another
+  // tab, which freezes the entire player. We use a pure in-memory blob cache instead. IDB
+  // persistence happens fire-and-forget (`.catch(()=>{})`) so it never blocks playback.
+  async function ensurePlayable(id, { background = false, br = 320000 } = {}) {
+    const rec = tracks.value.find((t) => t.id === id)
+    if (!rec) return false
+    if (rec.source !== 'ncm') return !!_blobCache.get(id)
+    if (_blobCache.has(id)) return true
+    if (_prefetching.has(id)) return false
+    _prefetching.add(id)
+    if (!background) busy.value = true
+    try {
+      const resp = await fetch(`/api/music/stream/${rec.ncmId}?br=${br}`)
+      if (!resp.ok) throw new Error(`stream failed (${resp.status})`)
+      const blob = await resp.blob()
+      if (!blob || !blob.size) throw new Error('empty blob')
+      _blobCache.set(id, blob)
+      tracks.value = tracks.value.map((t) => (t.id === id ? { ...t, size: blob.size } : t))
+      cacheBytes.value = totalSize(tracks.value)
+      // Fire-and-forget persist — NEVER await this (IDB may be blocked)
+      db.putTrack({ ...rec, size: blob.size, blob }, blob).catch(() => {})
+      return true
+    } catch {
+      return false
+    } finally {
+      _prefetching.delete(id)
+      if (!background) busy.value = false
+    }
+  }
+
   async function removeTrack(id) {
-    const db = await import('./mediaDb')
     await db.deleteTrack(id)
     tracks.value = tracks.value.filter((t) => t.id !== id)
     cacheBytes.value = totalSize(tracks.value)
     queue.value = removeFromList(queue.value, id)
-    // Drop from playlists too.
     let changed = false
     playlists.value = playlists.value.map((p) => {
       if (p.trackIds.includes(id)) { changed = true; return { ...p, trackIds: removeFromList(p.trackIds, id) } }
@@ -187,70 +243,121 @@ export function usePlayerStore() {
   }
 
   async function clearCache() {
-    const db = await import('./mediaDb')
     await db.clearTracks()
     stop()
     tracks.value = []
     queue.value = []
     currentId.value = ''
     cacheBytes.value = 0
-    // Clear playlists' track references (keep the playlists themselves empty).
     playlists.value = playlists.value.map((p) => ({ ...p, trackIds: [] }))
     for (const p of playlists.value) await db.putPlaylist(p)
   }
 
   async function setCacheCap(bytes) {
     cacheCap.value = Math.max(50 * 1024 * 1024, Number(bytes) || DEFAULT_CACHE_CAP)
-    const db = await import('./mediaDb')
     await db.kvSet('cacheCap', cacheCap.value)
   }
 
+  // Play an NCM song as a PREVIEW — NOT added to the library. Used when the user clicks ▶ on a
+  // search result. Only an explicit "add to library" action persists the record.
+  async function playNcmPreview(ncmSong, br = 320000) {
+    if (!_engine) return false
+    const rec = makeNcmTrack(ncmSong)
+    if (!rec) return false
+    try {
+      const resp = await fetch(`/api/music/stream/${rec.ncmId}?br=${br}`)
+      if (!resp.ok) return false
+      const blob = await resp.blob()
+      if (!blob?.size) return false
+      _blobCache.set(rec.id, blob)
+      persistPosition()
+      previewRec.value = rec
+      currentId.value = rec.id
+      duration.value = rec.duration || 0
+      currentTime.value = 0
+      abStart.value = null; abEnd.value = null
+      _engine.setSource(blob)
+      loadCoverAndLyrics(rec.id, blob, rec).catch(() => {})
+      updateSessionMetadata()
+      _engine.play()
+      isPlaying.value = true
+      schedulePrefetch()
+      return true
+    } catch { return false }
+  }
+
   // ---------------- playback ----------------
-  // Load a track by id into the engine. Optionally autoplay / restore its saved position.
   async function loadTrack(id, { autoplay = true, restorePosition = false } = {}) {
     const rec = tracks.value.find((t) => t.id === id)
     if (!rec || !_engine) return
-    // Ensure this id is in the active queue (so prev/next work from the library or a playlist).
     if (!queue.value.includes(id)) {
       queue.value = activeTracks.value.map((t) => t.id)
       if (!queue.value.includes(id)) queue.value = [...queue.value, id]
     }
-    persistPosition() // save the OUTGOING track's position first
-    currentEmbedId.value = '' // switching to a local file → leave any online (iframe) view
-    const db = await import('./mediaDb')
-    const blob = await db.getTrackBlob(id)
+    persistPosition() // fire-and-forget (NOT awaited — IDB can hang)
+
+    // NCM tracks need bytes. Memory cache ONLY.
+    let blob = _blobCache.get(id)
+    if (!blob && rec.source === 'ncm') {
+      busy.value = true
+      const ok = await ensurePlayable(id, { background: false })
+      busy.value = false
+      if (!ok) return
+      blob = _blobCache.get(id)
+    }
     if (!blob) return
+
     currentId.value = id
     duration.value = rec.duration || 0
     currentTime.value = 0
     abStart.value = null; abEnd.value = null
     _engine.setSource(blob)
-    await loadCoverAndLyrics(id, blob)
-    await db.kvSet('lastTrack', id)
+    // Cover + lyrics: fire-and-forget, never block playback.
+    loadCoverAndLyrics(id, blob, rec).catch(() => {})
+    db.kvSet('lastTrack', id).catch(() => {})
     updateSessionMetadata()
     const startAt = restorePosition ? (_positions[id] || 0) : 0
     if (startAt > 0) { const onLoaded = _engine.on('loaded', () => { _engine.seek(startAt); onLoaded() }) }
     if (autoplay) { _engine.play(); isPlaying.value = true }
+    schedulePrefetch()
   }
 
-  async function loadCoverAndLyrics(id, blob) {
-    // Cover from ID3 (best-effort); revoke any previous URL.
-    if (coverUrl.value) { try { URL.revokeObjectURL(coverUrl.value) } catch { /* ignore */ } coverUrl.value = '' }
-    try {
-      const { readTags } = await import('./metadata')
-      const tags = await readTags(blob)
-      if (tags.coverUrl) coverUrl.value = tags.coverUrl
-      // Backfill duration/title if missing.
-      const rec = tracks.value.find((t) => t.id === id)
-      if (rec && tags && (tags.title || tags.artist || tags.album)) {
-        // don't overwrite user edits silently; only fill blanks
-      }
-    } catch { /* ignore */ }
-    // Lyrics from db.
-    try {
-      const db = await import('./mediaDb')
-      lyricsText.value = await db.getLyrics(id)
-    } catch { lyricsText.value = '' }
+  async function loadCoverAndLyrics(id, blob, rec) {
+    // Cover
+    if (coverUrl.value && coverUrl.value.startsWith('blob:')) {
+      try { URL.revokeObjectURL(coverUrl.value) } catch { /* ignore */ }
+      coverUrl.value = ''
+    }
+    if (rec?.source === 'ncm' && rec.coverUrl) {
+      coverUrl.value = rec.coverUrl
+    } else if (blob) {
+      // Local: ID3 best-effort (don't block)
+      import('./metadata').then(({ readTags }) => readTags(blob).then(tags => { if (tags.coverUrl) coverUrl.value = tags.coverUrl }).catch(() => {})).catch(() => {})
+    }
+
+    // Lyrics: for NCM tracks, fetch DIRECTLY from the API (skip IDB read — it can hang).
+    liveLyrics.value = { original: '', translation: '', romaji: '', yrc: '' }
+    if (rec?.source === 'ncm' && rec.ncmId) {
+      try {
+        const resp = await fetch(`/api/music/lyric/${rec.ncmId}`)
+        if (resp.ok) {
+          const fresh = await resp.json()
+          const fields = {
+            original: fresh?.lrc?.lyric || '',
+            translation: fresh?.tlyric?.lyric || '',
+            romaji: fresh?.romalrc?.lyric || '',
+            yrc: fresh?.yrc?.lyric || '',
+          }
+          liveLyrics.value = fields
+          db.setLyricsField(id, fields).catch(() => {})
+        }
+      } catch { /* best-effort */ }
+    } else {
+      // Local track: try IDB lyrics (fire-and-forget)
+      db.getLyricsBundle(id).then(bundle => {
+        if (bundle?.original) liveLyrics.value = { ...liveLyrics.value, original: bundle.original }
+      }).catch(() => {})
+    }
   }
 
   function play() { if (_engine) { _engine.play(); isPlaying.value = true } }
@@ -282,7 +389,6 @@ export function usePlayerStore() {
     loadTrack(queue.value[i], { autoplay: true })
   }
   function prev() {
-    // If we're more than 3s in, restart the current track (familiar behavior); else go back.
     if (currentTime.value > 3 && currentId.value) { seek(0); return }
     const i = calcPrev({ length: queue.value.length, current: currentIndex.value, repeat: repeat.value, shuffle: shuffle.value })
     if (i < 0) return
@@ -304,8 +410,14 @@ export function usePlayerStore() {
   // ---------------- queue / reorder ----------------
   function reorderQueue(from, to) { queue.value = moveItem(queue.value, from, to) }
   function playFromActive(id) {
-    // Start playing `id`, using the active view (library/playlist) as the queue.
     queue.value = activeTracks.value.map((t) => t.id)
+    loadTrack(id, { autoplay: true })
+  }
+  // PHASE 2: play an arbitrary track id, ensuring it's in the queue first. Used by the NCM
+  // search panel ("play this search hit now") without forcing it into the library.
+  function playTrack(id, { contextQueue } = {}) {
+    if (contextQueue && Array.isArray(contextQueue)) queue.value = contextQueue.slice()
+    else if (!queue.value.includes(id)) queue.value = [...queue.value, id]
     loadTrack(id, { autoplay: true })
   }
 
@@ -313,30 +425,28 @@ export function usePlayerStore() {
   async function createPlaylist(name) {
     const pl = makePlaylist({ name: name || 'New Playlist' })
     playlists.value = [...playlists.value, pl]
-    const db = await import('./mediaDb')
     await db.putPlaylist(pl)
     return pl
   }
   async function renamePlaylist(id, name) {
     playlists.value = playlists.value.map((p) => (p.id === id ? { ...p, name } : p))
     const pl = playlists.value.find((p) => p.id === id)
-    if (pl) { const db = await import('./mediaDb'); await db.putPlaylist(pl) }
+    if (pl) { await db.putPlaylist(pl) }
   }
   async function deletePlaylistById(id) {
     playlists.value = playlists.value.filter((p) => p.id !== id)
     if (activePlaylistId.value === id) activePlaylistId.value = ''
-    const db = await import('./mediaDb')
     await db.deletePlaylist(id)
   }
   async function addTrackToPlaylist(playlistId, trackId) {
     playlists.value = playlists.value.map((p) => (p.id === playlistId ? { ...p, trackIds: addId(p.trackIds, trackId) } : p))
     const pl = playlists.value.find((p) => p.id === playlistId)
-    if (pl) { const db = await import('./mediaDb'); await db.putPlaylist(pl) }
+    if (pl) { await db.putPlaylist(pl) }
   }
   async function removeTrackFromPlaylist(playlistId, trackId) {
     playlists.value = playlists.value.map((p) => (p.id === playlistId ? { ...p, trackIds: removeFromList(p.trackIds, trackId) } : p))
     const pl = playlists.value.find((p) => p.id === playlistId)
-    if (pl) { const db = await import('./mediaDb'); await db.putPlaylist(pl) }
+    if (pl) { await db.putPlaylist(pl) }
   }
   function setActivePlaylist(id) {
     activePlaylistId.value = id || ''
@@ -346,15 +456,12 @@ export function usePlayerStore() {
   // ---------------- metadata editing ----------------
   async function updateMetadata(id, patch) {
     tracks.value = tracks.value.map((t) => (t.id === id ? { ...t, ...patch } : t))
-    const db = await import('./mediaDb')
     await db.updateTrackRecord(id, patch)
     if (id === currentId.value) updateSessionMetadata()
   }
 
-  // Export a tagged copy of a track (re-encode via ffmpeg with new ID3 tags). Returns a Blob.
   async function exportTagged(id) {
     const rec = tracks.value.find((t) => t.id === id)
-    const db = await import('./mediaDb')
     const blob = await db.getTrackBlob(id)
     if (!rec || !blob) return null
     const file = new File([blob], rec.name, { type: rec.type || blob.type })
@@ -364,10 +471,16 @@ export function usePlayerStore() {
 
   // ---------------- lyrics ----------------
   async function setLyricsForCurrent(text) {
-    lyricsText.value = text || ''
     if (!currentId.value) return
-    const db = await import('./mediaDb')
-    await db.setLyrics(currentId.value, lyricsText.value)
+    await db.setLyrics(currentId.value, text || '')
+    liveLyrics.value = { ...liveLyrics.value, original: text || '' }
+  }
+
+  // PHASE 2: persist a structured lyric field for the current track (translation / romaji / yrc).
+  async function setLyricsField(field, text) {
+    if (!currentId.value) return
+    await db.setLyricsField(currentId.value, { [field]: text || '' })
+    liveLyrics.value = { ...liveLyrics.value, [field]: text || '' }
   }
 
   // ---------------- session metadata ----------------
@@ -378,78 +491,71 @@ export function usePlayerStore() {
     _engine.setMetadata({ title: t.title, artist: t.artist, album: t.album, artworkUrl: coverUrl.value || '' })
   }
 
-  // ---------------- ONLINE entries (official embeds) ----------------
-  // Add an online entry from a pasted share link. Validates + parses to an OFFICIAL embed URL only
-  // (parseEmbed returns null for anything unsupported). No file/blob — just the iframe descriptor.
-  // Returns the new entry, or { error:'unsupported' } / { error:'dup' }.
-  async function addEmbed(link, label) {
-    const parsed = parseEmbed(link)
-    if (!parsed) return { error: 'unsupported' }
-    if (embeds.value.some((e) => e.embedUrl === parsed.embedUrl)) {
-      const existing = embeds.value.find((e) => e.embedUrl === parsed.embedUrl)
-      selectEmbed(existing.id)
-      return { error: 'dup', entry: existing }
-    }
-    const entry = {
-      id: uid('emb'),
-      platform: parsed.platform,
-      kind: parsed.kind,
-      embedId: parsed.id,
-      embedUrl: parsed.embedUrl,
-      title: (label && label.trim()) || parsed.title,
-      addedAt: Date.now(),
-    }
-    embeds.value = [...embeds.value, entry]
-    await persistKv('embeds', embeds.value)
-    selectEmbed(entry.id)
-    return entry
-  }
-  function selectEmbed(id) {
-    // Showing an online (iframe) player: pause our own audio so the two don't talk over each other.
-    if (id) { pause(); currentEmbedId.value = id }
-    else currentEmbedId.value = ''
-  }
-  async function removeEmbed(id) {
-    embeds.value = embeds.value.filter((e) => e.id !== id)
-    if (currentEmbedId.value === id) currentEmbedId.value = ''
-    await persistKv('embeds', embeds.value)
-  }
-  async function renameEmbed(id, title) {
-    embeds.value = embeds.value.map((e) => (e.id === id ? { ...e, title } : e))
-    await persistKv('embeds', embeds.value)
+  // ---------------- PHASE 2: prefetch the next track + lyrics ----------------
+  // Called after every successful loadTrack. Finds the next track in the queue and warms its
+  // bytes + lyrics in the background so the user gets instant playback + instant lyrics.
+  function schedulePrefetch() {
+    const i = calcNext({ length: queue.value.length, current: currentIndex.value, repeat: repeat.value, shuffle: shuffle.value })
+    if (i < 0) { prefetchState.value = 'idle'; return }
+    const nextId = queue.value[i]
+    const nextRec = tracks.value.find((t) => t.id === nextId)
+    if (!nextRec) { prefetchState.value = 'idle'; return }
+    if (nextRec.source !== 'ncm') { prefetchState.value = 'cached'; return } // local tracks already have bytes
+    ;(async () => {
+      try {
+        // Memory cache only (skip IDB — it can hang).
+        if (_blobCache.has(nextId)) { prefetchState.value = 'cached'; return }
+        prefetchState.value = 'fetching'
+        // Pre-cache lyrics via direct API fetch (skip IDB).
+        try {
+          const lrcResp = await fetch(`/api/music/lyric/${nextRec.ncmId}`)
+          if (lrcResp.ok) {
+            const fresh = await lrcResp.json()
+            db.setLyricsField(nextId, {
+              original: fresh?.lrc?.lyric || '',
+              translation: fresh?.tlyric?.lyric || '',
+              romaji: fresh?.romalrc?.lyric || '',
+              yrc: fresh?.yrc?.lyric || '',
+            }).catch(() => {})
+          }
+        } catch { /* lyrics prefetch is best-effort */ }
+        const ok = await ensurePlayable(nextId, { background: true })
+        prefetchState.value = ok ? 'cached' : 'error'
+      } catch {
+        prefetchState.value = 'error'
+      }
+    })()
   }
 
-  // ---------------- persistence helpers ----------------
-  async function persistKv(key, value) { try { const db = await import('./mediaDb'); await db.kvSet(key, value) } catch { /* ignore */ } }
-  async function persistPosition(forced) {
+  // Fire-and-forget persistence helpers — NEVER await these (IDB can hang on blocked upgrade).
+  function persistKv(key, value) { db.kvSet(key, value).catch(() => {}) }
+  function persistPosition(forced) {
     if (!currentId.value) return
     const pos = forced != null ? forced : currentTime.value
     _positions[currentId.value] = pos
-    try { const db = await import('./mediaDb'); await db.setPosition(currentId.value, pos) } catch { /* ignore */ }
+    db.setPosition(currentId.value, pos).catch(() => {})
   }
 
   return {
     // state
     tracks, playlists, activePlaylistId, queue, currentId, isPlaying, currentTime, duration,
-    volume, rate, shuffle, repeat, abStart, abEnd, search, lyricsText, coverUrl, cacheBytes,
-    cacheCap, ready, busy, embeds, currentEmbedId,
+    volume, rate, shuffle, repeat, abStart, abEnd, search, coverUrl, cacheBytes,
+    cacheCap, ready, busy, liveLyrics, prefetchState, previewRec,
     // derived
-    currentTrack, currentIndex, activeTracks, cacheUsedPct, currentEmbed,
+    currentTrack, currentIndex, activeTracks, cacheUsedPct, isCurrentNcm,
     // lifecycle
     init,
     // library
-    addFile, addFiles, removeTrack, clearCache, setCacheCap,
-    // online embeds
-    addEmbed, selectEmbed, removeEmbed, renameEmbed,
+    addFile, addFiles, addNcmTrack, playNcmPreview, ensurePlayable, removeTrack, clearCache, setCacheCap,
     // playback
     loadTrack, play, pause, toggle, stop, seek, seekRatio, setVolume, setRate,
-    toggleShuffle, cycleRepeat, next, prev,
+    toggleShuffle, cycleRepeat, next, prev, playTrack,
     setA, setB, clearAB,
     // queue
     reorderQueue, playFromActive,
     // playlists
     createPlaylist, renamePlaylist, deletePlaylistById, addTrackToPlaylist, removeTrackFromPlaylist, setActivePlaylist,
     // metadata + lyrics
-    updateMetadata, exportTagged, setLyricsForCurrent,
+    updateMetadata, exportTagged, setLyricsForCurrent, setLyricsField,
   }
 }

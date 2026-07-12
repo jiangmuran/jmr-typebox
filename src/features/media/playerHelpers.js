@@ -69,7 +69,12 @@ export function hashHue(str) {
 
 // Build a track record from a File-like (name/size/type) + optional parsed metadata. Pure: the
 // caller supplies id/now so tests are deterministic; never reads the file bytes.
-export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = Date.now() } = {}) {
+//
+// PHASE 2 extension: the record now carries `source` ('local' | 'ncm') + optional `ncmId` +
+// `urlExpiresAt` so the store can decide whether to fetch fresh bytes from NCM or play straight
+// from IndexedDB. Local-file records default to source='local' and are byte-for-byte identical to
+// the v1 shape — old tests / callers continue to work unchanged.
+export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = Date.now(), source = 'local', ncmId = '', urlExpiresAt = 0 } = {}) {
   return {
     id: id || uid('trk'),
     name: name || 'audio',
@@ -80,8 +85,40 @@ export function makeTrack({ id, name, size = 0, type = '', meta = {}, addedAt = 
     album: meta.album || '',
     duration: Number(meta.duration) || 0,
     hasCover: !!meta.hasCover,
+    coverUrl: meta.coverUrl || '',
     addedAt,
+    // Phase 2: provenance + NCM linkage. Local tracks leave ncmId='' and urlExpiresAt=0.
+    source: source === 'ncm' ? 'ncm' : 'local',
+    ncmId: ncmId ? String(ncmId) : '',
+    urlExpiresAt: Number(urlExpiresAt) || 0,
   }
+}
+
+// Build a track record from a NCM song object (the shape /api/music/search and /song/detail
+// return). Centralises the field-mapping so the store / search UI / playlist importer all see a
+// consistent track shape regardless of which NCM endpoint produced it.
+export function makeNcmTrack(ncmSong, { addedAt = Date.now() } = {}) {
+  const id = ncmSong?.id != null ? String(ncmSong.id) : ''
+  if (!id) return null
+  // NCM song objects nest different bitrate/file shapes under h/m/l/sq/hr; pull size/duration
+  // from whichever is present. dt is duration in ms; the {h,m,l} objects have {size,br}.
+  const dt = Number(ncmSong.dt) || 0
+  const sizeFrom = ncmSong.h || ncmSong.m || ncmSong.l || ncmSong.sq || {}
+  return makeTrack({
+    name: `${ncmSong.name || `ncm_${id}`}.mp3`,
+    size: Number(sizeFrom.size) || 0,
+    type: 'audio/mpeg',
+    meta: {
+      title: ncmSong.name || '',
+      artist: (ncmSong.ar || []).map((a) => a.name).filter(Boolean).join(' / '),
+      album: ncmSong.al?.name || '',
+      duration: Math.floor(dt / 1000),
+      coverUrl: ncmSong.al?.picUrl || '',
+    },
+    source: 'ncm',
+    ncmId: id,
+    addedAt,
+  })
 }
 
 // Move the item at `from` to `to` within an array (drag reorder). Returns a NEW array; out-of-range

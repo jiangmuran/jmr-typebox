@@ -8,6 +8,7 @@
 //   • MOBILE (<900px): a full-screen, swipeable 3-panel deck — Now-Playing ⇄ Lyrics ⇄ Queue — with
 //     dot indicators; the persistent bottom mini-player (MediaShell) stays below.
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import ClientOnly from '../../components/ClientOnly.vue'
@@ -23,12 +24,13 @@ import { useHandoff } from '../../composables/useHandoff'
 
 const { meta: m } = useRouteHead()
 const { t } = useI18n()
+const router = useRouter()
 const store = usePlayerStore()
 const pool = useMediaPool()
 const handoff = useHandoff()
 
-// Desktop right-pane toggle: now-playing vs lyrics.
-const rightTab = ref('now') // 'now' | 'lyrics'
+// Desktop layout mode: 'split' = NowPlaying left + Lyrics right (default); 'library' = show library.
+const desktopMode = ref('split')
 // Mobile swipe deck index: 0 = now, 1 = lyrics, 2 = queue.
 const panel = ref(0)
 const PANELS = ['now', 'lyrics', 'queue']
@@ -79,21 +81,33 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
       <h1 class="sr-only">{{ m.h1 }}</h1>
       <MediaToolNav />
       <ClientOnly>
-        <!-- DESKTOP: two columns -->
+        <!-- DESKTOP: split view (NowPlaying + Lyrics side by side) or Library overlay -->
         <div class="pl-desktop">
-          <section class="pl-col pl-left">
+          <div class="pl-desktop-bar">
+            <button class="pl-bar-btn" :class="{ on: desktopMode === 'split' }" @click="desktopMode = 'split'">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="2" width="6" height="12" rx="1"/><rect x="9" y="2" width="6" height="12" rx="1"/></svg>
+              {{ t('media.player.nowPlaying') }}
+            </button>
+            <button class="pl-bar-btn" :class="{ on: desktopMode === 'library' }" @click="desktopMode = 'library'">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+              {{ t('media.player.tabFiles') }}
+            </button>
+            <button class="pl-bar-btn pl-fullscreen-btn" @click="router ? router.push('/media/lyrics') : null">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 2h5M14 2h-5M2 14h5M14 14h-5M2 2v5M2 14v-5M14 2v5M14 14v-5"/></svg>
+              {{ t('media.player.fullLyrics') }}
+            </button>
+          </div>
+
+          <!-- Split mode: NowPlaying (left) + Lyrics (right) -->
+          <div v-show="desktopMode === 'split'" class="pl-split">
+            <section class="pl-split-left"><NowPlaying @edit-tags="editTagsFor = $event" /></section>
+            <section class="pl-split-right"><PlayerLyrics /></section>
+          </div>
+
+          <!-- Library mode -->
+          <div v-show="desktopMode === 'library'" class="pl-lib-full">
             <PlayerLibrary />
-          </section>
-          <section class="pl-col pl-right">
-            <div class="pl-right-tabs">
-              <button :class="{ on: rightTab === 'now' }" @click="rightTab = 'now'">{{ t('media.player.nowPlaying') }}</button>
-              <button :class="{ on: rightTab === 'lyrics' }" @click="rightTab = 'lyrics'">{{ t('media.player.lyrics') }}</button>
-            </div>
-            <div class="pl-right-body">
-              <div v-show="rightTab === 'now'" class="pl-now"><NowPlaying @edit-tags="editTagsFor = $event" /></div>
-              <div v-show="rightTab === 'lyrics'" class="pl-lyrics-pane"><PlayerLyrics /></div>
-            </div>
-          </section>
+          </div>
         </div>
 
         <!-- MOBILE: swipeable 3-panel deck -->
@@ -124,15 +138,17 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
 @keyframes tbIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ---------- DESKTOP ---------- */
-.pl-desktop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 22px; align-items: start; }
-.pl-col { min-width: 0; }
-.pl-left { height: calc(100dvh - 220px); min-height: 420px; }
-.pl-right { display: flex; flex-direction: column; gap: 14px; }
-.pl-right-tabs { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border-radius: 9px; align-self: flex-start; }
-.pl-right-tabs button { padding: 7px 16px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all 0.15s; }
-.pl-right-tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
-.pl-right-body { min-height: 0; }
-.pl-lyrics-pane { height: calc(100dvh - 280px); min-height: 380px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.pl-desktop { display: flex; flex-direction: column; gap: 14px; }
+.pl-desktop-bar { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border-radius: 9px; align-self: flex-start; }
+.pl-bar-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all 0.15s; }
+.pl-bar-btn svg { width: 14px; height: 14px; }
+.pl-bar-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
+.pl-bar-btn.pl-fullscreen-btn { margin-left: auto; }
+
+.pl-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
+.pl-split-left { min-width: 0; }
+.pl-split-right { min-width: 0; height: calc(100dvh - 240px); min-height: 400px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.pl-lib-full { height: calc(100dvh - 240px); min-height: 400px; }
 
 .pl-mobile { display: none; }
 

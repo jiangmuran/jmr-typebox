@@ -110,3 +110,136 @@ export function looksLikeLrc(input) {
   TS_RE.lastIndex = 0
   return TS_RE.test(String(input || ''))
 }
+
+// ---------------------------------------------------------------------------
+// PHASE 2: sentence-level navigation helpers. The classic .lrc parser above only ANSWERS "what
+// line is active at time t"; these new helpers let the player go the OTHER direction — given a
+// line index, return its time, or find the prev/next line boundary so users can jump by SENTENCE
+// rather than by ±10s. All operate on the same `lines` shape `parseLrc` returns, so they're
+// trivially unit-testable in node.
+// ---------------------------------------------------------------------------
+
+// Safe line getter — `lines[i]` with bounds clamping; returns null when out of range.
+export function lineAt(lines, index) {
+  if (!Array.isArray(lines) || index < 0 || index >= lines.length) return null
+  return lines[index] || null
+}
+
+// Time of a line by index (seconds). Returns 0 for out-of-range / untimed lines so seeking is a
+// no-op rather than NaN.
+export function timeOfLine(lines, index) {
+  const l = lineAt(lines, index)
+  return l && l.time >= 0 ? l.time : 0
+}
+
+// Index of the line that BEGINS BEFORE `t` (the active line). Same as activeLineIndex but exposed
+// under a clearer name for the navigation surface.
+export function currentLineIndex(lines, t, offset = 0) {
+  return activeLineIndex(lines, t, offset)
+}
+
+// Index of the previous line relative to time `t` (the line whose time is strictly less than the
+// active line's time). Returns -1 if there is no previous line (we're at the very start).
+export function prevLineIndex(lines, t, offset = 0) {
+  const cur = activeLineIndex(lines, t, offset)
+  if (cur <= 0) return -1
+  return cur - 1
+}
+
+// Index of the next line relative to time `t` (the line whose time is strictly greater). Returns
+// -1 if there is no next line (we're past the last lyric).
+export function nextLineIndex(lines, t, offset = 0) {
+  if (!Array.isArray(lines) || !lines.length) return -1
+  const cur = activeLineIndex(lines, t, offset)
+  // Untimed (plain-text) lines all have time -1 → activeLineIndex returns -1; treat that as
+  // "before the first line" so the next call returns the first index.
+  const base = cur < 0 ? -1 : cur
+  if (base + 1 >= lines.length) return -1
+  return base + 1
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 2: parseYrc — NCM's per-syllable KTV timing format. The wire format looks like:
+//
+//   [1318,4000](1318,444,0)窗 (1764,222,0)外 (1988,1000,0)的 ...
+//
+// where the leading [start,dur] is a per-line bracket and each (start,dur,word_pitch) wraps one
+// syllable. We surface a `lines: [{ time, duration, words: [{ start, dur, text }] }]` shape so
+// the KTV view can render character-by-character highlighting driven by currentTime.
+//
+// This parser is forgiving: anything it can't tokenise falls through to a single-word line, so a
+// partially-broken yrc still plays. Returns { lines, synced:true } on success, or
+// { lines: [], synced:false } when the input doesn't look like yrc.
+const YRC_LINE_RE = /\[(\d+),(\d+)\]/g           // [startMs,durMs]
+const YRC_WORD_RE = /\((\d+),(\d+),([^)]*)\)/g    // (startMs,durMs,pitchOrExtra)
+
+export function parseYrc(input) {
+  const text = String(input == null ? '' : input)
+  if (!text.includes('[') || !text.includes('(')) return { lines: [], synced: false }
+  const lines = []
+  // Walk line by line; each line begins with a [start,dur] bracket then any number of (s,d,x) words.
+  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const lineMatch = line.match(/\[(\d+),(\d+)\]/)
+    if (!lineMatch) continue
+    const lineStart = parseInt(lineMatch[1], 10)
+    const lineDur = parseInt(lineMatch[2], 10)
+    // Pull every (start,dur,extra) word from the rest of the line.
+    const words = []
+    let m
+    YRC_WORD_RE.lastIndex = 0
+    while ((m = YRC_WORD_RE.exec(line)) !== null) {
+      const wStart = parseInt(m[1], 10)
+      const wDur = parseInt(m[2], 10)
+      // m[3] is "pitch" (an integer) in older yrc, or sometimes a hex string in newer ones;
+      // we don't render pitch, so we ignore it. The actual character/text is whatever sits
+      // AFTER the closing paren up to the next opening paren — collect those by stripping all
+      // (...) and [...] groups from the line and re-aligning offsets is fiddly; instead we
+      // parse the words by walking the original regex matches and slicing the text between them.
+      words.push({ start: wStart, dur: wDur, text: '' })
+    }
+    // Now backfill the text by scanning the line character-by-character between word matches.
+    // Each `(s,d,x)` is immediately followed by its visible text; the next `(` starts the next
+    // syllable. We do a single pass eating "(" ... ")" then reading literal chars up to "(".
+    let i = line.indexOf('(')
+    for (let w = 0; w < words.length; w++) {
+      const close = line.indexOf(')', i)
+      if (close < 0) break
+      let end = line.indexOf('(', close + 1)
+      if (end < 0) end = line.length
+      // Strip a trailing [..] if this word is the last on the line and a bracket opens right
+      // after (rare but seen in some yrc variants).
+      const raw = line.slice(close + 1, end)
+      words[w].text = raw
+      i = end
+    }
+    lines.push({ time: lineStart / 1000, duration: lineDur / 1000, words })
+  }
+  if (!lines.length) return { lines: [], synced: false }
+  lines.sort((a, b) => a.time - b.time)
+  return { lines, synced: true }
+}
+
+// Given yrc lines + currentTime, return { lineIndex, wordIndex } for the active syllable. Both
+// are -1 when not playing inside any line. Cheap to call every animation frame.
+export function activeYrcIndices(lines, t) {
+  if (!Array.isArray(lines) || !lines.length) return { lineIndex: -1, wordIndex: -1 }
+  const time = Number(t) || 0
+  // Find the active LINE (last one whose time ≤ t).
+  let li = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].time <= time) li = i; else break
+  }
+  if (li < 0) return { lineIndex: -1, wordIndex: -1 }
+  const line = lines[li]
+  // Find the active WORD inside the line (start ≤ t < start+dur, in seconds).
+  let wi = -1
+  for (let i = 0; i < line.words.length; i++) {
+    const ws = line.words[i].start / 1000
+    const we = ws + line.words[i].dur / 1000
+    if (time >= ws && time < we) { wi = i; break }
+    if (time >= ws) wi = i // last-resort: last word whose start ≤ t (covers the trailing gap)
+  }
+  return { lineIndex: li, wordIndex: wi }
+}

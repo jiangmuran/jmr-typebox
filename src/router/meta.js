@@ -131,6 +131,16 @@ export const ROUTE_META = {
     h1: 'Music Player',
     keywords: 'music player, local music player, offline player, lrc lyrics, synced lyrics, id3 tags, playlist, waveform, 音乐播放器, 本地播放器, 歌词',
   },
+  // Phase 2: full-screen immersive lyrics — same track, art-piece presentation. Not prerendered
+  // separately (it's a client-only view reached from the player); we still list it so the router
+  // knows about it. The `noindex` flag keeps it out of sitemap.xml.
+  '/media/lyrics': {
+    title: 'Lyrics — TypeBox',
+    description: 'Full-screen synced lyrics.',
+    h1: 'Lyrics',
+    keywords: 'lyrics, full screen lyrics, ktv, 音乐, 歌词, 全屏歌词',
+    noindex: true,
+  },
   // Compression tool — shrink a video (CRF/scale/fps/codec) or audio (bitrate), in-browser.
   '/media/compress': {
     title: 'Compress Video & Audio Online — Smaller MP4/MP3 — TypeBox',
@@ -260,6 +270,18 @@ export const ROUTE_META = {
     description: 'Open and preview Excel (.xlsx) spreadsheets and PowerPoint (.pptx) slides in your browser. Edit spreadsheet cells and re-download as .xlsx. Private, no upload.',
     h1: 'Spreadsheet & Slides Viewer',
     keywords: 'xlsx viewer, excel viewer online, open xlsx, pptx viewer, powerpoint viewer, edit spreadsheet, view slides, 表格预览, 幻灯片预览',
+  },
+  // Phase 3: admin surface — biometric-gated dashboard for the player. Not in the top-nav, not
+  // in the command palette, not in sitemap.xml. Reached by direct URL only. The page handles its
+  // own auth state machine (bind / login / dashboard) inside <ClientOnly>.
+  '/admin': {
+    title: 'Admin — TypeBox',
+    description: 'Admin dashboard for the TypeBox music player.',
+    h1: 'Admin',
+    keywords: 'admin',
+    noindex: true,
+    inNav: false,
+    inCommandPalette: false,
   },
 }
 
