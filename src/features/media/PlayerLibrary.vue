@@ -10,7 +10,7 @@ import { ref, computed } from 'vue'
 import { usePlayerStore } from './usePlayerStore'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
-import { filterTracks, formatTime, formatBytes, initialOf, hashHue } from './playerHelpers'
+import { filterTracks, formatTime, formatBytes, initialOf, hashHue, ncmThumb } from './playerHelpers'
 import NcmSearchPanel from './NcmSearchPanel.vue'
 import NcmPlaylistDetail from './NcmPlaylistDetail.vue'
 
@@ -30,6 +30,9 @@ const ncmPlaylistOpen = ref('')
 // Active list = the playlist's tracks (or the whole library), filtered by the local search box.
 const list = computed(() => filterTracks(store.activeTracks.value, store.search.value))
 const cacheLabel = computed(() => `${formatBytes(store.cacheBytes.value)} / ${formatBytes(store.cacheCap.value)}`)
+// Drag-reorder only works on the unfiltered collection — with a search filter active the row
+// indices don't map onto the underlying order, so dragging is disabled instead of scrambling it.
+const canReorder = computed(() => !store.search.value.trim())
 
 function openNcmPlaylist(id) { ncmPlaylistOpen.value = String(id || '') }
 function closeNcmPlaylist() { ncmPlaylistOpen.value = '' }
@@ -63,22 +66,43 @@ function onPaste(e) {
   if (files?.length) addFiles(files)
 }
 
-// ---- drag reorder ----
+// ---- drag reorder (reorders the visible collection; the play queue follows) ----
 let dragIndex = -1
-function onItemDragStart(i, e) { dragIndex = i; e.dataTransfer.effectAllowed = 'move' }
-function onItemDragOver(i, e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+function onItemDragStart(i, e) { if (!canReorder.value) return; dragIndex = i; e.dataTransfer.effectAllowed = 'move' }
+function onItemDragOver(i, e) { if (!canReorder.value) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
 function onItemDrop(i) {
-  if (dragIndex < 0 || dragIndex === i) { dragIndex = -1; return }
-  store.reorderQueue(dragIndex, i)
+  if (!canReorder.value || dragIndex < 0 || dragIndex === i) { dragIndex = -1; return }
+  store.reorderTracks(dragIndex, i)
   dragIndex = -1
 }
 
-function play(id) { store.playFromActive(id) }
+async function play(id) {
+  const ok = await store.playFromActive(id)
+  if (ok === false) showToast(t('media.player.cantPlay'))
+}
 function isCurrent(id) { return store.currentId.value === id && store.isPlaying.value }
 function isNcm(rec) { return rec?.source === 'ncm' }
 
-async function removeOne(id) { menuFor.value = ''; await store.removeTrack(id) }
+async function removeOne(id) {
+  menuFor.value = ''
+  // Deleting a track destroys its stored bytes (a user upload is unrecoverable) — confirm.
+  const tr = store.tracks.value.find((x) => x.id === id)
+  const msg = t('media.player.deleteConfirm').replace('{t}', tr?.title || tr?.name || '')
+  if (typeof window !== 'undefined' && !window.confirm(msg)) return
+  await store.removeTrack(id)
+}
+// Remove from the CURRENT playlist only — the track stays in the library.
+async function removeFromActivePl(trackId) {
+  menuFor.value = ''
+  await store.removeTrackFromPlaylist(store.activePlaylistId.value, trackId)
+}
 async function addToPl(playlistId, trackId) { menuFor.value = ''; await store.addTrackToPlaylist(playlistId, trackId); showToast(t('media.player.addedToPlaylist')) }
+async function deletePl(id) {
+  const pl = store.playlists.value.find((p) => p.id === id)
+  const msg = t('media.player.deletePlaylistConfirm').replace('{t}', pl?.name || '')
+  if (typeof window !== 'undefined' && !window.confirm(msg)) return
+  await store.deletePlaylistById(id)
+}
 
 async function createPlaylist() {
   const name = newPlaylistName.value.trim()
@@ -124,7 +148,7 @@ async function clearCache() {
         </button>
         <button v-for="p in store.playlists.value" :key="p.id" class="pl-chip" :class="{ on: store.activePlaylistId.value === p.id }" @click="store.setActivePlaylist(p.id)">
           {{ p.name }} <span class="pl-count">{{ p.trackIds.length }}</span>
-          <span class="pl-del" @click.stop="store.deletePlaylistById(p.id)" :title="t('media.player.deletePlaylist')">×</span>
+          <span class="pl-del" @click.stop="deletePl(p.id)" :title="t('media.player.deletePlaylist')">×</span>
         </button>
         <button v-if="!newPlaylistOpen" class="pl-add" @click="newPlaylistOpen = true" :title="t('media.player.newPlaylist')">+</button>
         <form v-else class="pl-new" @submit.prevent="createPlaylist">
@@ -169,14 +193,14 @@ async function clearCache() {
             :key="tr.id"
             class="track"
             :class="{ current: store.currentId.value === tr.id, ncm: isNcm(tr) }"
-            draggable="true"
+            :draggable="canReorder"
             @dragstart="onItemDragStart(i, $event)"
             @dragover="onItemDragOver(i, $event)"
             @drop="onItemDrop(i)"
             @dblclick="play(tr.id)"
           >
             <button class="track-art" @click="play(tr.id)" :title="t('media.player.play')">
-              <img v-if="tr.coverUrl" :src="tr.coverUrl + '?param=80x80'" alt="" loading="lazy" />
+              <img v-if="tr.coverUrl" :src="ncmThumb(tr.coverUrl, 80)" alt="" loading="lazy" />
               <span v-else class="track-art-ph" :style="{ '--ph-hue': hashHue(tr.title || tr.name) }">{{ initialOf(tr.title || tr.name) }}</span>
               <span v-if="isNcm(tr)" class="track-src-mark" title="NCM">♪</span>
               <span class="track-play-overlay">
@@ -196,11 +220,14 @@ async function clearCache() {
               <div v-if="menuFor === tr.id" class="track-menu" @click.stop>
                 <div v-if="store.playlists.value.length" class="tm-section">{{ t('media.player.addTo') }}</div>
                 <button v-for="p in store.playlists.value" :key="p.id" class="tm-item" @click="addToPl(p.id, tr.id)">{{ p.name }}</button>
+                <button v-if="store.activePlaylistId.value" class="tm-item" @click="removeFromActivePl(tr.id)">{{ t('media.player.removeFromPlaylist') }}</button>
                 <button class="tm-item danger" @click="removeOne(tr.id)">{{ t('media.player.remove') }}</button>
               </div>
             </div>
           </li>
         </ul>
+        <!-- Click-away closes the row menu (it used to stay open until you re-clicked the ⋯). -->
+        <div v-if="menuFor" class="menu-scrim" @click="menuFor = ''"></div>
       </div>
 
       <!-- Cache footer -->
@@ -219,7 +246,7 @@ async function clearCache() {
 .lib { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; }
 
 .lib-source { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border-radius: 9px; flex-shrink: 0; }
-.lib-source button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all 0.15s; }
+.lib-source button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all var(--dur-1); }
 .lib-source button svg { width: 14px; height: 14px; }
 .lib-source button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .lib-source button.on svg { color: var(--accent); }
@@ -228,7 +255,7 @@ async function clearCache() {
 .ncm-pane { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding-right: 2px; }
 
 .lib-playlists { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
-.pl-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid var(--border-light); border-radius: 99px; background: var(--surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
+.pl-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid var(--border-light); border-radius: 99px; background: var(--surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1); }
 .pl-chip:hover { color: var(--text); }
 .pl-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pl-count { font-size: 10px; opacity: 0.7; font-variant-numeric: tabular-nums; }
@@ -242,12 +269,12 @@ async function clearCache() {
 .lib-search { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .lib-search svg { width: 15px; height: 15px; color: var(--text-tertiary); flex-shrink: 0; }
 .lib-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; font-family: var(--font-sans); padding: 9px 0; outline: none; min-width: 0; }
-.add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1); white-space: nowrap; }
 .add-btn:hover { border-color: var(--accent); }
 .add-btn svg { width: 14px; height: 14px; }
 .add-btn.solid { background: var(--text); color: var(--bg); border: none; }
 
-.lib-list { flex: 1; min-height: 160px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow-y: auto; transition: border-color 0.2s, background 0.2s; }
+.lib-list { flex: 1; min-height: 160px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow-y: auto; transition: border-color var(--dur-2), background var(--dur-2); }
 .lib-list.over { border-color: var(--accent); border-style: dashed; background: var(--accent-bg); }
 .lib-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 44px 24px; text-align: center; color: var(--text-tertiary); }
 .lib-empty.small { padding: 30px; }
@@ -257,7 +284,7 @@ async function clearCache() {
 .lib-empty-cta { display: flex; gap: 8px; margin-top: 8px; }
 
 .track-ul { list-style: none; }
-.track { display: flex; align-items: center; gap: 11px; padding: 8px 12px; border-bottom: 1px solid var(--border-light); cursor: default; transition: background 0.12s; position: relative; }
+.track { display: flex; align-items: center; gap: 11px; padding: 8px 12px; border-bottom: 1px solid var(--border-light); cursor: default; transition: background var(--dur-1); position: relative; }
 .track:last-child { border-bottom: none; }
 .track:hover { background: var(--surface-hover); }
 .track.current { background: var(--accent-bg); }
@@ -265,7 +292,7 @@ async function clearCache() {
 .track-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .track-art-ph { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 15px; font-weight: 700; color: var(--text); background: linear-gradient(135deg, color-mix(in srgb, hsl(var(--ph-hue, 40), 26%, 50%) 22%, var(--surface-hover)), var(--surface-hover)); }
 .track-src-mark { position: absolute; top: 0; right: 0; background: var(--accent); color: var(--accent-text); font-size: 8px; font-weight: 700; padding: 1px 3px; border-bottom-left-radius: 6px; }
-.track-play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.15s; }
+.track-play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity var(--dur-1); }
 .track-art:hover .track-play-overlay, .track.current .track-play-overlay { opacity: 1; }
 .track-play-overlay svg { width: 18px; height: 18px; color: #fff; }
 .track-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
@@ -277,6 +304,7 @@ async function clearCache() {
 .track-menu-btn:hover { background: var(--surface-active); color: var(--text); }
 .track-menu-btn svg { width: 15px; height: 15px; }
 .track-menu { position: absolute; right: 0; top: 32px; z-index: 20; min-width: 150px; padding: 5px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 10px; box-shadow: var(--shadow-lg); }
+.menu-scrim { position: fixed; inset: 0; z-index: 15; }
 .tm-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); padding: 5px 9px 3px; }
 .tm-item { display: block; width: 100%; text-align: left; padding: 7px 9px; border: none; background: none; color: var(--text); font-size: 12.5px; font-family: var(--font-sans); border-radius: 7px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tm-item:hover { background: var(--surface-hover); }
@@ -284,7 +312,7 @@ async function clearCache() {
 
 .lib-cache { flex-shrink: 0; }
 .cache-bar { height: 4px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; margin-bottom: 6px; }
-.cache-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.3s; }
+.cache-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-3); }
 .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cache-label { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cache-clear { border: none; background: none; color: var(--text-tertiary); font-size: 11px; font-family: var(--font-sans); cursor: pointer; text-decoration: underline; }

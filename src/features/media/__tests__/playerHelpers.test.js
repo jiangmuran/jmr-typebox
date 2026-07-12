@@ -3,7 +3,7 @@ import {
   uid, formatTime, formatBytes, titleFromName, initialOf, hashHue,
   makeTrack, moveItem, nextIndex, prevIndex,
   totalSize, exceedsCap, remainingCap, DEFAULT_CACHE_CAP,
-  filterTracks, makePlaylist, addToPlaylist, removeFromList,
+  filterTracks, makePlaylist, addToPlaylist, removeFromList, ncmThumb,
 } from '../playerHelpers'
 
 describe('ids + formatting', () => {
@@ -170,5 +170,20 @@ describe('playlist records', () => {
   })
   it('removeFromList strips all occurrences', () => {
     expect(removeFromList(['a', 'b', 'a'], 'a')).toEqual(['b'])
+  })
+})
+
+describe('ncmThumb (cover thumbnail URL)', () => {
+  it('appends the NCM resize param to http(s) covers', () => {
+    expect(ncmThumb('https://p1.music.126.net/x.jpg', 80)).toBe('https://p1.music.126.net/x.jpg?param=80x80')
+    expect(ncmThumb('https://p1.music.126.net/x.jpg?a=1', 120)).toBe('https://p1.music.126.net/x.jpg?a=1&param=120x120')
+  })
+  it('leaves blob:/data: URLs untouched — a query string breaks them', () => {
+    expect(ncmThumb('blob:http://x/abc-123')).toBe('blob:http://x/abc-123')
+    expect(ncmThumb('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA')
+  })
+  it('empty in → empty out', () => {
+    expect(ncmThumb('')).toBe('')
+    expect(ncmThumb(null)).toBe('')
   })
 })

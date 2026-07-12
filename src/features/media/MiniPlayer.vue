@@ -68,8 +68,9 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
           <button class="mini-btn" @click="store.prev()" :aria-label="t('media.player.prev')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
           </button>
-          <button class="mini-btn play" @click="store.toggle()" :aria-label="store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
-            <svg v-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          <button class="mini-btn play" :class="{ buffering: store.buffering.value }" @click="store.toggle()" :aria-label="store.buffering.value ? t('media.player.buffering') : store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
+            <span v-if="store.buffering.value" class="mini-spin"></span>
+            <svg v-else-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
             <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </button>
           <button class="mini-btn" @click="store.next()" :aria-label="t('media.player.next')">
@@ -87,7 +88,7 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
    saturate(180%) to keep the album cover legible through it. */
 .mini { position: sticky; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--bar-bg); backdrop-filter: saturate(180%) blur(40px); -webkit-backdrop-filter: saturate(180%) blur(40px); border-top: 1px solid var(--border-light); }
 .mini-seek { height: 3px; background: var(--surface-hover); cursor: pointer; position: relative; }
-.mini-seek-fill { height: 100%; background: var(--accent); transition: width 0.15s linear; }
+.mini-seek-fill { height: 100%; background: var(--accent); transition: width var(--dur-1) linear; }
 .mini-seek:hover { height: 6px; }
 .mini-body { display: flex; align-items: center; gap: 12px; padding: 8px 14px; max-width: 1120px; margin: 0 auto; }
 
@@ -102,12 +103,13 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
 .mini-sub { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-variant-numeric: tabular-nums; }
 
 .mini-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.mini-btn { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text); cursor: pointer; border-radius: 9px; transition: background 0.15s; }
+.mini-btn { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text); cursor: pointer; border-radius: 9px; transition: background var(--dur-1); }
 .mini-btn:hover { background: var(--surface-hover); }
 .mini-btn svg { width: 22px; height: 22px; }
 .mini-btn.play { background: var(--text); color: var(--bg); }
 .mini-btn.play:hover { opacity: 0.9; background: var(--text); }
 .mini-btn.play svg { width: 20px; height: 20px; }
+.mini-spin { width: 16px; height: 16px; border: 2px solid color-mix(in srgb, var(--bg) 35%, transparent); border-top-color: var(--bg); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 /* Prefetch status badge — small, monochrome, in the surface-active circle. */
 .mini-prefetch { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--surface-active); color: var(--text-secondary); margin-left: 4px; }

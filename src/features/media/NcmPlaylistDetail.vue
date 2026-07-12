@@ -113,17 +113,13 @@ const importProgress = computed(() => {
   return Math.round((importDone.value / importTotal.value) * 100)
 })
 
-// Per-track play / cache.
+// Per-track play = PREVIEW, same contract as the search panel: playing one song must not
+// touch the library. (This used to addNcmTrack EVERY track in the playlist to build a queue —
+// clicking a single song in a 500-track playlist silently imported all 500 records.)
+// "Play all" / "Import all" remain the explicit bulk actions.
 async function playSong(song) {
-  const rec = await store.addNcmTrack(song)
-  if (!rec) return
-  // Build context queue from the visible tracks.
-  const ids = []
-  for (const s of tracks.value) {
-    const r = await store.addNcmTrack(s)
-    if (r) ids.push(r.id)
-  }
-  store.playTrack(rec.id, { contextQueue: ids })
+  const ok = await store.playNcmPreview(song)
+  if (!ok) showToast(t('media.ncm.playFailed'))
 }
 async function cacheSong(song) {
   const rec = await store.addNcmTrack(song)
@@ -218,12 +214,12 @@ function coverOf(item) { return item?.al?.picUrl || '' }
 
 .npd-progress { padding: 8px 4px; }
 .npd-progress-bar { height: 4px; background: var(--surface-hover); border-radius: 2px; overflow: hidden; }
-.npd-progress-fill { height: 100%; background: var(--accent); transition: width 0.3s var(--ease-out); }
+.npd-progress-fill { height: 100%; background: var(--accent); transition: width var(--dur-3) var(--ease-out); }
 .npd-progress-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11.5px; color: var(--text-secondary); }
 .link-btn { background: none; border: none; color: var(--accent); font-family: var(--font-sans); font-size: 11.5px; cursor: pointer; padding: 0; }
 
 .npd-tracks { display: flex; flex-direction: column; }
-.npd-track { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; transition: background 0.12s; }
+.npd-track { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; transition: background var(--dur-1); }
 .npd-track:hover { background: var(--surface-hover); }
 .npd-num { width: 24px; text-align: right; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .npd-track-art { width: 36px; height: 36px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: var(--surface-hover); }
@@ -232,9 +228,9 @@ function coverOf(item) { return item?.al?.picUrl || '' }
 .npd-track-title { font-size: 13px; font-weight: 550; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .npd-track-sub { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .npd-track-dur { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.npd-track-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.npd-track-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-1); }
 .npd-track:hover .npd-track-actions { opacity: 1; }
-.row-act { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 7px; transition: all 0.12s; }
+.row-act { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 7px; transition: all var(--dur-1); }
 .row-act:hover { background: var(--surface-active); color: var(--text); }
 .row-act.primary { color: var(--accent); }
 .row-act svg { width: 16px; height: 16px; }

@@ -39,6 +39,14 @@ const editTagsFor = ref('')
 
 onMounted(async () => {
   await store.init()
+  // Land where the user's next action is: with nothing playing (first visit, or no resumable
+  // track) the split view is just an empty "Nothing playing" screen and the library — the only
+  // useful surface — hides behind a tab. Default to the library in that case; keep the split
+  // view when a track is loaded/resumed.
+  if (!store.currentId.value) {
+    desktopMode.value = 'library'
+    panel.value = 2
+  }
   // Cross-module "Send to →": add a file sent here from another tool to the library and play it.
   const taken = handoff.take(['av', 'audio', 'video'])
   if (taken?.payload) {

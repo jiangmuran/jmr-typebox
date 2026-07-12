@@ -18,6 +18,7 @@ function createEngine() {
     ended: new Set(),    // ()
     loaded: new Set(),   // (duration)
     error: new Set(),    // (err)
+    buffering: new Set(),// (isBuffering) — true on stall/waiting, false once playable
   }
   const fire = (set, ...args) => { for (const fn of set) { try { fn(...args) } catch { /* ignore */ } } }
 
@@ -27,7 +28,13 @@ function createEngine() {
   audio.addEventListener('pause', () => { fire(handlers.pause); setSessionState('paused') })
   audio.addEventListener('ended', () => fire(handlers.ended))
   audio.addEventListener('loadedmetadata', () => fire(handlers.loaded, audio.duration))
-  audio.addEventListener('error', () => fire(handlers.error, audio.error))
+  audio.addEventListener('error', () => { fire(handlers.buffering, false); fire(handlers.error, audio.error) })
+  // Buffering: 'waiting'/'stalled' → the transport is waiting on data; 'playing'/'canplay' → ready.
+  // Drives a spinner on the play button so a slow NCM stream / mid-track stall is visible.
+  audio.addEventListener('waiting', () => fire(handlers.buffering, true))
+  audio.addEventListener('stalled', () => fire(handlers.buffering, true))
+  audio.addEventListener('playing', () => fire(handlers.buffering, false))
+  audio.addEventListener('canplay', () => fire(handlers.buffering, false))
 
   let curObjectUrl = null
   function setSource(blobOrUrl) {

@@ -82,20 +82,26 @@ function onLineClick(line) {
   if (line.time >= 0) store.seek(line.time)
 }
 
-// Long-press context menu (mobile) / right-click (desktop).
+// Long-press context menu (mobile) / right-click (desktop). Coordinates are clamped to the
+// viewport HERE — the template previously did `Math.min(x, window.innerWidth - 220)` inline,
+// but `window` doesn't exist in a Vue template scope, so opening the menu threw and killed
+// the whole panel render.
 const menuFor = ref(null) // { line, x, y }
+function openLineMenu(line, x, y) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+  menuFor.value = { line, x: Math.max(8, Math.min(x || 0, vw - 220)), y: Math.max(8, Math.min(y || 0, vh - 280)) }
+}
 let pressTimer = null
 function onLineTouchStart(line, e) {
   if (pressTimer) clearTimeout(pressTimer)
   const touch = e.touches?.[0]
-  pressTimer = setTimeout(() => {
-    menuFor.value = { line, x: touch?.clientX || 0, y: touch?.clientY || 0 }
-  }, 500)
+  pressTimer = setTimeout(() => { openLineMenu(line, touch?.clientX, touch?.clientY) }, 500)
 }
 function onLineTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
 function onLineContextMenu(line, e) {
   e.preventDefault()
-  menuFor.value = { line, x: e.clientX, y: e.clientY }
+  openLineMenu(line, e.clientX, e.clientY)
 }
 function closeMenu() { menuFor.value = null }
 
@@ -177,7 +183,7 @@ function hasViewContent(key) {
     </div>
 
     <!-- Long-press / right-click context menu. Teleported to body via inline positioning. -->
-    <div v-if="menuFor" class="ll-menu" :style="{ left: Math.min(menuFor.x, window.innerWidth - 220) + 'px', top: Math.min(menuFor.y, window.innerHeight - 280) + 'px' }" @click.stop>
+    <div v-if="menuFor" class="ll-menu" :style="{ left: menuFor.x + 'px', top: menuFor.y + 'px' }" @click.stop>
       <div class="ll-menu-line">{{ menuFor.line.text || '·' }}</div>
       <button class="ll-menu-item" @click="playFromLine">▶ {{ t('media.lyrics.menuPlayFrom') }}</button>
       <button class="ll-menu-item" @click="setA">A {{ t('media.lyrics.menuSetA') }}</button>
@@ -200,7 +206,7 @@ function hasViewContent(key) {
 .lp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 60px 16px; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .lp-scroll.ktv { padding-top: 80px; }
 
-.ll-line { font-size: 16px; line-height: 1.65; padding: 8px 6px; text-align: center; color: var(--text-tertiary); cursor: pointer; transition: color 0.2s, transform 0.2s, opacity 0.2s; user-select: none; }
+.ll-line { font-size: 16px; line-height: 1.65; padding: 8px 6px; text-align: center; color: var(--text-tertiary); cursor: pointer; transition: color var(--dur-2), transform var(--dur-2), opacity var(--dur-2); user-select: none; }
 .ll-line:hover { color: var(--text-secondary); }
 .ll-line.near { color: var(--text-secondary); opacity: 0.8; }
 .ll-line.far { opacity: 0.55; }

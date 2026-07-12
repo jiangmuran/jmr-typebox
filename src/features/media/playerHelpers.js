@@ -45,6 +45,16 @@ export function titleFromName(name) {
   return base.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled'
 }
 
+// Thumbnail URL for a cover. NCM's image CDN takes a `?param=WxH` resize hint, but appending a
+// query string to a blob:/data: URL (local covers extracted from ID3) BREAKS the URL — the
+// image simply fails to load. Only decorate http(s) URLs.
+export function ncmThumb(url, size = 80) {
+  const u = String(url || '')
+  if (!u) return ''
+  if (!/^https?:/i.test(u)) return u
+  return `${u}${u.includes('?') ? '&' : '?'}param=${size}x${size}`
+}
+
 // First visible glyph of a string, uppercased, for the monochrome placeholder art. Handles
 // surrogate pairs / CJK; falls back to a music note when empty.
 export function initialOf(str) {

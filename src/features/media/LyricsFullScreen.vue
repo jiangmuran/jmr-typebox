@@ -99,7 +99,12 @@ function onNextLine() {
 }
 function onSeek10(delta) { store.seek(Math.max(0, store.currentTime.value + delta)); resetHideTimer() }
 
-function exit() { router.back() }
+// Back to wherever the user came from; a deep link straight into /media/lyrics has no in-app
+// history entry, so fall back to the player instead of backing out of the site.
+function exit() {
+  if (typeof window !== 'undefined' && window.history.state?.back) router.back()
+  else router.replace('/media/player')
+}
 
 // Keyboard shortcuts.
 function onKey(e) {
@@ -135,7 +140,11 @@ function lineScale(i) {
 </script>
 
 <template>
-  <ClientOnly>
+  <!-- Real single-element root: the router-view wraps pages in <Transition mode="out-in">, and a
+       fragment root (ClientOnly's conditional slot) breaks the leave transition — navigating BACK
+       from this page left the incoming view never inserted (blank page). -->
+  <div class="fls-page">
+    <ClientOnly>
     <div class="fls" :class="{ 'hide-controls': !showControls }" @mousemove="resetHideTimer" @touchstart.passive="resetHideTimer">
       <!-- Blurred cover backdrop -->
       <div class="fls-bg" :style="coverUrl ? { backgroundImage: `url(${coverUrl})` } : {}"></div>
@@ -207,10 +216,12 @@ function lineScale(i) {
         </div>
       </footer>
     </div>
-  </ClientOnly>
+    </ClientOnly>
+  </div>
 </template>
 
 <style scoped>
+.fls-page { flex: 1; min-height: 0; }
 .fls { position: fixed; inset: 0; z-index: 100; overflow: hidden; background: #000; color: #fff; display: flex; flex-direction: column; }
 
 /* Blurred backdrop: cover scaled up + 30px blur, with a strong dark gradient overlay so the lyric
@@ -218,12 +229,12 @@ function lineScale(i) {
 .fls-bg { position: absolute; inset: -10%; background-size: cover; background-position: center; filter: blur(30px) saturate(180%); transform: scale(1.2); opacity: 0.6; transition: background-image 0.6s var(--ease-out); }
 .fls-overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.4) 35%, rgba(0,0,0,0.85) 100%); }
 
-.fls-top, .fls-bottom { position: relative; z-index: 2; padding: 20px 24px; transition: opacity 0.3s, transform 0.3s; }
+.fls-top, .fls-bottom { position: relative; z-index: 2; padding: 20px 24px; transition: opacity var(--dur-3), transform var(--dur-3); }
 .fls.hide-controls .fls-top { opacity: 0; transform: translateY(-12px); pointer-events: none; }
 .fls.hide-controls .fls-bottom { opacity: 0; transform: translateY(12px); pointer-events: none; }
 
 .fls-top { display: flex; align-items: center; gap: 14px; }
-.fls-back { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: none; background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; border-radius: 10px; backdrop-filter: blur(8px); transition: background 0.15s; }
+.fls-back { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: none; background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; border-radius: 10px; backdrop-filter: blur(8px); transition: background var(--dur-1); }
 .fls-back:hover { background: rgba(255,255,255,0.2); }
 .fls-back svg { width: 20px; height: 20px; }
 .fls-title-block { flex: 1; min-width: 0; text-align: center; }
@@ -252,10 +263,10 @@ function lineScale(i) {
 .fls-time:last-child { text-align: right; }
 .fls-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.18); border-radius: 99px; cursor: pointer; position: relative; }
 .fls-bar:hover { height: 5px; }
-.fls-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.15s linear; }
+.fls-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-1) linear; }
 
 .fls-controls { display: flex; align-items: center; justify-content: center; gap: 14px; max-width: 760px; margin: 0 auto; }
-.fls-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: none; background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; border-radius: 50%; transition: all 0.15s; backdrop-filter: blur(8px); }
+.fls-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: none; background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; border-radius: 50%; transition: all var(--dur-1); backdrop-filter: blur(8px); }
 .fls-btn:hover { background: rgba(255,255,255,0.2); }
 .fls-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .fls-btn svg { width: 20px; height: 20px; }

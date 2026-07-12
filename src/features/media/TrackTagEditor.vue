@@ -101,7 +101,7 @@ async function exportTagged() {
 .tag-field input:focus { border-color: var(--accent); }
 .tag-note { font-size: 11px; color: var(--text-tertiary); line-height: 1.5; }
 .tag-foot { display: flex; gap: 8px; padding: 0 18px 18px; }
-.tag-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
+.tag-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1); }
 .tag-btn svg { width: 15px; height: 15px; }
 .tag-btn.ghost { flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
 .tag-btn.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }

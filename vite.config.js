@@ -3,6 +3,12 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  server: {
+    // Dev convenience: forward /api to a local `npm run worker:dev` (wrangler on :8787) so the
+    // NCM player / watermark register / AI relay work under `npm run dev` too. Harmless when
+    // wrangler isn't running — those calls just fail as before.
+    proxy: { '/api': 'http://localhost:8787' },
+  },
   optimizeDeps: {
     // @ffmpeg/ffmpeg spawns its class worker via `new Worker(new URL('./worker.js',
     // import.meta.url))`. Dev pre-bundling rewrites the module into .vite/deps/, where that

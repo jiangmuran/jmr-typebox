@@ -52,14 +52,14 @@ const lyricLines = computed(() => {
   return []
 })
 
-// Decode waveform when the track changes (pull the blob from IndexedDB).
+// Decode waveform when the track changes. getBlobFor resolves memory-cached bytes too, so
+// freshly streamed NCM tracks (not yet persisted to IDB) get a waveform as well.
 watch(() => store.currentId.value, async (id) => {
   peaks.value = null
   if (!id) return
   wfLoading.value = true
   try {
-    const db = await import('./mediaDb')
-    const blob = await db.getTrackBlob(id)
+    const blob = await store.getBlobFor(id)
     if (!blob) return
     const { decodeToPeaks } = await import('./waveform')
     const res = await decodeToPeaks(blob, 1200)
@@ -88,8 +88,7 @@ function nextLine() {
 async function sendTo(tab) {
   if (!track.value) return
   try {
-    const db = await import('./mediaDb')
-    const blob = await db.getTrackBlob(track.value.id)
+    const blob = await store.getBlobFor(track.value.id)
     if (!blob) { showToast(t('media.failed')); return }
     const file = new File([blob], track.value.name, { type: track.value.type || blob.type })
     pool.handOff(file, { source: 'player', tab })
@@ -124,8 +123,8 @@ function onKey(e) {
   else if (e.code === 'ArrowUp') { e.preventDefault(); prevLine() }
   else if (e.code === 'ArrowDown') { e.preventDefault(); nextLine() }
   else if (e.code === 'KeyL') openFullScreenLyrics()
-  else if (e.code === 'KeyA') store.setA()
-  else if (e.code === 'KeyB') store.setB()
+  // (bare A/B used to set loop markers — an invisible side effect of ordinary typing;
+  // the A–B button and the lyric context menu cover that intent explicitly.)
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -175,7 +174,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <span class="np-time">{{ formatTime(store.duration.value) }}</span>
       </div>
 
-      <!-- Transport: shuffle · prev-track · line-prev · play · line-next · next-track · repeat -->
+      <!-- Transport: the standard five (shuffle · prev · play · next · repeat). Sentence-level
+           navigation lives where sentences live: click a lyric line, or use the ↑/↓ keys —
+           the old inline ⏮⋮/⏭⋮ buttons looked near-identical to prev/next-track and read as
+           duplicated controls. -->
       <div class="np-transport">
         <button class="t-btn" :class="{ on: store.shuffle.value }" @click="store.toggleShuffle()" :title="t('media.player.shuffle')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/><path d="M16 21h5v-5"/><path d="M21 21L3 3"/></svg>
@@ -183,17 +185,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <button class="t-btn big" @click="store.prev()" :title="t('media.player.prev')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
         </button>
-        <button class="t-btn line-nav" @click="prevLine" :title="t('media.player.prevLine')" :disabled="!lyricLines.length">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-          <span class="line-dots">⋮</span>
-        </button>
-        <button class="t-btn play" @click="store.toggle()" :title="store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
-          <svg v-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        <button class="t-btn play" :class="{ buffering: store.buffering.value }" @click="store.toggle()" :title="store.buffering.value ? t('media.player.buffering') : store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
+          <span v-if="store.buffering.value" class="t-spin"></span>
+          <svg v-else-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button class="t-btn line-nav" @click="nextLine" :title="t('media.player.nextLine')" :disabled="!lyricLines.length">
-          <span class="line-dots">⋮</span>
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
         </button>
         <button class="t-btn big" @click="store.next()" :title="t('media.player.next')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
@@ -241,7 +236,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-empty p { font-size: 14px; }
 
 .np-stage { position: relative; }
-.np-mode { position: absolute; top: 10px; z-index: 2; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 9px; background: color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter: blur(8px); color: var(--text-secondary); cursor: pointer; transition: color 0.15s; }
+.np-mode { position: absolute; top: 10px; z-index: 2; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 9px; background: color-mix(in srgb, var(--surface) 70%, transparent); backdrop-filter: blur(8px); color: var(--text-secondary); cursor: pointer; transition: color var(--dur-1); }
 .np-mode:hover { color: var(--text); }
 .np-mode svg { width: 18px; height: 18px; }
 .np-mode-art { right: 10px; }
@@ -257,7 +252,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-text { min-width: 0; }
 .np-title { font-size: 20px; font-weight: 750; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-artist { margin-top: 3px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.icon-btn { flex-shrink: 0; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+.icon-btn { flex-shrink: 0; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all var(--dur-1); }
 .icon-btn:hover { color: var(--text); border-color: var(--border); }
 .icon-btn svg { width: 17px; height: 17px; }
 
@@ -267,7 +262,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-seek .np-time:last-child { text-align: right; }
 
 .np-transport { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
-.t-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 12px; transition: all 0.15s; }
+.t-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 12px; transition: all var(--dur-1); }
 .t-btn:hover { color: var(--text); background: var(--surface-hover); }
 .t-btn.on { color: var(--accent); }
 .t-btn svg { width: 22px; height: 22px; }
@@ -275,12 +270,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .t-btn.play { width: 60px; height: 60px; background: var(--text); color: var(--bg); border-radius: 50%; }
 .t-btn.play:hover { opacity: 0.92; background: var(--text); }
 .t-btn.play svg { width: 28px; height: 28px; }
-
-/* Line-nav buttons: smaller, with a "⋮" decoration that distinguishes them from track prev/next. */
-.t-btn.line-nav { width: 40px; height: 40px; position: relative; }
-.t-btn.line-nav svg { width: 18px; height: 18px; }
-.t-btn.line-nav .line-dots { position: absolute; bottom: 4px; font-size: 11px; font-weight: 700; line-height: 1; color: var(--accent); opacity: 0.85; }
-.t-btn.line-nav:disabled { opacity: 0.3; cursor: not-allowed; }
+/* Buffering: play button shows a ring spinner in the fill colour. */
+.t-spin { width: 22px; height: 22px; border: 2.5px solid color-mix(in srgb, var(--bg) 35%, transparent); border-top-color: var(--bg); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 .np-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .np-vol { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 200px; color: var(--text-secondary); }
@@ -294,13 +285,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .ab-btn.set { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 
 .np-send { display: flex; gap: 8px; }
-.send-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); color: var(--text-secondary); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
+.send-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); color: var(--text-secondary); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1); }
 .send-btn:hover { color: var(--text); border-color: var(--accent); }
 .send-btn svg { width: 15px; height: 15px; }
 
 @media (max-width: 768px) {
   .t-btn { width: 48px; height: 48px; }
   .t-btn.play { width: 66px; height: 66px; }
-  .t-btn.line-nav { width: 42px; height: 42px; }
 }
 </style>

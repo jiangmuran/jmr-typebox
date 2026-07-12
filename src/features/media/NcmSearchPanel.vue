@@ -301,6 +301,7 @@ function coverUrl(item) {
           </div>
         </div>
       </div>
+      <div v-if="sendMenuFor" class="menu-scrim" @click="sendMenuFor = null"></div>
     </div>
 
     <div v-else-if="type === 1000" class="ncm-list">
@@ -349,11 +350,10 @@ function coverUrl(item) {
 
 .ncm-search { position: relative; display: flex; align-items: center; }
 .ncm-search-icon { position: absolute; left: 12px; width: 16px; height: 16px; color: var(--text-tertiary); pointer-events: none; }
-.ncm-search input { width: 100%; padding: 9px 36px 9px 34px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font-sans); outline: none; transition: border-color 0.15s; }
+.ncm-search input { width: 100%; padding: 9px 36px 9px 34px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font-sans); outline: none; transition: border-color var(--dur-1); }
 .ncm-search input:focus { border-color: var(--accent); }
 .ncm-spinner { position: absolute; right: 8px; width: 24px; height: 24px; border: none; background: none; color: var(--text-tertiary); }
-.ncm-spinner svg { width: 16px; height: 16px; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.ncm-spinner svg { width: 16px; height: 16px; animation: tb-spin 1s linear infinite; }
 
 .ncm-types { overflow-x: auto; scrollbar-width: none; }
 .ncm-types::-webkit-scrollbar { display: none; }
@@ -361,7 +361,7 @@ function coverUrl(item) {
 /* Quality picker */
 .ncm-quality { display: flex; align-items: center; gap: 6px; }
 .ncm-quality-label { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
-.ncm-q-btn { padding: 4px 10px; border: 1px solid var(--border-light); border-radius: 6px; background: var(--surface); color: var(--text-secondary); font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font-mono); transition: all 0.12s; }
+.ncm-q-btn { padding: 4px 10px; border: 1px solid var(--border-light); border-radius: 6px; background: var(--surface); color: var(--text-secondary); font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font-mono); transition: all var(--dur-1); }
 .ncm-q-btn:hover { border-color: var(--accent); }
 .ncm-q-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 
@@ -370,7 +370,7 @@ function coverUrl(item) {
 .ncm-list { display: flex; flex-direction: column; gap: 2px; }
 
 /* Song row */
-.ncm-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 9px; cursor: pointer; transition: background 0.12s; }
+.ncm-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 9px; cursor: pointer; transition: background var(--dur-1); }
 .ncm-row:hover { background: var(--surface-hover); }
 .ncm-row.loading { opacity: 0.6; }
 .ncm-row.cached .ncm-row-title::after { content: ''; }
@@ -382,27 +382,27 @@ function coverUrl(item) {
 .ncm-row-title { font-size: 13.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ncm-row-sub { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .ncm-row-dur { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.ncm-row-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.ncm-row-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-1); }
 .ncm-row:hover .ncm-row-actions { opacity: 1; }
 .ncm-row.loading .ncm-row-actions { opacity: 1; }
-.row-act { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 7px; transition: all 0.12s; }
+.row-act { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-radius: 7px; transition: all var(--dur-1); }
 .row-act:hover:not(:disabled) { background: var(--surface-active); color: var(--text); }
 .row-act:disabled { cursor: wait; }
 .row-act.primary { color: var(--accent); }
 .row-act svg { width: 16px; height: 16px; }
 /* Spinner shown on the button while streaming/caching the song. */
-.row-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: row-spin 0.7s linear infinite; }
-@keyframes row-spin { to { transform: rotate(360deg); } }
+.row-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 @media (hover: none) { .ncm-row-actions { opacity: 1; } }
 
 /* Send-to dropdown */
 .row-send-wrap { position: relative; }
+.menu-scrim { position: fixed; inset: 0; z-index: 15; }
 .row-send-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 160px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 9px; box-shadow: var(--shadow-lg); padding: 4px; }
 .row-send-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-family: var(--font-sans); cursor: pointer; }
 .row-send-item:hover { background: var(--surface-hover); }
 
 /* Playlist / album / artist card */
-.ncm-card { display: flex; gap: 10px; padding: 8px; border-radius: 10px; cursor: pointer; transition: background 0.12s; border: 1px solid transparent; }
+.ncm-card { display: flex; gap: 10px; padding: 8px; border-radius: 10px; cursor: pointer; transition: background var(--dur-1); border: 1px solid transparent; }
 .ncm-card:hover { background: var(--surface-hover); border-color: var(--border-light); }
 .ncm-card-art { width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px; object-fit: cover; background: var(--surface-hover); }
 .ncm-card-art.rounded-full { border-radius: 50%; }

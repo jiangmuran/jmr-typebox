@@ -307,6 +307,9 @@ function formatExpiry(ts) {
 </script>
 
 <template>
+  <!-- Real single-element root: a ClientOnly (fragment) root breaks the router-view's
+       out-in page transition — navigating back from this page left a blank view. -->
+  <div class="admin-route">
   <ClientOnly>
     <div class="admin-page">
       <h1 class="sr-only">{{ t('admin.title') }}</h1>
@@ -536,17 +539,18 @@ function formatExpiry(ts) {
       <p v-else class="admin-error">{{ auth.error.value || t('admin.unknownState') }}</p>
     </div>
   </ClientOnly>
+  </div>
 </template>
 
 <style scoped>
+.admin-route { flex: 1; min-height: 0; overflow-y: auto; }
 .admin-page { max-width: var(--page-wide); margin: 0 auto; padding: 24px; min-height: 60vh; }
 @media (max-width: 768px) { .admin-page { padding: 16px; } }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 .admin-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 80px 20px; color: var(--text-tertiary); }
-.admin-spinner { width: 28px; height: 28px; border: 3px solid var(--surface-active); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.admin-spinner { width: 28px; height: 28px; border: 3px solid var(--surface-active); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.9s linear infinite; }
 
 .admin-card { background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 22px 24px; margin-bottom: 14px; }
 .admin-card h2, .admin-card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
