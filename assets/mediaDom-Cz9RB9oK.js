@@ -1,1 +1,0 @@
-function n(t,c){const o=URL.createObjectURL(t),e=document.createElement("a");e.href=o,e.download=c,document.body.appendChild(e),e.click(),e.remove(),setTimeout(()=>{try{URL.revokeObjectURL(o)}catch{}},1e3)}export{n as downloadBlob};
