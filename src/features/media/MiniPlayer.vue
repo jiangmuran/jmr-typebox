@@ -25,11 +25,12 @@ const onPlayer = computed(() => (route.meta?.path || route.path) === '/media/pla
 const progress = computed(() => (store.duration.value ? store.currentTime.value / store.duration.value : 0))
 
 // Map the store's prefetchState ('idle' | 'fetching' | 'cached' | 'error') to a tiny UI badge.
+// `cls` also selects which inline SVG glyph the template renders (check / clock / alert).
 const prefetchBadge = computed(() => {
   switch (store.prefetchState.value) {
-    case 'cached': return { icon: '✓', cls: 'ok', title: t('media.player.nextCached') }
-    case 'fetching': return { icon: '⏳', cls: 'fetching', title: t('media.player.nextFetching') }
-    case 'error': return { icon: '!', cls: 'err', title: t('media.player.nextError') }
+    case 'cached': return { cls: 'ok', title: t('media.player.nextCached') }
+    case 'fetching': return { cls: 'fetching', title: t('media.player.nextFetching') }
+    case 'error': return { cls: 'err', title: t('media.player.nextError') }
     default: return null
   }
 })
@@ -41,6 +42,14 @@ function onSeek(e) {
   const rect = bar.getBoundingClientRect()
   const r = (e.clientX - rect.left) / (rect.width || 1)
   store.seekRatio(Math.max(0, Math.min(1, r)))
+}
+// Keyboard access for the seek bar: Left/Right nudge playback ±5s.
+function onSeekKey(e) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  const delta = e.key === 'ArrowRight' ? 5 : -5
+  const dur = store.duration.value || 0
+  store.seek(Math.max(0, Math.min(dur, store.currentTime.value + delta)))
 }
 
 // Long-press the artwork to jump to full-screen lyrics.
@@ -57,9 +66,14 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
         <span class="mi-spin"></span>
         <span class="mi-text">{{ t('media.player.importing') }} {{ store.importState.value.done }}/{{ store.importState.value.total }}<template v-if="store.importState.value.currentTitle"> · {{ store.importState.value.currentTitle }}</template></span>
         <div class="mi-bar"><div class="mi-fill" :style="{ width: (store.importState.value.total ? store.importState.value.done / store.importState.value.total * 100 : 0) + '%' }"></div></div>
-        <button class="mi-cancel" :title="t('media.player.importCancel')" @click="store.cancelImport()">✕</button>
+        <button class="mi-cancel" :title="t('media.player.importCancel')" :aria-label="t('media.player.importCancel')" @click="store.cancelImport()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
       </div>
-      <div v-if="hasTrack" class="mini-seek" @click="onSeek"><div class="mini-seek-fill" :style="{ width: (progress * 100) + '%' }"></div></div>
+      <div v-if="hasTrack" class="mini-seek" role="slider" tabindex="0"
+        :aria-label="t('media.player.seek')"
+        :aria-valuemin="0" :aria-valuemax="Math.round(store.duration.value)" :aria-valuenow="Math.round(store.currentTime.value)"
+        @click="onSeek" @keydown="onSeekKey"><div class="mini-seek-fill" :style="{ width: (progress * 100) + '%' }"></div></div>
       <div v-if="hasTrack" class="mini-body">
         <button class="mini-art"
           :class="{ clickable: !onPlayer }"
@@ -85,7 +99,11 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
           <button class="mini-btn" @click="store.next()" :aria-label="t('media.player.next')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
           </button>
-          <span v-if="prefetchBadge" class="mini-prefetch" :class="prefetchBadge.cls" :title="prefetchBadge.title">{{ prefetchBadge.icon }}</span>
+          <span v-if="prefetchBadge" class="mini-prefetch" :class="prefetchBadge.cls" :title="prefetchBadge.title">
+            <svg v-if="prefetchBadge.cls === 'ok'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg v-else-if="prefetchBadge.cls === 'fetching'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5"/><path d="M12 16h.01"/></svg>
+          </span>
         </div>
       </div>
     </div>
@@ -107,7 +125,8 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
 .mi-text { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mi-bar { flex: 1; min-width: 40px; max-width: 160px; height: 3px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
 .mi-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-2) var(--ease-out); }
-.mi-cancel { flex-shrink: 0; border: none; background: none; color: var(--text-tertiary); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.mi-cancel { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-tertiary); cursor: pointer; padding: 3px; border-radius: 6px; }
+.mi-cancel svg { width: 13px; height: 13px; }
 .mi-cancel:hover { color: var(--text); background: var(--surface-hover); }
 
 .mini-art { width: 42px; height: 42px; flex-shrink: 0; border: none; padding: 0; border-radius: 8px; overflow: hidden; background: var(--surface-hover); cursor: default; }
@@ -130,13 +149,14 @@ function onArtTouchEnd() { if (pressTimer) { clearTimeout(pressTimer); pressTime
 .mini-spin { width: 16px; height: 16px; border: 2px solid color-mix(in srgb, var(--bg) 35%, transparent); border-top-color: var(--bg); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 /* Prefetch status badge — small, monochrome, in the surface-active circle. */
-.mini-prefetch { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--surface-active); color: var(--text-secondary); margin-left: 4px; }
+.mini-prefetch { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-active); color: var(--text-secondary); margin-left: 4px; }
+.mini-prefetch svg { width: 13px; height: 13px; }
 .mini-prefetch.ok { color: var(--status-ok); }
 .mini-prefetch.fetching { color: var(--status-warn); animation: pulse 1.2s ease-in-out infinite; }
-.mini-prefetch.err { color: var(--status-warn); }
+.mini-prefetch.err { color: var(--danger); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
-.mini-up-enter-active, .mini-up-leave-active { transition: transform 0.25s var(--ease-out), opacity 0.25s; }
+.mini-up-enter-active, .mini-up-leave-active { transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-2); }
 .mini-up-enter-from, .mini-up-leave-to { transform: translateY(100%); opacity: 0; }
 
 @media (max-width: 768px) {

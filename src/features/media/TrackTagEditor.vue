@@ -1,7 +1,7 @@
 <script setup>
 // Lightweight modal to edit a track's ID3 metadata (title / artist / album) and optionally export a
 // re-tagged copy of the file (ffmpeg `-c copy` rewrite). Binds to the shared player store.
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { usePlayerStore } from './usePlayerStore'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
@@ -18,6 +18,17 @@ const title = ref('')
 const artist = ref('')
 const album = ref('')
 const exporting = ref(false)
+const titleInput = ref(null)
+
+function onKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); emit('close') }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKey)
+  // Move focus into the first field so keyboard users land inside the dialog.
+  nextTick(() => titleInput.value?.focus())
+})
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 watch(() => props.trackId, () => {
   const tr = track.value
@@ -54,14 +65,14 @@ async function exportTagged() {
     <div class="tag-modal" role="dialog" aria-modal="true">
       <header class="tag-head">
         <h3>{{ t('media.player.editTags') }}</h3>
-        <button class="tag-x" @click="emit('close')" aria-label="Close">
+        <button class="tag-x" @click="emit('close')" :aria-label="t('media.player.close')">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </header>
       <div class="tag-body">
         <label class="tag-field">
           <span>{{ t('media.player.fieldTitle') }}</span>
-          <input v-model="title" type="text" :placeholder="track?.name || ''" />
+          <input ref="titleInput" v-model="title" type="text" :placeholder="track?.name || ''" />
         </label>
         <label class="tag-field">
           <span>{{ t('media.player.fieldArtist') }}</span>

@@ -110,6 +110,9 @@ function buildApiMessages() {
   for (const m of messages.value) {
     // Skip the in-progress placeholder bubble (no content, no tool calls yet).
     if (m.streaming && !m.content && !(m.tools && m.tools.length)) continue
+    // Skip errored empty assistant bubbles — they hold no usable content and would otherwise
+    // inject a blank assistant turn into the history (which some providers reject outright).
+    if (m.role === 'assistant' && m.error && !m.content && !(m.tools && m.tools.length)) continue
     if (m.role === 'user') out.push({ role: 'user', content: m.content })
     else if (m.role === 'assistant') {
       const msg = { role: 'assistant', content: m.content || '' }
@@ -192,6 +195,20 @@ async function runAgent() {
 function stop() { if (controller) { try { controller.abort() } catch {} } }
 function clearChat() { if (!busy.value) messages.value = [] }
 
+// Retry a failed turn: drop the errored assistant bubble (and anything after it) and re-run.
+// The history still ends at the user's original message, so the prompt is reused verbatim —
+// no retyping.
+function retryTurn(i) {
+  if (busy.value) return
+  messages.value.splice(i)
+  runAgent()
+}
+// Whether an error message looks like an auth/key problem — if so we surface a shortcut to the
+// AI settings alongside the retry button.
+function isKeyError(msg) {
+  return /\b401\b|\b403\b|unauthorized|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key/i.test(String(msg || ''))
+}
+
 // ---- scrolling ----
 async function scrollDown() { await nextTick(); const el = scrollEl.value; if (el) el.scrollTop = el.scrollHeight }
 let softTimer = null
@@ -248,8 +265,8 @@ function useSuggestion(id) {
           </div>
         </header>
 
-        <!-- not configured -->
-        <div v-if="!ready" class="aip-empty">
+        <!-- not configured AND no conversation yet — first-run empty state -->
+        <div v-if="!ready && !messages.length" class="aip-empty">
           <div class="aip-empty-ic"><AiIcon :size="40" /></div>
           <p class="aip-empty-title">{{ t('ai.empty.title') }}</p>
           <p class="aip-empty-sub">{{ t('ai.empty.sub') }}</p>
@@ -257,6 +274,9 @@ function useSuggestion(id) {
         </div>
 
         <template v-else>
+          <!-- AI paused mid-conversation (backend turned off / config removed): keep the existing
+               chat visible, but flag that new turns can't be sent until it's reconfigured. -->
+          <div v-if="!ready" class="aip-banner">{{ t('ai.paused') }}</div>
           <div ref="scrollEl" class="aip-body">
             <div v-if="!messages.length" class="aip-intro">
               <div class="aip-intro-ic"><AiIcon :size="28" /></div>
@@ -283,7 +303,13 @@ function useSuggestion(id) {
                 </div>
                 <div v-if="m.content" class="aip-bubble aip-assist-bubble" v-text="m.content"></div>
                 <span v-if="m.streaming && !m.content" class="aip-thinking"><span></span><span></span><span></span></span>
-                <div v-if="m.error" class="aip-error">{{ m.error }}</div>
+                <div v-if="m.error" class="aip-error">
+                  <span class="aip-error-msg">{{ m.error }}</span>
+                  <div class="aip-error-actions">
+                    <button class="aip-error-btn" @click="retryTurn(i)">{{ t('ai.retry') }}</button>
+                    <button v-if="isKeyError(m.error)" class="aip-error-btn" @click="$emit('open-settings')">{{ t('ai.checkKey') }}</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -291,7 +317,7 @@ function useSuggestion(id) {
           <div class="aip-input">
             <textarea
               ref="inputEl" v-model="input" rows="1" class="aip-textarea"
-              :placeholder="t('ai.inputPlaceholder')"
+              :placeholder="t('ai.inputPlaceholder')" :disabled="!ready"
               @keydown.enter.exact.prevent="send"
               @input="$event.target.style.height = 'auto'; $event.target.style.height = Math.min($event.target.scrollHeight, 140) + 'px'"
             ></textarea>
@@ -336,7 +362,7 @@ function useSuggestion(id) {
 .aip-intro-title { font-size: 14px; font-weight: 600; margin-top: 8px; }
 .aip-intro-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
 .aip-suggest { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
-.aip-suggest button { padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: all 0.15s; }
+.aip-suggest button { padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: all var(--dur-1); }
 .aip-suggest button:hover { background: var(--surface-hover); border-color: var(--border); }
 
 .aip-msg { display: flex; flex-direction: column; }
@@ -350,7 +376,7 @@ function useSuggestion(id) {
 .aip-tool { display: flex; align-items: center; gap: 7px; padding: 5px 9px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); font-size: 11.5px; color: var(--text-secondary); }
 .aip-tool.err { border-color: rgba(255,69,58,0.3); }
 .aip-tool-ic { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
-.aip-tool.err .aip-tool-ic { color: #ff453a; }
+.aip-tool.err .aip-tool-ic { color: var(--danger); }
 .aip-tool-ic svg { width: 13px; height: 13px; }
 .aip-tool-name { font-weight: 600; color: var(--text); font-family: var(--font-mono); font-size: 11px; }
 .aip-tool-res { color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -361,19 +387,26 @@ function useSuggestion(id) {
 .aip-thinking span:nth-child(2) { animation-delay: 0.15s; }
 .aip-thinking span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes aiBounce { 0%,60%,100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
-.aip-error { font-size: 12px; color: #ff453a; background: rgba(255,69,58,0.07); border: 1px solid rgba(255,69,58,0.2); border-radius: 9px; padding: 8px 10px; line-height: 1.4; }
+.aip-error { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--danger); background: var(--danger-bg); border: 1px solid rgba(255,69,58,0.2); border-radius: 9px; padding: 8px 10px; line-height: 1.4; }
+.aip-error-msg { word-break: break-word; }
+.aip-error-actions { display: flex; gap: 6px; }
+.aip-error-btn { padding: 4px 10px; border: 1px solid rgba(255,69,58,0.35); border-radius: 7px; background: var(--surface); color: var(--danger); font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
+.aip-error-btn:hover { background: var(--surface-hover); }
+
+.aip-banner { flex-shrink: 0; margin: 10px 12px 0; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface-hover); color: var(--text-secondary); font-size: 12px; line-height: 1.4; text-align: center; }
 
 .aip-input { display: flex; align-items: flex-end; gap: 7px; padding: 10px 12px 4px; border-top: 1px solid var(--border-light); flex-shrink: 0; }
-.aip-textarea { flex: 1; resize: none; border: 1px solid var(--border-light); border-radius: 11px; padding: 9px 12px; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; color: var(--text); background: var(--surface); outline: none; max-height: 140px; transition: border-color 0.15s; }
+.aip-textarea { flex: 1; resize: none; border: 1px solid var(--border-light); border-radius: 11px; padding: 9px 12px; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; color: var(--text); background: var(--surface); outline: none; max-height: 140px; transition: border-color var(--dur-1); }
 .aip-textarea:focus { border-color: var(--accent); }
-.aip-send { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer; transition: opacity 0.15s; }
+.aip-textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+.aip-send { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer; transition: opacity var(--dur-1); }
 .aip-send:disabled { opacity: 0.4; cursor: default; }
 .aip-send svg { width: 16px; height: 16px; }
 .aip-stop-btn { background: var(--text); }
 .aip-foot { font-size: 10px; color: var(--text-tertiary); text-align: center; padding: 2px 12px 8px; }
 
-.aip-enter-active .aip, .aip-leave-active .aip { transition: transform 0.28s var(--ease-out); }
-.aip-enter-active .aip-scrim, .aip-leave-active .aip-scrim { transition: opacity 0.28s ease; }
+.aip-enter-active .aip, .aip-leave-active .aip { transition: transform var(--dur-3) var(--ease-out); }
+.aip-enter-active .aip-scrim, .aip-leave-active .aip-scrim { transition: opacity var(--dur-3) ease; }
 .aip-enter-from .aip, .aip-leave-to .aip { transform: translateX(100%); }
 .aip-enter-from .aip-scrim, .aip-leave-to .aip-scrim { opacity: 0; }
 

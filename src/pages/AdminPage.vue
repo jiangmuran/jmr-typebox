@@ -10,7 +10,7 @@
 // Also handles `?otp=xxx` query links — a logged-in admin generates a one-time link, opens it on
 // a new device, and this page redeems it automatically (establishes a 5-min session for adding
 // that device's passkey).
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useI18n } from '../composables/useI18n'
@@ -25,6 +25,17 @@ const { showToast } = useToast()
 
 // Dashboard tab.
 const tab = ref('status') // 'status' | 'ncm' | 'security' | 'stats' | 'logs'
+
+// Ref to the "Add a device" button — after redeeming a one-time link we jump to the Security
+// tab and spotlight this button so the 5-minute window's next step is obvious.
+const addDeviceBtn = ref(null)
+
+// Session-expired handling: useAuth bumps sessionExpiredTick when an already-authenticated call
+// gets a 401. Reset the local dashboard state and toast so the user knows to log back in.
+watch(() => auth.sessionExpiredTick.value, () => {
+  tab.value = 'status'
+  showToast(t('admin.sessionExpired'))
+})
 
 // ---- Phase 4: statistics + real-time logs (SSE) ----
 const statsData = ref(null)     // snapshot from GET /api/admin/stats
@@ -148,6 +159,15 @@ onMounted(async () => {
     if (ok) {
       showToast(t('admin.otpRedeemed'))
       router.replace({ path: '/admin' }) // strip ?otp from the URL
+      // Jump straight to Security and spotlight "Add a device" — the redeemed session is only
+      // valid ~5 min, so make the one next step (bind this device's passkey) impossible to miss.
+      tab.value = 'security'
+      await nextTick()
+      const btn = addDeviceBtn.value
+      if (btn) {
+        try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch {}
+        try { btn.focus({ preventScroll: true }) } catch {}
+      }
     } else {
       showToast(t('admin.otpInvalid'))
     }
@@ -214,7 +234,16 @@ async function pollQrLogin() {
     const res = await fetch(`/api/admin/ncm/qrcode/check/${qrKey.value}`, { credentials: 'include' })
     const body = await res.json()
     const code = body.code
-    if (code === 800) { qrStatus.value = 'expired'; return }
+    if (code === 800) {
+      // Expired: tear the dead QR down so the start button — the actual retry
+      // affordance — reappears; the toast carries the "expired" message.
+      qrStatus.value = 'expired'
+      qrDataUrl.value = ''
+      qrUrl.value = ''
+      qrKey.value = ''
+      showToast(t('admin.qrStatus_expired'))
+      return
+    }
     if (code === 801) { qrStatus.value = 'waiting' }
     else if (code === 802) { qrStatus.value = 'scanned' }
     else if (code === 803) {
@@ -225,6 +254,11 @@ async function pollQrLogin() {
         await auth.setNcmCookie(cookie)
         showToast(t('admin.qrLoggedIn'))
       }
+      // Collapse the scanned QR — the toast + the "NCM cookie: Active" status card are
+      // the confirmation; a lingering dead QR image reads as "something else to do".
+      qrDataUrl.value = ''
+      qrUrl.value = ''
+      qrKey.value = ''
       return
     }
     qrPollTimer = setTimeout(pollQrLogin, 2000)
@@ -403,14 +437,17 @@ function formatExpiry(ts) {
           <!-- QR-code login -->
           <div class="admin-card">
             <h3>{{ t('admin.qrLoginTitle') }}</h3>
-            <p v-if="!qrUrl && qrStatus.value !== 'waiting'" class="admin-sub">{{ t('admin.qrLoginHint') }}</p>
+            <p v-if="!qrUrl && qrStatus !== 'waiting'" class="admin-sub">{{ t('admin.qrLoginHint') }}</p>
             <div v-if="qrDataUrl" class="qr-stage">
               <img :src="qrDataUrl" alt="QR" class="qr-img" />
               <div class="qr-status" :class="qrStatus">{{ t('admin.qrStatus_' + qrStatus) }}</div>
               <button class="link-btn" @click="stopQrLogin">{{ t('admin.qrCancel') }}</button>
             </div>
-            <button v-if="!qrDataUrl" class="btn primary" :disabled="qrStatus.value === 'waiting'" @click="startQrLogin">
-              {{ qrStatus.value === 'waiting' ? t('admin.qrStarting') : t('admin.qrStart') }}
+            <!-- refs auto-unwrap in templates: `qrStatus.value` here would read a property
+                 off the STRING and always be undefined, leaving the button enabled and the
+                 "Starting…" label unreachable. -->
+            <button v-if="!qrDataUrl" class="btn primary" :disabled="qrStatus === 'waiting'" @click="startQrLogin">
+              {{ qrStatus === 'waiting' ? t('admin.qrStarting') : t('admin.qrStart') }}
             </button>
           </div>
 
@@ -446,7 +483,7 @@ function formatExpiry(ts) {
                 <button class="link-btn danger" @click="doRemovePasskey(pk.id)" :disabled="(auth.status.value?.passkeyCount || 0) <= 1">{{ t('admin.removePasskey') }}</button>
               </li>
             </ul>
-            <button class="btn primary" @click="doAddPasskey">{{ t('admin.addPasskey') }}</button>
+            <button ref="addDeviceBtn" class="btn primary" @click="doAddPasskey">{{ t('admin.addPasskey') }}</button>
           </div>
 
           <!-- One-time link -->

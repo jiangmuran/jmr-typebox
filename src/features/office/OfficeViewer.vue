@@ -30,9 +30,14 @@ const loading = ref(false)
 const error = ref('')
 const dragOver = ref(false)
 
+// Monotonic token: only the most recent openFile() call may commit its result. A slow parse of an
+// earlier-dropped file must not overwrite a later file's model (A's data under B's filename).
+let openToken = 0
+
 async function openFile(file) {
   if (!file) return
   if (!isOfficeName(file.name)) { showToast(t('office.unsupported')); return }
+  const token = ++openToken
   error.value = ''
   loading.value = true
   kind.value = null
@@ -42,19 +47,24 @@ async function openFile(file) {
   try {
     if (isXlsxName(file.name)) {
       const { parseWorkbook } = await import('./xlsxRunner')
-      model.value = await parseWorkbook(file)
+      const parsed = await parseWorkbook(file)
+      if (token !== openToken) return // superseded by a newer open — discard
+      model.value = parsed
       kind.value = 'sheet'
     } else if (isPptxName(file.name)) {
       const { parsePptx } = await import('./pptxRunner')
-      model.value = await parsePptx(file)
+      const parsed = await parsePptx(file)
+      if (token !== openToken) return
+      model.value = parsed
       kind.value = 'slides'
     }
   } catch (err) {
+    if (token !== openToken) return // a newer open is in flight; don't clobber its state
     console.error('[office] failed to open', err)
     error.value = t('office.parseFailed')
     showToast(t('office.parseFailed'))
   } finally {
-    loading.value = false
+    if (token === openToken) loading.value = false
   }
 }
 
@@ -164,7 +174,7 @@ onBeforeUnmount(() => {})
 .oe-title { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .oe-sub { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 
-.oe-drop { margin-top: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 48px 32px; border: 2px dashed var(--border); border-radius: var(--radius-lg); background: var(--surface); cursor: pointer; text-align: center; transition: all 0.25s var(--ease-out); outline: none; }
+.oe-drop { margin-top: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 48px 32px; border: 2px dashed var(--border); border-radius: var(--radius-lg); background: var(--surface); cursor: pointer; text-align: center; transition: all var(--dur-3) var(--ease-out); outline: none; }
 .oe-drop:hover, .oe-drop:focus-visible, .oe-drop.over { border-color: var(--accent); background: var(--accent-bg); transform: translateY(-2px); }
 .oe-drop.busy { cursor: default; }
 .oe-icons { display: flex; gap: 14px; margin-bottom: 8px; }
@@ -173,7 +183,7 @@ onBeforeUnmount(() => {})
 .oe-drop p { font-size: 13px; color: var(--text-secondary); }
 .oe-spin { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
-.oe-error { margin-top: 12px; font-size: 13px; color: #c0392b; }
+.oe-error { margin-top: 12px; font-size: 13px; color: var(--danger); }
 
 .oe-caps { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .oe-cap { padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; }

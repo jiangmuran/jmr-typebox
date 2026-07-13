@@ -23,12 +23,22 @@ export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
       // landing on / next time would auto-resume into the admin surface.
       if (!to.path.startsWith('/admin')) save('last', to.path)
     })
+    // Set the moment the OS hands us a file via launchQueue — the startup redirect below
+    // must NOT navigate away from the editor while a file-open is in flight, or the
+    // opened document lands the user on an unrelated tool.
+    let fileLaunch = false
     router.isReady().then(() => {
       try {
+        if (fileLaunch) return
         const { settings } = useSettings()
         const last = load('last')
-        if (settings.restoreLast && router.currentRoute.value.path === '/' && last && last !== '/') {
+        if (router.currentRoute.value.path !== '/') return
+        // Restore-last wins when enabled and there IS a last position; otherwise honor the
+        // user's chosen default tool (previously written by Settings but never read).
+        if (settings.restoreLast && last && last !== '/') {
           router.replace(last)
+        } else if (settings.defaultTool && settings.defaultTool !== '/') {
+          router.replace(settings.defaultTool)
         }
       } catch { /* ignore */ }
     })
@@ -39,6 +49,7 @@ export const createApp = ViteSSG(App, { routes }, ({ app, router }) => {
     if ('launchQueue' in window && 'setConsumer' in window.launchQueue) {
       window.launchQueue.setConsumer(async (params) => {
         try {
+          fileLaunch = true
           if (!params.files?.length) return
           const fileHandle = params.files[0]
           const file = await fileHandle.getFile()

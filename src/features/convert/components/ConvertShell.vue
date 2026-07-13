@@ -108,7 +108,7 @@ async function pasteIn() {
 .cv-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.5px; }
 .cv-head p { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 
-.cv-pane { position: relative; border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; background: var(--surface); margin-bottom: 16px; transition: border-color 0.15s; }
+.cv-pane { position: relative; border: 1px solid var(--border-light); border-radius: 12px; overflow: hidden; background: var(--surface); margin-bottom: 16px; transition: border-color var(--dur-1); }
 .cv-pane.dragging { border-color: var(--accent); }
 .cv-pane-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-light); font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 .cv-actions { display: flex; gap: 4px; }

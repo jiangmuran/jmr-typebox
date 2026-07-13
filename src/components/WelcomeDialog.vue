@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '../composables/useI18n'
 import { combo } from '../utils/platform'
 
@@ -8,11 +8,14 @@ const { t, setLocale, locale } = useI18n()
 
 const visible = ref(false)
 const step = ref('lang') // 'lang' → 'intro'
+const firstBtn = ref(null) // first focusable — grab focus so the dialog is keyboard-reachable
 
-onMounted(() => {
+onMounted(async () => {
   if (!localStorage.getItem('tb-welcomed')) {
     visible.value = true
     document.addEventListener('keydown', onEscape)
+    await nextTick()
+    firstBtn.value?.focus()
   }
 })
 
@@ -51,7 +54,7 @@ function dismiss() {
             <h2 id="welcome-title">{{ t('welcome.title') }}</h2>
             <p class="lang-sub">{{ t('welcome.chooseLang') }} / Choose your language</p>
             <div class="lang-btns">
-              <button class="lang-btn" @click="chooseLang('en')">
+              <button ref="firstBtn" class="lang-btn" @click="chooseLang('en')">
                 <span class="lang-flag">EN</span>
                 <span class="lang-name">English</span>
               </button>
@@ -136,7 +139,7 @@ function dismiss() {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 24px 16px; border: 2px solid var(--border-light); border-radius: 16px;
   background: var(--surface); cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16,1,0.3,1); font-family: var(--font-sans);
+  transition: all var(--dur-2) var(--ease-out); font-family: var(--font-sans);
 }
 .lang-btn:hover { border-color: var(--accent); background: var(--accent-bg); transform: translateY(-3px); box-shadow: var(--shadow-md); }
 .lang-btn:active { transform: translateY(0) scale(0.97); }
@@ -179,15 +182,15 @@ function dismiss() {
 .go-btn svg { width: 14px; height: 14px; }
 
 /* Transitions */
-.modal-enter-active { transition: all 0.35s cubic-bezier(0.16,1,0.3,1); }
+.modal-enter-active { transition: all var(--dur-3) var(--ease-out); }
 .modal-leave-active { transition: all 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-from .card { transform: scale(0.92) translateY(20px); opacity: 0; }
 .modal-leave-to .card { transform: scale(0.95); opacity: 0; }
-.modal-enter-active .card { transition: all 0.4s cubic-bezier(0.16,1,0.3,1) 0.05s; }
+.modal-enter-active .card { transition: all var(--dur-3) var(--ease-out) 0.05s; }
 .modal-leave-active .card { transition: all 0.2s ease; }
 
-.step-enter-active { transition: all 0.3s cubic-bezier(0.16,1,0.3,1); }
+.step-enter-active { transition: all var(--dur-3) var(--ease-out); }
 .step-leave-active { transition: all 0.15s ease; }
 .step-enter-from { opacity: 0; transform: translateX(20px); }
 .step-leave-to { opacity: 0; transform: translateX(-20px); }

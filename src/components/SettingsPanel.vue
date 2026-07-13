@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useSettings } from '../composables/useSettings'
 import { useI18n } from '../composables/useI18n'
 import BackendInfo from './BackendInfo.vue'
@@ -28,8 +28,29 @@ function toggleTool(id) {
   setSetting('tabsVisible', TOOLS.map(x => x.id).filter(x => set.has(x)))
 }
 
+// Lightweight, themeable in-app confirm layer — replaces window.confirm (a system
+// dialog we can't style). While open it holds { message, confirmLabel, action };
+// null when closed. Follows the app's dialog conventions: role=dialog, Esc cancels,
+// focus moves inside (to the safe Cancel button) on open.
+const confirmState = ref(null)
+const cancelBtn = ref(null)
+function askConfirm(message, confirmLabel, action) {
+  confirmState.value = { message, confirmLabel, action }
+  nextTick(() => cancelBtn.value?.focus())
+}
+function confirmCancel() { confirmState.value = null }
+function confirmYes() {
+  const action = confirmState.value?.action
+  confirmState.value = null
+  action?.()
+}
+
 function onClear() {
-  if (confirm(t('menu.clearAllConfirm'))) { clearAllData(); location.reload() }
+  askConfirm(t('menu.clearAllConfirm'), t('menu.clearAll'), () => { clearAllData(); location.reload() })
+}
+// Reset wipes API keys and provider config too — must not fire on a single stray click.
+function onReset() {
+  askConfirm(t('settings.resetConfirm'), t('settings.reset'), () => resetSettings())
 }
 
 function doPrint() { if (typeof window !== 'undefined') window.print() }
@@ -55,6 +76,12 @@ function onOpenRequest(e) {
   open.value = true
   if (e?.detail?.section === 'ai') aiOpen.value = true // expand the AI integration so it's visible
 }
+// When the drawer opens, move focus into it (the close button) so keyboard users land inside.
+const closeBtn = ref(null)
+watch(open, async (v) => {
+  if (v) { await nextTick(); closeBtn.value?.focus() }
+})
+
 onMounted(() => { if (typeof window !== 'undefined') window.addEventListener('tb-open-settings', onOpenRequest) })
 onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListener('tb-open-settings', onOpenRequest) })
 </script>
@@ -66,7 +93,7 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
       <aside class="drawer" role="dialog" aria-modal="true">
         <header class="drawer-head">
           <h2>{{ t('settings.title') }}</h2>
-          <button class="x-btn" @click="open = false" aria-label="Close">
+          <button ref="closeBtn" class="x-btn" @click="open = false" :aria-label="t('common.close')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
           </button>
         </header>
@@ -85,7 +112,7 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
             </label>
             <label class="row">{{ t('settings.accent') }}
               <div class="swatches">
-                <button v-for="c in ACCENTS" :key="c||'default'" class="swatch" :class="{on: settings.accent===c}" :style="c ? { background: c } : {}" :title="c || t('settings.accent.default')" @click="setSetting('accent', c)">
+                <button v-for="c in ACCENTS" :key="c||'default'" class="swatch" :class="{on: settings.accent===c}" :aria-pressed="settings.accent===c" :style="c ? { background: c } : {}" :title="c || t('settings.accent.default')" @click="setSetting('accent', c)">
                   <span v-if="!c" class="sw-default">A</span>
                 </button>
               </div>
@@ -251,11 +278,25 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
           <!-- Danger -->
           <section>
             <h3 class="danger">{{ t('settings.danger') }}</h3>
-            <button class="ghost" @click="resetSettings">{{ t('settings.reset') }}</button>
+            <button class="ghost" @click="onReset">{{ t('settings.reset') }}</button>
             <button class="danger-btn" @click="onClear">{{ t('menu.clearAll') }}</button>
           </section>
         </div>
       </aside>
+
+      <!-- In-app confirm layer for destructive actions (reset / clear all data). -->
+      <Transition name="confirm">
+        <div v-if="confirmState" class="confirm-layer" role="dialog" aria-modal="true" aria-labelledby="confirm-msg" @keydown.esc.stop="confirmCancel">
+          <div class="confirm-scrim" @click="confirmCancel"></div>
+          <div class="confirm-card">
+            <p id="confirm-msg" class="confirm-msg">{{ confirmState.message }}</p>
+            <div class="confirm-actions">
+              <button ref="cancelBtn" class="confirm-cancel" @click="confirmCancel">{{ t('common.close') }}</button>
+              <button class="confirm-ok" @click="confirmYes">{{ confirmState.confirmLabel }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </Transition>
 </template>
@@ -273,7 +314,7 @@ onUnmounted(() => { if (typeof window !== 'undefined') window.removeEventListene
 section { padding: 14px 0; border-bottom: 1px solid var(--border-light); }
 section:last-child { border-bottom: none; }
 h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-tertiary); margin-bottom: 12px; }
-h3.danger { color: #ff453a; }
+h3.danger { color: var(--danger); }
 
 /* Group heading — the three top-level buckets (General · Integrations · About & Data). */
 .group-head { font-size: 11px; font-weight: 700; letter-spacing: 0.3px; color: var(--text-secondary); padding: 18px 0 2px; }
@@ -313,10 +354,10 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .about-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px; }
 .about-row { display: flex; gap: 8px; }
 .about-link { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
-.danger-btn { width: 100%; padding: 8px; border: 1px solid rgba(255,69,58,0.3); border-radius: 8px; background: rgba(255,69,58,0.06); color: #ff453a; font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
-.danger-btn:hover { background: rgba(255,69,58,0.12); }
+.danger-btn { width: 100%; padding: 8px; border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); border-radius: 8px; background: var(--danger-bg); color: var(--danger); font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
+.danger-btn:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
-.text-in { width: 100%; padding: 7px 9px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; transition: border-color 0.15s; }
+.text-in { width: 100%; padding: 7px 9px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; transition: border-color var(--dur-1); }
 .text-in:focus { border-color: var(--accent); }
 .key-wrap { position: relative; display: flex; }
 .key-wrap .text-in { padding-right: 34px; }
@@ -326,8 +367,24 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .hint-lead { margin-top: 0; margin-bottom: 12px; }
 .img-repo { margin-top: 10px; font-size: 12px; }
 
-.drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.28s var(--ease-out); }
-.drawer-enter-active .drawer-scrim, .drawer-leave-active .drawer-scrim { transition: opacity 0.28s ease; }
+/* In-app confirm layer — sits above the drawer, themeable (unlike window.confirm). */
+.confirm-layer { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.confirm-scrim { position: absolute; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.confirm-card { position: relative; width: 100%; max-width: 300px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 20px; }
+.confirm-msg { font-size: 13px; line-height: 1.55; color: var(--text); margin-bottom: 18px; }
+.confirm-actions { display: flex; gap: 8px; }
+.confirm-actions button { flex: 1; padding: 8px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: var(--font-sans); }
+.confirm-cancel { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.confirm-cancel:hover { background: var(--surface-hover); }
+.confirm-ok { border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); background: var(--danger); color: #fff; font-weight: 600; }
+.confirm-ok:hover { filter: brightness(0.94); }
+.confirm-enter-active, .confirm-leave-active { transition: opacity var(--dur-2) ease; }
+.confirm-enter-active .confirm-card, .confirm-leave-active .confirm-card { transition: transform var(--dur-2) var(--ease-out); }
+.confirm-enter-from, .confirm-leave-to { opacity: 0; }
+.confirm-enter-from .confirm-card, .confirm-leave-to .confirm-card { transform: scale(0.94); }
+
+.drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform var(--dur-3) var(--ease-out); }
+.drawer-enter-active .drawer-scrim, .drawer-leave-active .drawer-scrim { transition: opacity var(--dur-3) ease; }
 .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(100%); }
 .drawer-enter-from .drawer-scrim, .drawer-leave-to .drawer-scrim { opacity: 0; }
 </style>

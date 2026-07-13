@@ -400,7 +400,7 @@ function reset() { src.reset(); rawTags.value = null; produced.value = null }
 
 .raw-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; background: none; border: none; padding: 0; cursor: pointer; font-family: var(--font-sans); }
 .raw-toggle .sec-title { margin: 0; }
-.raw-toggle .chev { width: 15px; height: 15px; color: var(--text-tertiary); transition: transform 0.18s; flex-shrink: 0; }
+.raw-toggle .chev { width: 15px; height: 15px; color: var(--text-tertiary); transition: transform var(--dur-1); flex-shrink: 0; }
 .raw-toggle .chev.open { transform: rotate(180deg); }
 
 /* ---- GPS callout ---- */

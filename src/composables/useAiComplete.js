@@ -1,6 +1,23 @@
 import { ref, computed } from 'vue'
 import { useAI } from './useAI'
 import { useSettings } from './useSettings'
+import { useToast } from './useToast'
+import { useI18n } from './useI18n'
+
+// Inline completion fails silently by design. The ONE exception: a configuration
+// problem (bad/expired API key → HTTP 401/403, or an "invalid key"-flavored error
+// message) makes the feature look silently broken. We surface that with a single
+// toast the FIRST time it happens in a session, then go quiet again so a persistent
+// bad key can't nag on every keystroke. Module-scoped so it's once per page load,
+// regardless of how many editors mount the composable.
+let configToastShown = false
+
+function isConfigError(e) {
+  if (!e) return false
+  if (e.status === 401 || e.status === 403) return true
+  const msg = String(e.message || '').toLowerCase()
+  return /invalid[\s_-]?(api[\s_-]?)?key|incorrect api key|unauthorized|authentication/.test(msg)
+}
 
 // Copilot-style inline "ghost text" completion for the Markdown editor's <textarea>.
 //
@@ -107,6 +124,8 @@ export function acceptInto(value, pos, suggestion) {
 export function useAiComplete(opts = {}) {
   const { ready, completeInline } = useAI()
   const { settings } = useSettings()
+  const { showToast } = useToast()
+  const { t } = useI18n()
 
   // Active suggestion: { pos, text } or null. `pos` is the caret index it was anchored at.
   const suggestion = ref(null)
@@ -167,8 +186,13 @@ export function useAiComplete(opts = {}) {
     let raw = ''
     try {
       raw = await completeInline(buildCompletionMessages(before, after), { signal: controller.signal })
-    } catch {
-      // Never surface inline-completion failures in the UI — just show no ghost.
+    } catch (e) {
+      // Stay silent (just show no ghost) — EXCEPT the first config error per session:
+      // a bad/expired API key makes the feature look broken, so nudge the user once.
+      if (isConfigError(e) && !configToastShown) {
+        configToastShown = true
+        showToast(t('ai.completeConfigError'))
+      }
       if (reqId === lastRequestId) loading.value = false
       return
     }

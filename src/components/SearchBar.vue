@@ -1,5 +1,8 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from '../composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   editorRef: Object,
@@ -113,32 +116,34 @@ onMounted(async () => {
         ref="searchInputRef"
         v-model="searchText"
         type="text"
-        placeholder="Find..."
+        :placeholder="t('search.find')"
+        :aria-label="t('search.findAria')"
         @keydown="onSearchKeydown"
       >
-      <span class="search-count">
-        {{ matches.length > 0 ? `${currentIdx + 1} / ${matches.length}` : (searchText ? 'No results' : '') }}
+      <span class="search-count" role="status" aria-live="polite">
+        {{ matches.length > 0 ? `${currentIdx + 1} / ${matches.length}` : (searchText ? t('search.noResults') : '') }}
       </span>
     </div>
 
     <div class="search-btns">
-      <button @click="prev" title="Previous">&#9650;</button>
-      <button @click="next" title="Next">&#9660;</button>
+      <button @click="prev" :title="t('search.previous')" :aria-label="t('search.previous')">&#9650;</button>
+      <button @click="next" :title="t('search.next')" :aria-label="t('search.next')">&#9660;</button>
     </div>
 
     <div class="replace-field">
       <input
         v-model="replaceText"
         type="text"
-        placeholder="Replace..."
+        :placeholder="t('search.replace')"
+        :aria-label="t('search.replaceAria')"
         @keydown="onReplaceKeydown"
       >
-      <button @click="replaceOne">Replace</button>
-      <button @click="replaceAllMatches">All</button>
+      <button @click="replaceOne">{{ t('search.replaceBtn') }}</button>
+      <button @click="replaceAllMatches">{{ t('search.replaceAll') }}</button>
     </div>
 
     <div class="search-btns">
-      <button @click="emit('close')" title="Close">&times;</button>
+      <button @click="emit('close')" :title="t('search.close')" :aria-label="t('search.close')">&times;</button>
     </div>
   </div>
 </template>
@@ -169,7 +174,7 @@ onMounted(async () => {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   padding: 0 10px;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-1);
 }
 
 .search-field:focus-within { border-color: var(--accent); }
@@ -203,7 +208,7 @@ onMounted(async () => {
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.12s;
+  transition: all var(--dur-1);
 }
 
 .search-btns button:hover { background: var(--surface-hover); }
@@ -226,7 +231,7 @@ onMounted(async () => {
   padding: 6px 10px;
   outline: none;
   min-width: 60px;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-1);
 }
 
 .replace-field input:focus { border-color: var(--accent); }
@@ -241,7 +246,7 @@ onMounted(async () => {
   font-family: var(--font-sans);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.12s;
+  transition: all var(--dur-1);
 }
 
 .replace-field button:hover { background: var(--surface-hover); }

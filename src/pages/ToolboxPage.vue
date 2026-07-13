@@ -29,6 +29,11 @@ const input = ref('')
 const output = ref('')
 const passphrase = ref('')
 
+// All /tools/* routes share this component instance (no :key on the router-view), so
+// switching tools must not carry over the previous tool's state — an AES ciphertext
+// lingering in the JSON tool's output, or a passphrase held by an unrelated tool.
+watch(toolKey, () => { input.value = ''; output.value = ''; passphrase.value = '' })
+
 const opLabel = op => (locale.value === 'zh' ? op.zh : op.en)
 
 // On failure the output MUST be cleared, not left holding the previous result —
@@ -201,6 +206,10 @@ watch(rsaPriv, () => {
   if (rsaPriv.value.trim() && !rsaPub.value.trim()) derivePub(true)
 })
 async function pasteOther() { try { rsaOtherPub.value = await navigator.clipboard.readText() } catch {} }
+// Verify reads the signature from rsaOut. Users receiving "message + signature" paste the
+// message above and need to drop the signature HERE (not into the text box), so give this box
+// its own Paste button in sign/verify mode.
+async function pasteSig() { try { rsaOut.value = await navigator.clipboard.readText() } catch {} }
 async function runRsa(op) {
   rsaMsg.value = ''; rsaOk.value = false
   try {
@@ -400,7 +409,7 @@ function onDrop(e) {
         </template>
 
         <template v-else>
-          <div class="qr-drop" :class="{ over: qrDragOver }" @click="pickQrImage" @dragover.prevent="qrDragOver = true" @dragleave="qrDragOver = false" @drop.prevent="onQrDrop">
+          <div class="qr-drop" :class="{ over: qrDragOver }" role="button" tabindex="0" @click="pickQrImage" @keydown.enter.prevent="pickQrImage" @keydown.space.prevent="pickQrImage" @dragover.prevent="qrDragOver = true" @dragleave="qrDragOver = false" @drop.prevent="onQrDrop">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20.5 14v.01M14 20.5v.01M20.5 20.5v.01M17.5 17.5v.01"/></svg>
             <span>{{ t('tool.qr.drop') }}</span>
           </div>
@@ -602,8 +611,8 @@ function onDrop(e) {
             <p class="rsa-ophint">{{ rsaPurpose === 'encrypt' ? t('tool.rsa.opHintEnc') : t('tool.rsa.opHintSign') }}</p>
 
             <div class="tb-pane">
-              <div class="tb-pane-head"><span>{{ rsaPurpose === 'sign' ? t('tool.rsa.sig') : t('tool.output') }}</span><div class="tb-actions"><button @click="copyText(rsaOut)">{{ t('tool.copy') }}</button></div></div>
-              <textarea v-model="rsaOut" class="rsa-io" spellcheck="false"></textarea>
+              <div class="tb-pane-head"><span>{{ rsaPurpose === 'sign' ? t('tool.rsa.sigLabel') : t('tool.output') }}</span><div class="tb-actions"><button v-if="rsaPurpose === 'sign'" @click="pasteSig">{{ t('tool.paste') }}</button><button @click="copyText(rsaOut)">{{ t('tool.copy') }}</button></div></div>
+              <textarea v-model="rsaOut" class="rsa-io" spellcheck="false" :placeholder="rsaPurpose === 'sign' ? t('tool.rsa.sigPlaceholder') : ''"></textarea>
             </div>
             <p v-if="rsaMsg" class="tb-hint" :class="{ 'rsa-ok': rsaOk }">{{ rsaMsg }}</p>
           </div>
@@ -662,7 +671,7 @@ function onDrop(e) {
 .qr-preview { display: flex; justify-content: center; padding: 16px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; }
 .qr-preview canvas { max-width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; }
 .qr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.qr-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 20px; border: 2px dashed var(--border); border-radius: 12px; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.qr-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 20px; border: 2px dashed var(--border); border-radius: 12px; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: border-color var(--dur-1), background var(--dur-1); }
 .qr-drop:hover, .qr-drop.over { border-color: var(--accent); background: var(--accent-bg); }
 .qr-drop svg { width: 34px; height: 34px; color: var(--text-tertiary); }
 .qr-decoded textarea { width: 100%; min-height: 80px; border: none; background: transparent; padding: 12px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text); outline: none; resize: vertical; word-break: break-all; }
@@ -704,7 +713,7 @@ function onDrop(e) {
 .rsa-how > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); list-style: none; user-select: none; }
 .rsa-how > summary::-webkit-details-marker { display: none; }
 .rsa-how > summary > svg:first-of-type { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
-.rsa-how .chev { width: 15px; height: 15px; margin-left: auto; color: var(--text-tertiary); transition: transform 0.2s var(--ease-out); }
+.rsa-how .chev { width: 15px; height: 15px; margin-left: auto; color: var(--text-tertiary); transition: transform var(--dur-2) var(--ease-out); }
 .rsa-how[open] .chev { transform: rotate(90deg); }
 .rsa-how-body { padding: 2px 16px 15px; }
 .rsa-how-intro { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }

@@ -43,8 +43,14 @@ export async function proxyAI(request) {
   const { baseUrl, key, body, path } = payload || {}
   if (!baseUrl) return json({ error: 'missing baseUrl' }, 400)
   if (!body || typeof body !== 'object') return json({ error: 'missing body' }, 400)
+  // `path` is optional (buildUpstreamUrl defaults it). But if the caller sends a non-string path,
+  // buildUpstreamUrl's `path.startsWith` would throw a TypeError → bubble up as a 500. Reject it
+  // as a client error instead.
+  if (path != null && typeof path !== 'string') return json({ error: 'invalid path' }, 400)
 
-  const upstreamUrl = buildUpstreamUrl(baseUrl, path)
+  // Normalize null → undefined so buildUpstreamUrl's default param kicks in (a literal null would
+  // otherwise slip past the default and throw inside path.startsWith).
+  const upstreamUrl = buildUpstreamUrl(baseUrl, path ?? undefined)
   let u
   try { u = new URL(upstreamUrl) } catch { return json({ error: 'invalid baseUrl' }, 400) }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return json({ error: 'protocol not allowed' }, 400)

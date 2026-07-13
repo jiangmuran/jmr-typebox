@@ -78,6 +78,12 @@ onMounted(() => {
   requestWakeLock()
   document.addEventListener('visibilitychange', onVisibility)
   document.addEventListener('keydown', onKey)
+  // Deep links / refreshes land here without MediaShell, so the store is un-hydrated.
+  // init() is idempotent; when nothing is playing afterwards, bail to the player
+  // instead of stranding the user on an empty lyric stage.
+  store.init().then(() => {
+    if (!store.currentTrack.value) router.replace('/media/player')
+  })
 })
 onBeforeUnmount(() => {
   releaseWakeLock()
@@ -210,7 +216,8 @@ function lineScale(i) {
 
         <!-- Plain text fallback (no synced lyrics) -->
         <div v-else class="fls-stage" @click="onBackdropClick">
-          <div class="fls-plain">{{ (store.liveLyrics.value?.original || '').split('\n').slice(0, 40).join('\n') || t('media.lyrics.empty') }}</div>
+          <div v-if="store.lyricsLoading.value" class="fls-plain">{{ t('media.lyrics.loading') }}</div>
+          <div v-else class="fls-plain">{{ (store.liveLyrics.value?.original || '').split('\n').slice(0, 40).join('\n') || t('media.lyrics.empty') }}</div>
         </div>
       </div>
 

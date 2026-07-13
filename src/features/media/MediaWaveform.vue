@@ -5,6 +5,9 @@
 // stays presentational + cheap to re-render.
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { drawWaveform } from './waveform'
+import { useI18n } from '../../composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   peaks: { type: Array, default: null },     // [{min,max}] or null while decoding
@@ -101,6 +104,16 @@ function onPointerUp(e) {
   }
 }
 
+// Keyboard access: the waveform doubles as a seek slider — Left/Right nudge playback ±5s.
+function onKey(e) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  if (!props.duration) return
+  e.preventDefault()
+  const delta = e.key === 'ArrowRight' ? 5 : -5
+  const cur = props.playRatio * props.duration
+  emit('seek', Math.max(0, Math.min(props.duration, cur + delta)))
+}
+
 watch(() => [props.peaks, props.playRatio, props.selStart, props.selEnd, props.duration], () => {
   // re-render on any visual input change
   nextTick(render)
@@ -116,7 +129,11 @@ onBeforeUnmount(() => { ro?.disconnect?.() })
 </script>
 
 <template>
-  <div ref="wrap" class="wf-wrap" :style="{ height: height + 'px' }">
+  <div ref="wrap" class="wf-wrap" :style="{ height: height + 'px' }"
+    role="slider" tabindex="0"
+    :aria-label="t('media.player.seek')"
+    :aria-valuemin="0" :aria-valuemax="Math.round(duration)" :aria-valuenow="Math.round(playRatio * duration)"
+    @keydown="onKey">
     <canvas
       ref="canvas"
       class="wf-canvas"

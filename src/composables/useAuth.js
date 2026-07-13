@@ -22,6 +22,10 @@ const view = ref('loading')          // 'loading' | 'no-setup' | 'bind' | 'login
 const status = ref(null)             // /api/admin/status body (bootstrap, passkeys, etc.)
 const error = ref('')                // last error message (cleared on next action)
 const busy = ref(false)              // an auth operation in flight
+// Bumped whenever an ALREADY-authenticated call gets a 401 (session expired mid-session).
+// AdminPage watches this to toast + re-render the login view. NOT bumped for pre-auth 401s
+// (e.g. a wrong bootstrap token / failed login) — those are surfaced via `error` instead.
+const sessionExpiredTick = ref(0)
 
 // Per-session WebAuthn options cache (between begin and finish calls).
 let _pendingOptions = null
@@ -104,6 +108,19 @@ function serializeCred(cred) {
   return out
 }
 
+// A 401 on a call made AFTER we were authenticated means the session cookie expired/was revoked.
+// Reset the whole auth surface back to the login view and signal AdminPage (via the tick) so it
+// can toast + re-render. Guarded by `authenticated.value` so a 401 from the login/bootstrap
+// endpoints themselves (wrong password/token) is NOT mistaken for an expired session.
+function handleUnauthorized(httpStatus) {
+  if (httpStatus !== 401 || !authenticated.value) return
+  authenticated.value = false
+  session.value = null
+  status.value = null
+  view.value = 'login'
+  sessionExpiredTick.value++
+}
+
 // ---- internal: small fetch wrapper that throws on non-2xx ----
 async function postJson(url, body) {
   const res = await fetch(url, {
@@ -116,6 +133,7 @@ async function postJson(url, body) {
   let parsed = {}
   try { parsed = text ? JSON.parse(text) : {} } catch { parsed = { _raw: text } }
   if (!res.ok) {
+    handleUnauthorized(res.status)
     const e = new Error(parsed.error || parsed.message || `HTTP ${res.status}`)
     e.status = res.status
     e.body = parsed
@@ -127,6 +145,7 @@ async function getJson(url) {
   const res = await fetch(url, { credentials: 'include' })
   const parsed = await res.json().catch(() => ({}))
   if (!res.ok) {
+    handleUnauthorized(res.status)
     const e = new Error(parsed.error || `HTTP ${res.status}`)
     e.status = res.status
     e.body = parsed
@@ -351,7 +370,7 @@ export function useAuth() {
 
   return {
     // state
-    authenticated, session, view, status, error, busy,
+    authenticated, session, view, status, error, busy, sessionExpiredTick,
     // derived
     hasPasskeys, needsBootstrap,
     // lifecycle

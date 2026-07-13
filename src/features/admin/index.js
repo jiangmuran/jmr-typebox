@@ -17,6 +17,7 @@ export default {
       'admin.working': 'Working…',
       'admin.failed': 'Action failed',
       'admin.unknownState': 'Unknown auth state',
+      'admin.sessionExpired': 'Session expired — please log in again',
 
       // no-setup
       'admin.noSetupTitle': 'Bootstrap token not set',
@@ -50,6 +51,7 @@ export default {
       'admin.statUnbound': 'Unbound',
       'admin.statPasskeys': 'Passkeys',
       'admin.statNcmCookie': 'NCM cookie',
+      'admin.statIpAllowlist': 'IP allowlist',
       'admin.statCookieActive': 'Active',
       'admin.statCookieMissing': 'Missing',
       'admin.cookieFromQr': 'via QR login',
@@ -131,6 +133,7 @@ export default {
       'admin.working': '处理中…',
       'admin.failed': '操作失败',
       'admin.unknownState': '未知认证状态',
+      'admin.sessionExpired': '会话已过期,请重新登录',
 
       'admin.noSetupTitle': '尚未设置初始化 token',
       'admin.noSetupBody': '请先用 wrangler secret put BOOTSTRAP_TOKEN 设置一个一次性 token,然后刷新本页。它只在绑定首个 passkey 时使用一次。',
@@ -159,6 +162,7 @@ export default {
       'admin.statUnbound': '未绑定',
       'admin.statPasskeys': '已绑定设备',
       'admin.statNcmCookie': '网易云 cookie',
+      'admin.statIpAllowlist': 'IP 白名单',
       'admin.statCookieActive': '有效',
       'admin.statCookieMissing': '缺失',
       'admin.cookieFromQr': '扫码登录',

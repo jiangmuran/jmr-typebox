@@ -87,8 +87,12 @@ function paraText(p) {
       <!-- Stage -->
       <div class="pv-stage-wrap">
         <div class="pv-stage" :style="{ aspectRatio: aspect }">
+          <!-- Empty deck: no slides at all — guard against dereferencing an undefined slide. -->
+          <div v-if="!slide" class="pv-fallback">
+            <p class="pv-empty">{{ t('office.emptySlide') }}</p>
+          </div>
           <!-- Positioned shapes -->
-          <template v-if="hasShapes(slide)">
+          <template v-else-if="hasShapes(slide)">
             <template v-for="(sh, si) in slide.shapes" :key="si">
               <img v-if="sh.type === 'image'" class="pv-img" :style="boxStyle(sh.box)" :src="sh.src" :alt="t('office.image')" loading="lazy" />
               <div v-else class="pv-text" :style="boxStyle(sh.box)">
@@ -134,13 +138,13 @@ function paraText(p) {
 .pv-sub { font-size: 11px; color: var(--text-secondary); }
 .pv-actions { display: flex; align-items: center; gap: 8px; }
 .pv-badge { font-size: 11px; font-weight: 600; color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border-light); padding: 4px 9px; border-radius: 99px; }
-.pv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); transition: all 0.15s; }
+.pv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); transition: all var(--dur-1); }
 .pv-btn svg { width: 14px; height: 14px; }
 .pv-btn.ghost:hover { background: var(--surface-hover); color: var(--text); }
 
 .pv-body { flex: 1; display: flex; min-height: 0; }
 .pv-rail { width: 168px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border-light); padding: 10px; display: flex; flex-direction: column; gap: 7px; }
-.pv-thumb { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); cursor: pointer; text-align: left; transition: all 0.15s; }
+.pv-thumb { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: 9px; background: var(--surface); cursor: pointer; text-align: left; transition: all var(--dur-1); }
 .pv-thumb:hover { background: var(--surface-hover); }
 .pv-thumb.on { border-color: var(--accent); background: var(--accent-bg); }
 .pv-thumb-n { font-size: 11px; font-weight: 700; color: var(--text-tertiary); flex-shrink: 0; min-width: 14px; }
@@ -161,7 +165,7 @@ function paraText(p) {
 .pv-empty { color: #888 !important; font-style: italic; }
 
 .pv-nav { display: flex; align-items: center; gap: 14px; }
-.pv-navbtn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; transition: all 0.15s; }
+.pv-navbtn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--dur-1); }
 .pv-navbtn svg { width: 16px; height: 16px; }
 .pv-navbtn:hover:not(:disabled) { background: var(--surface-hover); }
 .pv-navbtn:disabled { opacity: 0.4; cursor: default; }

@@ -1,5 +1,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { load, save } from '../utils/storage'
+import { useToast } from './useToast'
+import { useI18n } from './useI18n'
 
 // Multi-document editor model. The editor is a workspace: multiple open documents with
 // tabs, like an IDE. State is a single reactive object persisted under `tb-docs`.
@@ -29,14 +31,87 @@ const content = computed(() => active.value?.content ?? '')
 const filename = computed(() => active.value?.name ?? 'untitled')
 
 let saveTimer = null
+let lastSaveOk = true
 function saveNow() {
   clearTimeout(saveTimer)
-  save('docs', JSON.stringify({ docs: state.docs, activeId: state.activeId }))
-  dirty.value = false
+  const ok = save('docs', JSON.stringify({ docs: state.docs, activeId: state.activeId }))
+  if (ok) {
+    dirty.value = false
+  } else if (lastSaveOk) {
+    // Warn only on the ok→failed transition so typing doesn't re-toast every 600ms.
+    const { showToast } = useToast()
+    const { t } = useI18n()
+    showToast(t('toast.saveFailed'))
+  }
+  lastSaveOk = ok
+  return ok
 }
 function debouncedSave() {
   clearTimeout(saveTimer)
   saveTimer = setTimeout(saveNow, 600)
+}
+
+// Conservative cross-tab merge. `storage` events only fire in *other* tabs than the
+// writer, so there's no feedback loop. Rules (never drop what this tab is editing):
+//   - remote-only docs (id not present locally) → add
+//   - local-only docs (id not present remotely) → keep (can't tell "deleted" from
+//     "not-yet-synced", so prefer not to lose data)
+//   - docs on both sides → take remote content, UNLESS this is the active doc with
+//     unsaved edits (dirty), in which case keep local.
+// activeId is always kept local.
+export function mergeRemoteDocs(localDocs, remoteDocs, { activeId, dirty } = {}) {
+  const remoteById = new Map((remoteDocs || []).map(d => [Number(d.id), d]))
+  const seen = new Set()
+  const out = []
+  for (const ld of localDocs) {
+    const id = Number(ld.id)
+    seen.add(id)
+    const rd = remoteById.get(id)
+    if (rd && !(id === activeId && dirty)) {
+      out.push({ id, name: rd.name, content: rd.content })
+    } else {
+      out.push({ id, name: ld.name, content: ld.content })
+    }
+  }
+  for (const rd of (remoteDocs || [])) {
+    const id = Number(rd.id)
+    if (!seen.has(id)) out.push({ id, name: rd.name, content: rd.content })
+  }
+  return out
+}
+
+// Apply a remote docs snapshot into the live reactive state in place, preserving the
+// identity of existing reactive doc objects (components hold the `state.docs` array
+// reference) and bumping the id counter so new local docs never collide.
+function applyRemote(remote) {
+  if (!remote || !Array.isArray(remote.docs)) return
+  const merged = mergeRemoteDocs(state.docs, remote.docs, { activeId: state.activeId, dirty: dirty.value })
+  const localById = new Map(state.docs.map(d => [Number(d.id), d]))
+  const next = merged.map(m => {
+    const existing = localById.get(Number(m.id))
+    if (existing) {
+      existing.name = m.name
+      existing.content = m.content
+      return existing
+    }
+    return reactive({ id: m.id, name: m.name, content: m.content })
+  })
+  state.docs.splice(0, state.docs.length, ...next)
+  _seq = Math.max(_seq, ...state.docs.map(d => Number(d.id) || 0))
+}
+
+// Flush the debounce window when the page is being closed/backgrounded — otherwise the
+// last keystrokes within 600ms of a tab close are silently lost.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { if (dirty.value) saveNow() })
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && dirty.value) saveNow()
+  })
+  // Coordinate with other tabs: merge in whatever they persisted to `tb-docs`.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== 'tb-docs' || !e.newValue) return
+    try { applyRemote(JSON.parse(e.newValue)) } catch { /* ignore malformed remote */ }
+  })
 }
 
 const stats = computed(() => {
@@ -73,7 +148,13 @@ export function useEditor() {
     saveNow()
     return doc
   }
-  function openDoc(id) { state.activeId = id }
+  function openDoc(id) {
+    // Flush pending edits BEFORE switching: `dirty` is a single global flag, so once
+    // activeId moves on, a cross-tab storage merge would treat the previous doc as
+    // clean and overwrite its still-unsaved content with the remote copy.
+    if (dirty.value) saveNow()
+    state.activeId = id
+  }
   function closeDoc(id) {
     const i = state.docs.findIndex(d => d.id === id)
     if (i < 0) return

@@ -155,8 +155,14 @@ function hasViewContent(key) {
     </div>
 
     <div v-if="!parsedLrc.synced && !parsedLrc.lines.length" class="lp-empty">
-      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h32M8 24h32M8 34h20"/></svg>
-      <p>{{ t('media.lyrics.empty') }}</p>
+      <template v-if="store.lyricsLoading.value">
+        <span class="lp-spinner"></span>
+        <p>{{ t('media.lyrics.loading') }}</p>
+      </template>
+      <template v-else>
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h32M8 24h32M8 34h20"/></svg>
+        <p>{{ t('media.lyrics.empty') }}</p>
+      </template>
     </div>
 
     <div v-else ref="containerEl" class="lp-scroll" :class="{ ktv: isKtv }">
@@ -186,12 +192,18 @@ function hasViewContent(key) {
     <!-- Long-press / right-click context menu. Teleported to body via inline positioning. -->
     <div v-if="menuFor" class="ll-menu" :style="{ left: menuFor.x + 'px', top: menuFor.y + 'px' }" @click.stop>
       <div class="ll-menu-line">{{ menuFor.line.text || '·' }}</div>
-      <button class="ll-menu-item" @click="playFromLine">▶ {{ t('media.lyrics.menuPlayFrom') }}</button>
-      <button class="ll-menu-item" @click="setA">A {{ t('media.lyrics.menuSetA') }}</button>
-      <button class="ll-menu-item" @click="setB">B {{ t('media.lyrics.menuSetB') }}</button>
+      <button class="ll-menu-item" @click="playFromLine">
+        <svg class="ll-menu-ic" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>{{ t('media.lyrics.menuPlayFrom') }}
+      </button>
+      <button class="ll-menu-item" @click="setA"><span class="ll-menu-ic ll-menu-ab">A</span>{{ t('media.lyrics.menuSetA') }}</button>
+      <button class="ll-menu-item" @click="setB"><span class="ll-menu-ic ll-menu-ab">B</span>{{ t('media.lyrics.menuSetB') }}</button>
       <div class="ll-menu-sep"></div>
-      <button class="ll-menu-item" @click="copyLine">📋 {{ t('media.lyrics.menuCopy') }}</button>
-      <button class="ll-menu-item" @click="sendToEditor">📝 {{ t('media.lyrics.menuSendMd') }}</button>
+      <button class="ll-menu-item" @click="copyLine">
+        <svg class="ll-menu-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>{{ t('media.lyrics.menuCopy') }}
+      </button>
+      <button class="ll-menu-item" @click="sendToEditor">
+        <svg class="ll-menu-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>{{ t('media.lyrics.menuSendMd') }}
+      </button>
     </div>
     <div v-if="menuFor" class="ll-menu-scrim" @click="closeMenu" @contextmenu.prevent="closeMenu"></div>
   </div>
@@ -203,6 +215,7 @@ function hasViewContent(key) {
 .lp-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 50px 20px; color: var(--text-tertiary); text-align: center; flex: 1; }
 .lp-empty svg { width: 42px; height: 42px; opacity: 0.5; }
 .lp-empty p { font-size: 13px; }
+.lp-spinner { width: 22px; height: 22px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 
 .lp-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 60px 16px; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .lp-scroll.ktv { padding-top: 80px; }
@@ -221,8 +234,10 @@ function hasViewContent(key) {
 /* Long-press / right-click menu. */
 .ll-menu { position: fixed; z-index: 1000; min-width: 200px; padding: 6px; background: var(--surface); border: 1px solid var(--border-light); border-radius: 12px; box-shadow: var(--shadow-lg); }
 .ll-menu-line { font-size: 11px; color: var(--text-secondary); padding: 8px 10px 6px; border-bottom: 1px solid var(--border-light); margin-bottom: 4px; font-style: italic; max-height: 60px; overflow: hidden; }
-.ll-menu-item { display: block; width: 100%; padding: 8px 10px; text-align: left; background: none; border: none; color: var(--text); font-family: var(--font-sans); font-size: 13px; cursor: pointer; border-radius: 7px; }
+.ll-menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; text-align: left; background: none; border: none; color: var(--text); font-family: var(--font-sans); font-size: 13px; cursor: pointer; border-radius: 7px; }
 .ll-menu-item:hover { background: var(--surface-hover); }
+.ll-menu-ic { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-secondary); }
+.ll-menu-ab { display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
 .ll-menu-sep { height: 1px; background: var(--border-light); margin: 4px 0; }
 .ll-menu-scrim { position: fixed; inset: 0; z-index: 999; }
 

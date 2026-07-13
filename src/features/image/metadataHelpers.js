@@ -60,8 +60,26 @@ export function extractGps(tags) {
   }
   if (lat == null || lon == null) return null
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
-  const altitude = toDecimal(tags.GPSAltitude) ?? toDecimal(tags.altitude)
+  // Altitude: prefer the raw GPSAltitude (an unsigned magnitude) and sign it with GPSAltitudeRef —
+  // ref 1 (or "below sea level") means the point is below sea level, so the value must read negative.
+  // Fall back to exifr's `altitude` convenience field, which is already signed.
+  let altitude = toDecimal(tags.GPSAltitude)
+  if (altitude != null) {
+    if (isBelowSeaLevel(tags.GPSAltitudeRef)) altitude = -Math.abs(altitude)
+  } else {
+    altitude = toDecimal(tags.altitude)
+  }
   return { lat, lon, altitude: altitude == null ? null : altitude }
+}
+
+// GPSAltitudeRef: 0 = above sea level, 1 = below. exifr may surface it as a number, a numeric
+// string, a descriptive string, or a 1-byte array/typed-array — accept all of these.
+function isBelowSeaLevel(ref) {
+  if (ref == null) return false
+  if (typeof ref === 'number') return ref === 1
+  if (typeof ref === 'string') return ref.trim() === '1' || /below/i.test(ref)
+  if (Array.isArray(ref) || ArrayBuffer.isView(ref)) return Number(ref[0]) === 1
+  return false
 }
 
 // Build an OpenStreetMap link for a coordinate (used for the "view on map" affordance).
@@ -147,6 +165,19 @@ export function stringifyValue(value) {
   }
   if (Array.isArray(value)) {
     return value.map((v) => stringifyValue(v)).join(', ')
+  }
+  // Typed arrays (Uint8Array etc.) aren't Array.isArray, so JSON.stringify would render them as
+  // {"0":.., "1":..}. Show short byte runs as hex (e.g. GPSVersionID / raw EXIF bytes) and longer
+  // ones as a comma-joined list, so the raw tag list stays readable.
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    const arr = Array.from(value)
+    if (arr.length <= 8 && arr.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+      return arr.map((n) => n.toString(16).padStart(2, '0')).join(' ')
+    }
+    return arr.join(', ')
+  }
+  if (value instanceof ArrayBuffer) {
+    return stringifyValue(new Uint8Array(value))
   }
   if (typeof value === 'object') {
     try { return JSON.stringify(value) } catch { return String(value) }

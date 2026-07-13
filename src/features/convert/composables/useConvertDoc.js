@@ -4,10 +4,14 @@
 
 import { ref } from 'vue'
 import { useEditor } from '../../../composables/useEditor.js'
+import { useToast } from '../../../composables/useToast.js'
+import { useI18n } from '../../../composables/useI18n.js'
 import { fileKind, stripExt } from '../utils/fileHelpers.js'
 
 export function useConvertDoc() {
   const { content, filename } = useEditor()
+  const { showToast } = useToast()
+  const { t } = useI18n()
 
   // A local working copy seeded from the shared editor doc. We do NOT write back
   // to the editor — convert pages are a read/transform surface.
@@ -27,9 +31,18 @@ export function useConvertDoc() {
   async function loadMarkdownFile(file) {
     if (!file) return false
     if (fileKind(file) !== 'markdown') return false
-    text.value = await readFileAsText(file)
-    name.value = stripExt(file.name) || 'document'
-    return true
+    // Catch FileReader failures here: callers invoke this from event handlers (@pick/@drop) without
+    // awaiting, so an uncaught reject would surface as an unhandled rejection with no user feedback.
+    try {
+      const content = await readFileAsText(file)
+      text.value = content
+      name.value = stripExt(file.name) || 'document'
+      return true
+    } catch (e) {
+      console.error('[convert] failed to read markdown file', e)
+      showToast(t('importurl.failed'))
+      return false
+    }
   }
 
   function pickMarkdownFile() {

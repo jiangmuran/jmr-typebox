@@ -19,7 +19,65 @@
  *   hasMathToken(html) -> boolean            cheap "did we emit any math?" check
  */
 
-import katex from 'katex'
+// KaTeX runtime is loaded ON DEMAND. The full katex bundle is ~385KB; most
+// documents have no math, so we no longer pull it into the first screen via a
+// static `import katex from 'katex'`. Instead:
+//   - renderOne() renders synchronously once the runtime is in memory (_katex),
+//     and otherwise emits a lightweight "pending" placeholder (the raw TeX text)
+//     while it kicks off the async import in the background.
+//   - onKatexReady(cb) lets the live preview re-render once the chunk lands, so
+//     the placeholder is upgraded to real KaTeX HTML (usually <1s later).
+//   - Async callers (exports, docx, themed iframe) `await ensureKatex()` up
+//     front so their one-shot output already contains real math.
+let _katex = null
+let _loading = null
+const _readyCbs = new Set()
+
+/**
+ * Idempotently load the KaTeX runtime. Resolves with the katex module once it's
+ * in memory; concurrent callers share a single import. Notifies onKatexReady
+ * subscribers when the chunk first lands.
+ */
+export function ensureKatex() {
+  if (_katex) return Promise.resolve(_katex)
+  if (!_loading) {
+    _loading = import('katex')
+      .then((mod) => {
+        _katex = mod.default || mod
+        for (const cb of _readyCbs) { try { cb() } catch { /* ignore */ } }
+        _readyCbs.clear()
+        return _katex
+      })
+      .catch((e) => {
+        _loading = null // allow a later retry
+        throw e
+      })
+  }
+  return _loading
+}
+
+/**
+ * Run `cb` once the KaTeX runtime is available: immediately if it already is,
+ * otherwise when ensureKatex()'s import resolves. Fires at most once. Returns an
+ * unsubscribe — components MUST call it on unmount, or (in a session where math
+ * never appears and the set is never flushed) their closures leak in _readyCbs.
+ */
+export function onKatexReady(cb) {
+  if (typeof cb !== 'function') return () => {}
+  if (_katex) { cb(); return () => {} }
+  _readyCbs.add(cb)
+  return () => { _readyCbs.delete(cb) }
+}
+
+/** Cheap check: would `text` produce any math (so callers know to preload KaTeX)? */
+export function textHasMath(text) {
+  return typeof text === 'string' &&
+    (text.indexOf('$') !== -1 || text.indexOf('\\(') !== -1 || text.indexOf('\\[') !== -1)
+}
+
+function escapeTex(tex) {
+  return String(tex).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 // Placeholder token: plain alphanumerics only, so neither marked (no markdown
 // punctuation to interpret) nor DOMPurify (no tags/attrs) will touch it, and it
@@ -34,8 +92,16 @@ function token(i) {
 const TOKEN_RE = new RegExp(`${PREFIX}(\\d+)zZendZz`, 'g')
 
 function renderOne(tex, displayMode) {
+  // Runtime not loaded yet → kick off the async import and show the raw TeX as a
+  // placeholder. The live preview subscribes via onKatexReady and re-renders once
+  // the chunk lands, upgrading this to real KaTeX HTML. Async callers avoid this
+  // path entirely by awaiting ensureKatex() first.
+  if (!_katex) {
+    ensureKatex().catch(() => {})
+    return `<span class="math-pending"><code>${escapeTex(tex)}</code></span>`
+  }
   try {
-    return katex.renderToString(tex, {
+    return _katex.renderToString(tex, {
       displayMode,
       throwOnError: false,
       // Surface errors inline (in a muted color) instead of throwing — a single
@@ -47,8 +113,7 @@ function renderOne(tex, displayMode) {
     })
   } catch {
     // Last-resort guard: show the raw source rather than crash the pipeline.
-    const safe = tex.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    return `<code class="math-error">${safe}</code>`
+    return `<code class="math-error">${escapeTex(tex)}</code>`
   }
 }
 

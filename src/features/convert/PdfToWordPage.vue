@@ -24,6 +24,10 @@ const numPages = ref(0)
 const converting = ref(false)
 const dragging = ref(false)
 
+// Monotonic token so a slow PDF extraction can't overwrite a later file's result (A's markdown
+// under B's filename). Only the most recent handlePdf() call may commit.
+let extractToken = 0
+
 function pickPdf() {
   if (typeof document === 'undefined') return
   const input = document.createElement('input')
@@ -34,20 +38,25 @@ function pickPdf() {
 
 async function handlePdf(file) {
   if (fileKind(file) !== 'pdf') return
+  const token = ++extractToken
   pdfName.value = file.name
   extracting.value = true
   markdown.value = ''
   numPages.value = 0
   try {
     const { pdfToMarkdown } = await import('../../utils/pdfToMarkdown.js')
-    const result = await pdfToMarkdown(file, (cur, total) => { progress.value = `${cur} / ${total}` })
+    const result = await pdfToMarkdown(file, (cur, total) => {
+      if (token === extractToken) progress.value = `${cur} / ${total}`
+    })
+    if (token !== extractToken) return // superseded by a newer file — discard
     markdown.value = result.markdown
     numPages.value = result.numPages
     showToast(`${result.numPages} ${t('toast.pdfExtracted')}`)
   } catch (e) {
+    if (token !== extractToken) return
     console.error(e); showToast(t('toast.pdfFailed'))
   } finally {
-    extracting.value = false; progress.value = ''
+    if (token === extractToken) { extracting.value = false; progress.value = '' }
   }
 }
 
@@ -75,6 +84,17 @@ async function toDocx() {
 }
 
 function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
+
+// Cancel an in-flight extraction: bumping the token means the running pdfToMarkdown's result (and
+// its finally block) is ignored via the existing `token !== extractToken` guards, so we just
+// reset the UI back to the initial upload state.
+function cancelExtract() {
+  extractToken++
+  extracting.value = false
+  progress.value = ''
+  pdfName.value = ''
+  numPages.value = 0
+}
 </script>
 
 <template>
@@ -89,7 +109,7 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
         </header>
 
         <!-- Upload -->
-        <div v-if="!markdown && !extracting" class="upload-zone" :class="{ dragging }" @click="pickPdf">
+        <div v-if="!markdown && !extracting" class="upload-zone" :class="{ dragging }" role="button" tabindex="0" @click="pickPdf" @keydown.enter.prevent="pickPdf" @keydown.space.prevent="pickPdf">
           <svg viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
             <rect x="12" y="4" width="32" height="48" rx="4"/>
             <path d="M22 24h4a3.5 3.5 0 0 1 0 7h-4m0-7v16"/>
@@ -104,6 +124,7 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
           <span class="cv-spinner-lg"></span>
           <p>{{ t('pdf.extracting') }} {{ pdfName }}…</p>
           <p v-if="progress" class="prog">{{ progress }}</p>
+          <button class="cancel-extract" @click="cancelExtract">{{ t('pdf.cancel') }}</button>
         </div>
 
         <!-- Review + convert -->
@@ -152,6 +173,8 @@ function reset() { markdown.value = ''; pdfName.value = ''; numPages.value = 0 }
 .cv-spinner-lg { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .loading p { color: var(--text-secondary); font-size: 13px; }
 .prog { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
+.cancel-extract { margin-top: 6px; border: 1px solid var(--border-light); background: var(--surface); color: var(--text-secondary); font-size: 12px; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-family: var(--font-sans); }
+.cancel-extract:hover { color: var(--text); border-color: var(--border); }
 
 .file-card { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: var(--surface-hover); margin-bottom: 16px; }
 .file-card svg { width: 24px; height: 24px; color: var(--text-secondary); flex-shrink: 0; }

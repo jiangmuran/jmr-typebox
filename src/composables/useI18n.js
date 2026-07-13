@@ -118,6 +118,7 @@ const dict = {
     'settings.language': 'Language',
     'settings.danger': 'Danger zone',
     'settings.reset': 'Reset settings',
+    'settings.resetConfirm': 'Reset all settings? This clears your API keys and provider configuration too.',
     'settings.themes': 'Themes',
     'settings.writingTheme': 'Writing theme',
     'settings.exportTheme': 'Export theme',
@@ -194,6 +195,8 @@ const dict = {
     'tool.rsa.generated': 'Key pair generated',
     'tool.rsa.text': 'Text',
     'tool.rsa.sig': 'Signature',
+    'tool.rsa.sigLabel': 'Signature (paste here to verify)',
+    'tool.rsa.sigPlaceholder': 'Sign writes the signature here. To verify, paste the signature you received into this box (not the text box above)…',
     'tool.rsa.inEnc': 'Short text to encrypt (or Base64 ciphertext to decrypt)…',
     'tool.rsa.inSign': 'Text to sign or verify…',
     'tool.rsa.encBtn': 'Encrypt',
@@ -321,6 +324,7 @@ const dict = {
     'toast.loaded': 'Loaded',
     'toast.downloaded': 'Downloaded',
     'toast.savedFile': 'Saved to',
+    'toast.saveFailed': 'Storage full — changes not saved. Export your work.',
     'toast.pdfExtracted': 'pages extracted from PDF',
     'toast.pdfFailed': 'Failed to extract PDF text',
     'toast.exportFailed': 'Export failed',
@@ -402,6 +406,7 @@ const dict = {
     'ai.continueHint': 'Tab to keep · Esc to undo',
     'ai.continueEmpty': 'Write something first, then continue',
     'ai.ghostHint': 'Tab to accept',
+    'ai.completeConfigError': 'AI completion unavailable — check your API Key in Settings.',
     'ai.generatePrompt': 'What should I write about?',
     // selection actions
     'ai.act.improve': 'Improve',
@@ -456,10 +461,50 @@ const dict = {
     'ai.tool.ok': 'done',
     'ai.tool.read': 'read',
     'ai.tool.exported': 'exported',
+    'ai.retry': 'Retry',
+    'ai.checkKey': 'Check API Key',
+    'ai.paused': 'AI paused — the backend is off or not configured',
 
     // PDF tools
     'pdf.openInEditor': 'Open in Editor',
     'pdf.pages': 'pages',
+    'pdf.cancel': 'Cancel',
+
+    // Search bar
+    'search.find': 'Find…',
+    'search.replace': 'Replace…',
+    'search.findAria': 'Find text',
+    'search.replaceAria': 'Replace text',
+    'search.noResults': 'No results',
+    'search.replaceBtn': 'Replace',
+    'search.replaceAll': 'All',
+    'search.previous': 'Previous',
+    'search.next': 'Next',
+    'search.close': 'Close',
+
+    // Markdown toolbar
+    'md.bold': 'Bold',
+    'md.italic': 'Italic',
+    'md.strikethrough': 'Strikethrough',
+    'md.h1': 'Heading 1',
+    'md.h2': 'Heading 2',
+    'md.h3': 'Heading 3',
+    'md.link': 'Link',
+    'md.image': 'Image',
+    'md.code': 'Code',
+    'md.codeBlock': 'Code Block',
+    'md.bulletList': 'Bullet List',
+    'md.numberedList': 'Numbered List',
+    'md.checkbox': 'Checkbox',
+    'md.blockquote': 'Blockquote',
+    'md.table': 'Table',
+    'md.hr': 'Horizontal Rule',
+
+    // Command palette groups
+    'cmdk.group.navigate': 'Navigate',
+
+    // Common
+    'common.close': 'Close',
   },
 
   zh: {
@@ -569,6 +614,7 @@ const dict = {
     'settings.language': '语言',
     'settings.danger': '危险区',
     'settings.reset': '重置设置',
+    'settings.resetConfirm': '重置全部设置？这也会清除你的 API 密钥和服务商配置。',
     'settings.themes': '主题',
     'settings.writingTheme': '写作主题',
     'settings.exportTheme': '导出主题',
@@ -644,6 +690,8 @@ const dict = {
     'tool.rsa.generated': '已生成密钥对',
     'tool.rsa.text': '文本',
     'tool.rsa.sig': '签名',
+    'tool.rsa.sigLabel': '签名（粘贴此处以验证）',
+    'tool.rsa.sigPlaceholder': '签名会写入此处。验证时，请将收到的签名粘贴到这里（而不是上方的文本框）…',
     'tool.rsa.inEnc': '要加密的短文本(或要解密的 Base64 密文)…',
     'tool.rsa.inSign': '要签名或验证的文本…',
     'tool.rsa.encBtn': '加密',
@@ -764,6 +812,7 @@ const dict = {
     'toast.loaded': '已加载',
     'toast.downloaded': '已下载',
     'toast.savedFile': '已保存到',
+    'toast.saveFailed': '存储空间已满，更改未能保存，请导出备份',
     'toast.pdfExtracted': '页已从 PDF 提取',
     'toast.pdfFailed': 'PDF 文字提取失败',
     'toast.exportFailed': '导出失败',
@@ -844,6 +893,7 @@ const dict = {
     'ai.continueHint': 'Tab 保留 · Esc 撤销',
     'ai.continueEmpty': '请先写点内容再续写',
     'ai.ghostHint': '按 Tab 采纳',
+    'ai.completeConfigError': 'AI 补全不可用，请检查 API Key 设置',
     'ai.generatePrompt': '想让我写些什么？',
     // 选区操作
     'ai.act.improve': '优化',
@@ -898,10 +948,50 @@ const dict = {
     'ai.tool.ok': '完成',
     'ai.tool.read': '已读取',
     'ai.tool.exported': '已导出',
+    'ai.retry': '重试',
+    'ai.checkKey': '检查 API Key',
+    'ai.paused': 'AI 已暂停 — 后端已关闭或配置缺失',
 
     // PDF tools
     'pdf.openInEditor': '在编辑器中打开',
     'pdf.pages': '页',
+    'pdf.cancel': '取消',
+
+    // Search bar
+    'search.find': '查找…',
+    'search.replace': '替换…',
+    'search.findAria': '查找文本',
+    'search.replaceAria': '替换文本',
+    'search.noResults': '无结果',
+    'search.replaceBtn': '替换',
+    'search.replaceAll': '全部',
+    'search.previous': '上一个',
+    'search.next': '下一个',
+    'search.close': '关闭',
+
+    // Markdown toolbar
+    'md.bold': '加粗',
+    'md.italic': '斜体',
+    'md.strikethrough': '删除线',
+    'md.h1': '标题 1',
+    'md.h2': '标题 2',
+    'md.h3': '标题 3',
+    'md.link': '链接',
+    'md.image': '图片',
+    'md.code': '代码',
+    'md.codeBlock': '代码块',
+    'md.bulletList': '无序列表',
+    'md.numberedList': '有序列表',
+    'md.checkbox': '任务列表',
+    'md.blockquote': '引用',
+    'md.table': '表格',
+    'md.hr': '分割线',
+
+    // Command palette groups
+    'cmdk.group.navigate': '导航',
+
+    // Common
+    'common.close': '关闭',
   },
 }
 

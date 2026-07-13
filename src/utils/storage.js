@@ -9,8 +9,13 @@ export function load(key, fallback = null) {
   }
 }
 
+// Returns true when the write succeeded — quota errors (and private-mode blocks)
+// must not be mistaken for a successful save.
 export function save(key, value) {
   try {
     localStorage.setItem(PREFIX + key, value)
-  } catch {}
+    return true
+  } catch {
+    return false
+  }
 }

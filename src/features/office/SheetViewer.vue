@@ -23,7 +23,11 @@ const { t } = useI18n()
 const { showToast } = useToast()
 
 const active = ref(0)
-watch(() => props.model, () => { active.value = 0 }, { deep: false })
+// Per-sheet edit overlay: sheetIndex -> Map<"r:c", displayString>. Kept alongside the in-place row
+// mutation so export can overlay edits onto the FULL (uncapped) data re-parsed from the original
+// bytes, instead of shipping only the render-capped grid.
+const edits = ref([])
+watch(() => props.model, () => { active.value = 0; edits.value = [] }, { deep: false })
 
 const sheet = computed(() => props.model.sheets[active.value] || props.model.sheets[0])
 
@@ -54,6 +58,10 @@ function onCellInput(r, c, e) {
   const rows = sheet.value.rows
   if (!rows[r]) return
   rows[r][c] = e.target.value
+  // Record the edit against the active sheet so the full-data export picks it up.
+  let map = edits.value[active.value]
+  if (!map) { map = new Map(); edits.value[active.value] = map }
+  map.set(`${r}:${c}`, e.target.value)
 }
 function startEdit(r, c) { if (!isCovered(r, c)) editing.value = { r, c } }
 function stopEdit() { editing.value = null }
@@ -62,9 +70,11 @@ function isEditing(r, c) { return editing.value && editing.value.r === r && edit
 async function download() {
   try {
     showToast(t('office.building'))
-    const { buildWorkbook } = await import('./xlsxRunner')
+    const { buildWorkbookFromBytes } = await import('./xlsxRunner')
     const { downloadBlob } = await import('./officeDom')
-    const blob = await buildWorkbook(props.model.sheets)
+    // Rebuild from the original bytes (full data) + the edit overlay, so rows/cols beyond the render
+    // cap are never dropped. Falls back to the capped grid if bytes aren't present on the model.
+    const blob = await buildWorkbookFromBytes(props.model.bytes, edits.value, props.model.sheets)
     downloadBlob(blob, `${props.fileName || 'workbook'}.xlsx`)
     showToast(t('office.downloaded'))
   } catch (err) {

@@ -35,7 +35,7 @@ const props = defineProps({ stats: Object, dirty: Boolean, t: Function })
   display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 7px 1px 4px; border-radius: 999px;
   background: var(--status-ok-bg); color: var(--status-ok);
-  font-weight: 500; font-size: 10px; transition: all 0.3s;
+  font-weight: 500; font-size: 10px; transition: all var(--dur-3);
 }
 .saved-pill svg { width: 10px; height: 10px; }
 .saved-pill.unsaved { background: var(--status-warn-bg); color: var(--status-warn); }

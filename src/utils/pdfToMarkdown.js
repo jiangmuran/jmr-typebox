@@ -22,31 +22,37 @@ async function extractRawPages(file, onProgress) {
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
   const pages = []
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    if (onProgress) onProgress(i, pdf.numPages)
-    const page = await pdf.getPage(i)
-    const vp = page.getViewport({ scale: 1 })
-    const content = await page.getTextContent()
+  try {
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (onProgress) onProgress(i, pdf.numPages)
+      const page = await pdf.getPage(i)
+      const vp = page.getViewport({ scale: 1 })
+      const content = await page.getTextContent()
 
-    const items = content.items
-      .filter(it => it.str && it.str.trim().length > 0)
-      .map(it => {
-        const tx = it.transform
-        const fontSize = Math.round(Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]) * 10) / 10
-        return {
-          str: it.str,
-          x: Math.round(tx[4] * 10) / 10,
-          y: Math.round((vp.height - tx[5]) * 10) / 10,
-          width: it.width || 0,
-          height: it.height || fontSize,
-          fontSize,
-          fontName: it.fontName || '',
-        }
-      })
+      const items = content.items
+        .filter(it => it.str && it.str.trim().length > 0)
+        .map(it => {
+          const tx = it.transform
+          const fontSize = Math.round(Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]) * 10) / 10
+          return {
+            str: it.str,
+            x: Math.round(tx[4] * 10) / 10,
+            y: Math.round((vp.height - tx[5]) * 10) / 10,
+            width: it.width || 0,
+            height: it.height || fontSize,
+            fontSize,
+            fontName: it.fontName || '',
+          }
+        })
 
-    pages.push({ pageNum: i, width: vp.width, height: vp.height, items })
+      pages.push({ pageNum: i, width: vp.width, height: vp.height, items })
+    }
+    return { pages, numPages: pdf.numPages }
+  } finally {
+    // Free the document's worker-side memory — without this, every conversion leaks
+    // the whole parsed PDF until the tab is reloaded.
+    pdf.destroy().catch(() => {})
   }
-  return { pages, numPages: pdf.numPages }
 }
 
 // ===== Group items into lines =====

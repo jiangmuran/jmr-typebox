@@ -8,7 +8,9 @@
 //   • MOBILE (<900px): a full-screen, swipeable 3-panel deck — Now-Playing ⇄ Lyrics ⇄ Queue — with
 //     dot indicators; the persistent bottom mini-player (MediaShell) stays below.
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { songDetail } from './ncmClient'
+import { useToast } from '../../composables/useToast'
 import { useRouteHead } from '../../composables/useRouteHead'
 import { useI18n } from '../../composables/useI18n'
 import ClientOnly from '../../components/ClientOnly.vue'
@@ -25,6 +27,8 @@ import { useHandoff } from '../../composables/useHandoff'
 const { meta: m } = useRouteHead()
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
+const { showToast } = useToast()
 const store = usePlayerStore()
 const pool = useMediaPool()
 const handoff = useHandoff()
@@ -46,6 +50,28 @@ onMounted(async () => {
   if (!store.currentId.value) {
     desktopMode.value = 'library'
     panel.value = 2
+  }
+  // Shared deep links: /media/player?song=<ncmId> plays that song (preview — does NOT touch
+  // the library), ?playlist=<ncmPlaylistId> opens that playlist's detail drawer. The query is
+  // stripped immediately so a refresh doesn't re-trigger the action.
+  const sharedSong = typeof route.query.song === 'string' ? route.query.song : ''
+  const sharedPlaylist = typeof route.query.playlist === 'string' ? route.query.playlist : ''
+  if (sharedSong || sharedPlaylist) {
+    router.replace({ path: '/media/player' })
+    if (sharedPlaylist) {
+      store.libSource.value = 'ncm'
+      store.libNcmPlaylist.value = sharedPlaylist
+      desktopMode.value = 'library'
+      panel.value = 2
+    } else {
+      try {
+        const songs = await songDetail(sharedSong)
+        const song = Array.isArray(songs) ? songs[0] : null
+        const ok = song ? await store.playNcmPreview(song) : false
+        if (!ok) showToast(t('media.ncm.playFailed'))
+        else { desktopMode.value = 'split'; panel.value = 0 } // surface Now-Playing for the shared track
+      } catch { showToast(t('media.ncm.playFailed')) }
+    }
   }
   // Cross-module "Send to →": add a file sent here from another tool to the library and play it.
   const taken = handoff.take(['av', 'audio', 'video'])
@@ -121,7 +147,7 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
         <!-- MOBILE: swipeable 3-panel deck -->
         <div class="pl-mobile" @touchstart.passive="onTouchStart" @touchend="onTouchEnd">
           <div class="pl-dots">
-            <button v-for="(p, i) in PANELS" :key="p" class="dot" :class="{ on: panel === i }" @click="panel = i" :aria-label="p"></button>
+            <button v-for="(p, i) in PANELS" :key="p" class="dot" :class="{ on: panel === i }" @click="panel = i" :aria-label="t('media.player.gotoPage').replace('{n}', i + 1)"></button>
           </div>
           <div class="pl-deck-clip">
             <div class="pl-deck" :style="{ transform: trackX }">
@@ -147,7 +173,7 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
 /* ---------- DESKTOP ---------- */
 .pl-desktop { display: flex; flex-direction: column; gap: 14px; }
 .pl-desktop-bar { display: flex; gap: 3px; padding: 3px; background: var(--surface-hover); border-radius: 9px; align-self: flex-start; }
-.pl-bar-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all 0.15s; }
+.pl-bar-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 600; background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font-sans); transition: all var(--dur-1); }
 .pl-bar-btn svg { width: 14px; height: 14px; }
 .pl-bar-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .pl-bar-btn.pl-fullscreen-btn { margin-left: auto; }
@@ -174,6 +200,6 @@ const trackX = computed(() => `translateX(-${panel.value * 100}%)`)
   .pl-slide { flex: 0 0 100%; min-width: 100%; padding: 0 2px; }
   .pl-slide-lyrics { height: calc(100dvh - 260px); min-height: 380px; border: 1px solid var(--border-light); border-radius: 14px; background: var(--surface); overflow: hidden; }
   .pl-slide-lib { height: calc(100dvh - 230px); min-height: 420px; }
-  .pl-swipe-hint { text-align: center; font-size: 11px; color: var(--text-tertiary); padding-top: 2px; }
+  .pl-swipe-hint { text-align: center; font-size: 11px; color: var(--text-secondary); padding-top: 2px; }
 }
 </style>

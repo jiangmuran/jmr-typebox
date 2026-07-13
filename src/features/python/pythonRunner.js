@@ -73,14 +73,24 @@ function getWorker() {
     throw new Error('Web Worker unavailable in this environment')
   }
   setLibState('loading')
-  worker = new Worker(new URL('./pyworker.js', import.meta.url), { type: 'module' })
-  worker.onmessage = onWorkerMessage
-  worker.onerror = (e) => {
+  const w = new Worker(new URL('./pyworker.js', import.meta.url), { type: 'module' })
+  worker = w
+  w.onmessage = onWorkerMessage
+  w.onerror = (e) => {
     // A worker-level error (e.g. failed CDN import) rejects every in-flight op so the UI recovers.
     const err = (e && (e.message || e.error?.message)) || 'Python worker error'
     for (const [, h] of pending) { try { h.reject?.(new Error(err)) } catch { /* ignore */ } }
     pending.clear()
     setLibState('error')
+    // The worker is now unusable (a fatal error can leave it wedged). Tear it down and null the
+    // handle so the NEXT run spawns a fresh worker instead of posting into a dead one and hanging
+    // forever "busy". Guard on identity so a stale worker's late onerror can't kill a replacement.
+    try { w.terminate() } catch { /* ignore */ }
+    if (worker === w) {
+      worker = null
+      runtimeReady = false
+      currentProgressHandler = null
+    }
   }
   // Hand the blocking-input SharedArrayBuffer to the new worker (if isolation gave us one).
   sendStdinBufferToWorker()

@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { protectMath, restoreMath, hasMathToken } from '../math'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { protectMath, restoreMath, hasMathToken, ensureKatex } from '../math'
+
+// KaTeX now loads on demand; renderOne renders synchronously only once the runtime
+// is in memory. Preload it so these assertions see real KaTeX HTML (not the
+// raw-TeX pending placeholder).
+beforeAll(async () => { await ensureKatex() })
 
 describe('protectMath — delimiter detection', () => {
   it('extracts inline $...$ math to a token', () => {

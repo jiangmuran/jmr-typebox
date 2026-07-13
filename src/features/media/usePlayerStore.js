@@ -62,6 +62,9 @@ let _importCancel = false
 const liveLyrics = ref({
   original: '', translation: '', romaji: '', yrc: '',
 })
+// True while lyrics for the current track are being fetched — lets the lyrics views show a
+// loading state instead of prematurely flashing "no lyrics" before the fetch resolves.
+const lyricsLoading = ref(false)
 
 // PHASE 2: prefetch status, surfaced in MiniPlayer so the user knows the next track is warming.
 // 'idle' | 'fetching' | 'cached' | 'error'
@@ -80,6 +83,11 @@ const _blobCache = new Map()
 // Preview track: when the user clicks ▶ on a search result, we play WITHOUT adding to the library.
 // This ref holds that temporary record so currentTrack / MediaSession / lyrics still work.
 const previewRec = ref(null)
+// Library pane UI state — shared across ALL PlayerLibrary instances (desktop split view,
+// desktop library view and the mobile deck each mount one), so the tab/drawer stays
+// consistent between them and deep links (?playlist=<id>) can drive it from PlayerPage.
+const libSource = ref('files')          // 'files' | 'ncm'
+const libNcmPlaylist = ref('')          // NCM playlist id whose detail drawer is open ('' = closed)
 
 // ---- derived ----
 const currentTrack = computed(() => tracks.value.find((t) => t.id === currentId.value) || (previewRec.value && previewRec.value.id === currentId.value ? previewRec.value : null))
@@ -108,6 +116,16 @@ export function usePlayerStore() {
       _engine = engineMod.getEngine()
 
       tracks.value = await db.listTrackRecords()
+      // Legacy rows predate the inLibrary flag: the old code only ever persisted NCM records
+      // the user had added to the library, so a missing flag means "in the library". Backfill
+      // it once so the new libraryTracks filter doesn't hide their music after the upgrade.
+      tracks.value = tracks.value.map((t) => {
+        if (t.source === 'ncm' && t.inLibrary === undefined) {
+          db.updateTrackRecord(t.id, { inLibrary: true }).catch(() => {})
+          return { ...t, inLibrary: true }
+        }
+        return t
+      })
       // Apply the user's custom drag order (ids not in the saved order sort last, by addedAt).
       const order = await db.kvGet('trackOrder', null)
       if (Array.isArray(order) && order.length) {
@@ -224,7 +242,13 @@ export function usePlayerStore() {
       if (toLibrary && !existing.inLibrary) {
         tracks.value = tracks.value.map((t) => (t.id === existing.id ? { ...t, inLibrary: true } : t))
         const promoted = tracks.value.find((t) => t.id === existing.id)
-        db.putTrack({ ...promoted }, _blobCache.get(existing.id) || null).catch(() => {})
+        // Flag-only update: putTrack would overwrite the whole row, and after a reload
+        // _blobCache is empty — passing blob:null here used to wipe already-cached audio
+        // bytes from IDB. updateTrackRecord preserves the stored blob; fall back to a
+        // full put only when the row doesn't exist in IDB yet.
+        db.updateTrackRecord(existing.id, { inLibrary: true })
+          .then((ok) => { if (!ok) return db.putTrack({ ...promoted }, _blobCache.get(existing.id) || null) })
+          .catch(() => {})
         return promoted
       }
       return existing
@@ -469,6 +493,7 @@ export function usePlayerStore() {
 
     // Lyrics: for NCM tracks, fetch DIRECTLY from the API (skip IDB read — it can hang).
     liveLyrics.value = { original: '', translation: '', romaji: '', yrc: '' }
+    lyricsLoading.value = true
     if (rec?.source === 'ncm' && rec.ncmId) {
       try {
         const resp = await fetch(`/api/music/lyric/${rec.ncmId}`)
@@ -483,12 +508,12 @@ export function usePlayerStore() {
           liveLyrics.value = fields
           db.setLyricsField(id, fields).catch(() => {})
         }
-      } catch { /* best-effort */ }
+      } catch { /* best-effort */ } finally { lyricsLoading.value = false }
     } else {
       // Local track: try IDB lyrics (fire-and-forget)
       db.getLyricsBundle(id).then(bundle => {
         if (bundle?.original) liveLyrics.value = { ...liveLyrics.value, original: bundle.original }
-      }).catch(() => {})
+      }).catch(() => {}).finally(() => { lyricsLoading.value = false })
     }
   }
 
@@ -689,9 +714,10 @@ export function usePlayerStore() {
     // state
     tracks, playlists, activePlaylistId, queue, currentId, isPlaying, currentTime, duration,
     volume, rate, shuffle, repeat, abStart, abEnd, search, coverUrl, cacheBytes,
-    cacheCap, ready, busy, buffering, importState, liveLyrics, prefetchState, previewRec,
+    cacheCap, ready, busy, buffering, importState, liveLyrics, lyricsLoading, prefetchState, previewRec,
+    libSource, libNcmPlaylist,
     // derived
-    currentTrack, currentIndex, activeTracks, cacheUsedPct, isCurrentNcm,
+    currentTrack, currentIndex, activeTracks, libraryTracks, cacheUsedPct, isCurrentNcm,
     // lifecycle
     init,
     // library

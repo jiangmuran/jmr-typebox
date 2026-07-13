@@ -8,6 +8,8 @@ import ToastNotification from './ToastNotification.vue'
 import WelcomeDialog from './WelcomeDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
 import CommandPalette from './CommandPalette.vue'
+import ClientOnly from './ClientOnly.vue'
+import MiniPlayer from '../features/media/MiniPlayer.vue'
 import { useSettings } from '../composables/useSettings'
 import { combo } from '../utils/platform'
 
@@ -16,6 +18,16 @@ const { theme, toggleTheme } = useTheme()
 const { toastMessage, toastVisible } = useToast()
 const { t, setLocale } = useI18n()
 const { settings } = useSettings()
+
+// Persistent mini-player. It lives here (not in MediaShell) so playback + import progress stay
+// controllable from ANY page — leaving /media used to strand the audio with no visible controls.
+// SSG-SAFE: it's inside <ClientOnly>. Deliberately NO store.init() here: hydration (audio engine,
+// IndexedDB reads, MediaSession handlers) stays lazy — MediaShell inits when a /media page mounts,
+// and the singleton state survives SPA navigation, so the MiniPlayer keeps working app-wide once
+// the player has been used. Before that, its store-driven `visible` stays false (nothing loaded),
+// and editor-only sessions pay zero player startup cost. Suppressed on /media/lyrics — the
+// full-screen lyrics view is deliberately chromeless.
+const onLyrics = computed(() => (route.meta?.path || route.path) === '/media/lyrics')
 
 // Top-level tabs → primary route for each group.
 // Editor-centric IA: only 4 top tabs. Convert/export, document import, and text tools
@@ -103,6 +115,8 @@ function openSettings() { settingsOpen.value = true }
       </router-view>
     </main>
 
+    <ClientOnly><MiniPlayer v-if="!onLyrics" /></ClientOnly>
+
     <SettingsPanel v-model:open="settingsOpen" />
     <CommandPalette v-model:open="paletteOpen" />
     <WelcomeDialog @set-locale="setLocale" />
@@ -159,9 +173,9 @@ function openSettings() { settingsOpen.value = true }
   background: transparent; color: var(--text); font-size: 13px; font-family: var(--font-sans); cursor: pointer; text-align: left; transition: background 0.1s;
 }
 .dd-menu button:hover { background: var(--surface-hover); }
-.dd-menu button.dd-danger { color: #ff453a; }
+.dd-menu button.dd-danger { color: var(--danger); }
 .dd-menu button.dd-danger:hover { background: rgba(255,69,58,0.08); }
-.dd-menu button.dd-danger svg { color: #ff453a; }
+.dd-menu button.dd-danger svg { color: var(--danger); }
 .dd-menu button svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-secondary); }
 .dd-sep { height: 1px; background: var(--border-light); margin: 4px 6px; }
 .dd-about { padding: 10px; font-size: 11px; color: var(--text-tertiary); line-height: 1.6; }

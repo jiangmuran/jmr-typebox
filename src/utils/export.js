@@ -1,5 +1,15 @@
-import { renderMarkdown, buildStandaloneHTML } from './markdown'
+import { renderMarkdown, buildStandaloneHTML, ensureHljs } from './markdown'
 import { prerenderMermaid, hasMermaid } from './mermaid'
+import { ensureKatex, textHasMath } from './math'
+
+// KaTeX + highlight.js are loaded on demand. Exports are one-shot (no client JS
+// re-render), so we must have the runtimes in memory before rendering, else math
+// would freeze as a raw-TeX placeholder and code blocks would ship un-highlighted.
+// Only pay the cost when the document actually has math / code fences.
+async function preloadMath(content) {
+  if (textHasMath(content)) await ensureKatex()
+  if (/```|~~~/.test(content || '')) await ensureHljs().catch(() => {})
+}
 
 // Math present? -> embed KaTeX CSS (with bundled fonts) so a standalone/exported
 // document styles it. Lazy so no-math exports stay lean.
@@ -47,6 +57,7 @@ export function exportMD(content, filename) {
 }
 
 export async function exportHTML(content, filename, isDark = false) {
+  await preloadMath(content)
   let html = renderMarkdown(content)
   html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG
   const katexCss = await katexCssIfNeeded(html)
@@ -59,6 +70,7 @@ export async function exportPDF(content, filename) {
     import('html2canvas'),
     import('jspdf'),
   ])
+  await preloadMath(content)
   const html = renderMarkdown(content)
   const el = createExportElement(html, false)
   el.style.background = '#fff'; el.style.color = '#1c1c1e'
@@ -85,6 +97,7 @@ export async function exportPDF(content, filename) {
 
 export async function exportPNG(content, filename, isDark) {
   const { default: html2canvas } = await import('html2canvas')
+  await preloadMath(content)
   const html = renderMarkdown(content)
   const el = createExportElement(html, isDark)
   if (hasMermaid(html)) { const { renderMermaidIn } = await import('./mermaid'); await renderMermaidIn(el, isDark) }
@@ -148,6 +161,7 @@ export async function copyThemedPNG(themedHtml) {
 }
 
 export async function copyHTML(content, isDark = false) {
+  await preloadMath(content)
   let html = renderMarkdown(content)
   html = await prerenderMermaid(html, isDark) // diagrams -> inline SVG so pasted HTML is self-contained
   try { await navigator.clipboard.writeText(html) } catch { await fallbackCopy(html) }

@@ -44,7 +44,18 @@ async function render() {
   })
 }
 
-watch(() => [props.segments, props.style, props.time, props.cover, props.width, props.height, props.activeIndex, props.forceAlpha], render, { deep: true })
+// Per-frame path: `time` changes on every playback tick. The other sources here are
+// either primitives or objects the parent REPLACES wholesale (style = a fresh
+// `resolveStyle()` object, cover = a computed ref), so a shallow watch catches them
+// without walking the (potentially large) segments array on every frame.
+watch(
+  () => [props.time, props.style, props.cover, props.width, props.height, props.activeIndex, props.forceAlpha],
+  render,
+)
+// Segments change rarely (load / edit), so the deep scan lives here, off the
+// per-frame path. Deep is required because the parent mutates a segment's `.text`
+// in place (SubtitlePage editText) rather than replacing the array.
+watch(() => props.segments, render, { deep: true })
 onMounted(render)
 </script>
 

@@ -4,21 +4,32 @@
 // Surfaces: keyword box (also accepts pasted NCM share links → opens playlist detail); type tabs
 // (song · playlist · album · artist · lyric); result list with [▶ play] [+] add-to-library actions
 // and a ✓ badge for songs already cached locally.
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { usePlayerStore } from './usePlayerStore'
 import { useToast } from '../../composables/useToast'
 import { useI18n } from '../../composables/useI18n'
 import { useRouter } from 'vue-router'
 import { useHandoff } from '../../composables/useHandoff'
+import { useBackend } from '../../composables/useBackend'
 import { search as ncmSearch, parseNcmLink } from './ncmClient'
 import { formatTime } from './playerHelpers'
-import { downloadBlob } from './mediaDom'
+import { downloadBlob, ncmShareUrl, shareOrCopy } from './mediaDom'
 
 const store = usePlayerStore()
 const { showToast } = useToast()
 const { t } = useI18n()
 const router = useRouter()
 const handoff = useHandoff()
+
+// NCM search hits a same-origin Worker. When the backend is off (master toggle) or unreachable,
+// every action would fail on the network — so instead of letting the user search and only THEN
+// surfacing an error, we probe on mount and show an inline "needs backend" notice up front.
+const { available: backendAvailable, probe: probeBackend } = useBackend()
+// `available` starts false until the async probe resolves — only show the offline notice
+// after a SETTLED probe, otherwise a working deployment flashes "requires backend" for the
+// duration of the health round-trip. Until then the search surface renders optimistically.
+const probeSettled = ref(false)
+onMounted(() => { probeBackend().catch(() => {}).finally(() => { probeSettled.value = true }) })
 
 const emit = defineEmits(['open-playlist'])
 
@@ -198,6 +209,14 @@ async function downloadLyrics(song) {
 }
 
 // Send-to targets.
+// Share a deep link (native share sheet → clipboard fallback). Only NCM content is
+// shareable — the link resolves through any deployment's backend, no local bytes involved.
+async function shareItem(kind, id, title) {
+  const r = await shareOrCopy(ncmShareUrl(kind, id), title || '')
+  if (r === 'copied') showToast(t('media.share.copied'))
+  else if (!r) showToast(t('media.share.failed'))
+}
+
 const SEND_TARGETS = [
   { route: '/media/convert', label: 'media.tab.convert' },
   { route: '/media/compress', label: 'media.nav.compress' },
@@ -263,6 +282,14 @@ function coverUrl(item) {
 
 <template>
   <div class="ncm">
+    <!-- Backend-off notice: NCM search is an online-only feature (same-origin Worker). Shown up
+         front so the user isn't left searching into a wall of failures. -->
+    <div v-if="probeSettled && !backendAvailable" class="ncm-offline">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M16.7 11.1A5 5 0 0 0 12 8"/><path d="M5 12.5A8 8 0 0 1 8.5 10"/><path d="M2 8.8a12 12 0 0 1 4-2.6"/><path d="M9.9 5.2A12 12 0 0 1 20 8"/><path d="M8.5 15.5A4 4 0 0 1 12 14"/><path d="M12 20h.01"/></svg>
+      <span>{{ t('media.ncm.offline') }}</span>
+    </div>
+
+    <template v-else>
     <!-- Search box -->
     <div class="ncm-search">
       <svg class="ncm-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -323,6 +350,10 @@ function coverUrl(item) {
               <button class="row-send-item" @click="downloadLyrics(item)">{{ t('media.ncm.dlLyrics') }} (.lrc)</button>
             </div>
           </div>
+          <!-- Share (deep link: plays this song on open) -->
+          <button class="row-act" @click="shareItem('song', item.id, item.name)" :title="t('media.share.song')" :aria-label="t('media.share.song')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 3.9M15.4 6.6L8.6 10.5"/></svg>
+          </button>
           <!-- Send to -->
           <div class="row-send-wrap">
             <button class="row-act" @click="sendMenuFor = sendMenuFor === item.id ? null : item.id" :disabled="loadingId === item.id" :title="t('handoff.sendTo')">
@@ -345,6 +376,9 @@ function coverUrl(item) {
           <div class="ncm-card-sub">{{ item.creator?.nickname || '' }} · {{ item.trackCount || (item.tracks?.length || 0) }} {{ t('media.ncm.tracksUnit') }}</div>
           <div v-if="item.description" class="ncm-card-desc">{{ item.description }}</div>
         </div>
+        <button class="row-act ncm-card-share" @click.stop="shareItem('playlist', item.id, item.name)" :title="t('media.share.playlist')" :aria-label="t('media.share.playlist')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 3.9M15.4 6.6L8.6 10.5"/></svg>
+        </button>
       </div>
     </div>
 
@@ -375,6 +409,7 @@ function coverUrl(item) {
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -399,6 +434,11 @@ function coverUrl(item) {
 .ncm-q-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 
 .ncm-error { padding: 16px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+
+/* Backend-off inline notice. */
+.ncm-offline { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 24px; text-align: center; color: var(--text-tertiary); }
+.ncm-offline svg { width: 34px; height: 34px; opacity: 0.7; }
+.ncm-offline span { font-size: 13px; }
 
 .ncm-list { display: flex; flex-direction: column; gap: 2px; }
 
@@ -436,6 +476,8 @@ function coverUrl(item) {
 
 /* Playlist / album / artist card */
 .ncm-card { display: flex; gap: 10px; padding: 8px; border-radius: 10px; cursor: pointer; transition: background var(--dur-1); border: 1px solid transparent; }
+.ncm-card-share { flex-shrink: 0; align-self: center; margin-left: auto; opacity: 0; transition: opacity var(--dur-1); }
+.ncm-card:hover .ncm-card-share, .ncm-card-share:focus-visible { opacity: 1; }
 .ncm-card:hover { background: var(--surface-hover); border-color: var(--border-light); }
 .ncm-card-art { width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px; object-fit: cover; background: var(--surface-hover); }
 .ncm-card-art.rounded-full { border-radius: 50%; }

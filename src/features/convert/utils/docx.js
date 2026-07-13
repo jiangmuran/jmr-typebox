@@ -12,7 +12,8 @@
 // library. With that, `global.Blob` is truthy -> the lib returns a real Blob.
 
 import { loadLibrary } from '../../../utils/loadLibrary.js'
-import { renderMarkdown } from '../../../utils/markdown.js'
+import { renderMarkdown, ensureHljs } from '../../../utils/markdown.js'
+import { ensureKatex, textHasMath } from '../../../utils/math.js'
 import { MIME } from './fileHelpers.js'
 
 // Word renders the docx using the document's own styles, so we keep the wrapper
@@ -71,6 +72,8 @@ async function loadConverter() {
 // Browser-only: build a .docx Blob from markdown. Returns a Blob (MIME docx).
 export async function markdownToDocxBlob(markdown, title = 'Document', options = {}) {
   ensureGlobalShim()
+  if (textHasMath(markdown)) await ensureKatex() // KaTeX loads on demand
+  if (/```|~~~/.test(markdown || '')) await ensureHljs().catch(() => {}) // hljs loads on demand
   const htmlToDocx = await loadConverter()
   const html = buildDocxHtml(markdown, title)
   const result = await htmlToDocx(html, null, {

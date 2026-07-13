@@ -1,16 +1,16 @@
 <script setup>
 // The audio HUB layout. Wraps every /media/* page with the shared sub-tool nav (Convert · Edit ·
-// Subtitles · Player) and the persistent bottom mini-player, so the four tools feel like one suite
-// and playback continues across them. Page content goes in the default slot.
+// Subtitles · Player), so the four tools feel like one suite and playback continues across them.
+// Page content goes in the default slot.
 //
-// SSG-SAFETY: the mini-player + store init are gated behind <ClientOnly> (they touch Audio/
-// IndexedDB). The store is a singleton, so init() is idempotent — every media page mounting this
-// shell ensures the player is hydrated once. Each PAGE renders its own <MediaToolNav> at the top of
-// its centered container so the nav aligns with that page's width; the shell only frames the
-// scroll region + the persistent mini-player below it.
+// SSG-SAFETY: the store init is gated behind onMounted (client-only; it touches Audio/IndexedDB).
+// The store is a singleton, so init() is idempotent — every media page mounting this shell ensures
+// the player is hydrated once. Each PAGE renders its own <MediaToolNav> at the top of its centered
+// container so the nav aligns with that page's width; the shell only frames the scroll region.
+//
+// The persistent mini-player is NOT rendered here — it lives in AppShell so playback stays
+// controllable from ANY page (not just /media/*), and so it renders exactly once.
 import { onMounted } from 'vue'
-import ClientOnly from '../../components/ClientOnly.vue'
-import MiniPlayer from './MiniPlayer.vue'
 import { usePlayerStore } from './usePlayerStore'
 
 const store = usePlayerStore()
@@ -22,7 +22,6 @@ onMounted(() => { store.init() })
     <div class="media-shell-scroll">
       <slot />
     </div>
-    <ClientOnly><MiniPlayer /></ClientOnly>
   </div>
 </template>
 

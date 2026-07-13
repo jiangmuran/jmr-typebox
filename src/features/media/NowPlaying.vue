@@ -1,9 +1,9 @@
 <script setup>
 // Now-Playing panel — the visual centerpiece of the player. Phase 2 redesign:
-//   • Big rotating artwork (the album cover IS the focal point; rotates slowly while playing,
-//     slows to a near-stop when paused to suggest a turntable winding down).
-//   • Sentence-level navigation buttons (⏮⋮ ⏭⋮) next to the standard ⏮ ⏯ ⏭ transport, so users
-//     can jump to the PREVIOUS or NEXT lyric line, not just ±5s.
+//   • Large album artwork as the focal point.
+//   • Standard five-button transport (shuffle · prev · play · next · repeat). Sentence-level
+//     navigation is done by clicking a lyric line or using the ↑/↓ keys — the old inline
+//     ⏮⋮/⏭⋮ buttons were removed (they read as duplicated prev/next-track controls).
 //   • A "go full-screen lyrics" button (top-right) that routes to /media/lyrics.
 //   • The EMBED iframe branch (NetEase/Bilibili/YouTube) is GONE — that surface was deleted.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
@@ -15,6 +15,7 @@ import { useToast } from '../../composables/useToast'
 import MediaWaveform from './MediaWaveform.vue'
 import { formatTime, initialOf, hashHue } from './playerHelpers'
 import { parseLrc, parseYrc, prevLineIndex, nextLineIndex, timeOfLine } from './lrc'
+import { ncmShareUrl, shareOrCopy } from './mediaDom'
 
 const store = usePlayerStore()
 const pool = useMediaPool()
@@ -26,6 +27,15 @@ const emit = defineEmits(['edit-tags'])
 
 const track = store.currentTrack
 const hasTrack = computed(() => !!track.value)
+
+// Share the current track — only NCM tracks have a deep link that resolves on other devices.
+async function shareCurrent() {
+  const ncmId = track.value?.ncmId
+  if (!ncmId) return
+  const r = await shareOrCopy(ncmShareUrl('song', ncmId), track.value?.title || track.value?.name || '')
+  if (r === 'copied') showToast(t('media.share.copied'))
+  else if (!r) showToast(t('media.share.failed'))
+}
 
 // Artwork view mode: 'art' (rotating cover) or 'wave' (waveform). Cover is the default.
 const artMode = ref('art')
@@ -188,21 +198,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
            the old inline ⏮⋮/⏭⋮ buttons looked near-identical to prev/next-track and read as
            duplicated controls. -->
       <div class="np-transport">
-        <button class="t-btn" :class="{ on: store.shuffle.value }" @click="store.toggleShuffle()" :title="t('media.player.shuffle')">
+        <button class="t-btn" :class="{ on: store.shuffle.value }" @click="store.toggleShuffle()" :title="t('media.player.shuffle')" :aria-label="t('media.player.shuffle')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/><path d="M16 21h5v-5"/><path d="M21 21L3 3"/></svg>
         </button>
-        <button class="t-btn big" @click="store.prev()" :title="t('media.player.prev')">
+        <button class="t-btn big" @click="store.prev()" :title="t('media.player.prev')" :aria-label="t('media.player.prev')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
         </button>
-        <button class="t-btn play" :class="{ buffering: store.buffering.value }" @click="store.toggle()" :title="store.buffering.value ? t('media.player.buffering') : store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
+        <button class="t-btn play" :class="{ buffering: store.buffering.value }" @click="store.toggle()" :title="store.buffering.value ? t('media.player.buffering') : store.isPlaying.value ? t('media.player.pause') : t('media.player.play')" :aria-label="store.buffering.value ? t('media.player.buffering') : store.isPlaying.value ? t('media.player.pause') : t('media.player.play')">
           <span v-if="store.buffering.value" class="t-spin"></span>
           <svg v-else-if="store.isPlaying.value" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <button class="t-btn big" @click="store.next()" :title="t('media.player.next')">
+        <button class="t-btn big" @click="store.next()" :title="t('media.player.next')" :aria-label="t('media.player.next')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6v12l8.5-6z"/></svg>
         </button>
-        <button class="t-btn" :class="{ on: store.repeat.value !== 'off' }" @click="store.cycleRepeat()" :title="t('media.player.repeat')">
+        <button class="t-btn" :class="{ on: store.repeat.value !== 'off' }" @click="store.cycleRepeat()" :title="t('media.player.repeat')" :aria-label="t('media.player.repeat')">
           <svg v-if="store.repeat.value !== 'one'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15" font-size="9" font-weight="700" fill="currentColor" stroke="none" text-anchor="middle">1</text></svg>
         </button>
@@ -212,14 +222,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="np-controls">
         <div class="np-vol">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path v-if="store.volume.value > 0.5" d="M16 8a5 5 0 0 1 0 8"/><path v-if="store.volume.value > 0" d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-          <input type="range" min="0" max="1" step="0.01" :value="store.volume.value" @input="store.setVolume($event.target.value)" aria-label="Volume" />
+          <input type="range" min="0" max="1" step="0.01" :value="store.volume.value" @input="store.setVolume($event.target.value)" :aria-label="t('media.player.volume')" />
         </div>
         <div class="np-right">
-          <select class="np-speed" :value="store.rate.value" @change="store.setRate(Number($event.target.value))" aria-label="Playback speed">
+          <select class="np-speed" :value="store.rate.value" @change="store.setRate(Number($event.target.value))" :aria-label="t('media.player.speed')">
             <option v-for="s in speeds" :key="s" :value="s">{{ s }}×</option>
           </select>
           <button class="ab-btn" :class="{ a: abState === 'a', set: abState === 'set' }" @click="toggleAB" :title="t('media.player.abRepeat')">
             {{ abState === 'off' ? 'A–B' : abState === 'a' ? 'A·' : 'A–B' }}
+          </button>
+          <!-- Share (NCM tracks only — local uploads have no cross-device link) -->
+          <button v-if="track?.ncmId" class="ab-btn np-share" @click="shareCurrent" :title="t('media.share.song')" :aria-label="t('media.share.song')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 3.9M15.4 6.6L8.6 10.5"/></svg>
           </button>
         </div>
       </div>
@@ -290,6 +304,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .np-speed { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font-sans); cursor: pointer; outline: none; }
 .np-speed:focus { border-color: var(--accent); }
 .ab-btn { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-secondary); font-size: 11px; font-weight: 650; font-family: var(--font-sans); cursor: pointer; min-width: 44px; }
+.np-share { min-width: 34px; display: inline-flex; align-items: center; justify-content: center; }
+.np-share svg { width: 14px; height: 14px; }
 .ab-btn.a { border-color: var(--accent); color: var(--accent); }
 .ab-btn.set { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 

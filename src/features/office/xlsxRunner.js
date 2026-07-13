@@ -55,7 +55,45 @@ export async function parseWorkbook(input) {
     }
   })
 
-  return { sheetNames: wb.SheetNames.slice(), sheets }
+  // Keep the original bytes so export can rebuild from the FULL (uncapped) data rather than the
+  // render-capped grid — otherwise a >MAX_GRID_ROWS/COLS sheet would silently lose rows/cols on
+  // download. `rows` above stays capped purely for a responsive preview.
+  return { sheetNames: wb.SheetNames.slice(), sheets, bytes: data }
+}
+
+// Export the workbook from its ORIGINAL bytes (full, uncapped data) with the user's edits overlaid.
+// `editsPerSheet` is an array indexed by sheet position; each entry is a Map<"r:c", string> of edited
+// display values (positions match the rendered grid, which is a top-left subset of the full sheet).
+// Falls back to a straight rebuild of `fallbackSheets` if no bytes are available. Returns a Blob.
+export async function buildWorkbookFromBytes(bytes, editsPerSheet = [], fallbackSheets = null) {
+  if (!bytes) {
+    if (fallbackSheets) return buildWorkbook(fallbackSheets)
+    throw new Error('No workbook bytes to export')
+  }
+  const XLSX = await lib()
+  const data = await toUint8(bytes)
+  const wb = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true })
+
+  const sheets = wb.SheetNames.map((name, si) => {
+    const ws = wb.Sheets[name] || {}
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true })
+    const full = normalizeAoa(aoa, {}) // full, uncapped rows as display strings
+    const rows = full.rows
+    const edits = editsPerSheet?.[si]
+    if (edits && edits.size) {
+      for (const [key, val] of edits) {
+        const [r, c] = key.split(':').map(Number)
+        if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || c < 0) continue
+        while (rows.length <= r) rows.push([])
+        const row = rows[r]
+        while (row.length <= c) row.push('')
+        row[c] = val
+      }
+    }
+    // Full (unclamped) merges so a merge past the render cap survives the round-trip too.
+    return { name, rows, merges: readMerges(ws['!merges'], full.rowCount, full.cols) }
+  })
+  return buildWorkbook(sheets)
 }
 
 // SheetJS merges are {s:{r,c}, e:{r,c}}; convert to {r,c,rs,cs} (row/col + row-span/col-span),

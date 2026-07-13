@@ -430,7 +430,7 @@ function fmtTs(sec) { return secToVttTime(sec).replace(/\.\d+$/, '') } // HH:MM:
 
 .progress { display: flex; align-items: center; gap: 10px; }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s ease; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-2) ease; }
 .bar-fill.indet { min-width: 14%; }
 .bar-fill.pulse { width: 40%; animation: slide 1.3s ease-in-out infinite; }
 @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }

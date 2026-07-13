@@ -67,6 +67,49 @@ describe('xlsxRunner — parse + rebuild a real workbook', () => {
     expect(s.rowCount).toBe(4000)        // true count
     expect(s.truncated).toBe(true)
     expect(s.rows.length).toBeLessThanOrEqual(2000) // MAX_GRID_ROWS
+    // parseWorkbook keeps the raw bytes for full-data export.
+    expect(model.bytes).toBeInstanceOf(Uint8Array)
+  })
+
+  it('exports the FULL sheet (rows beyond the render cap) from the original bytes', async () => {
+    const { parseWorkbook, buildWorkbookFromBytes } = await import('../xlsxRunner')
+    const aoa = Array.from({ length: 3000 }, (_, i) => [`row${i}`, i])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Big')
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+    const model = await parseWorkbook(new Uint8Array(buf))
+    expect(model.sheets[0].rows.length).toBeLessThanOrEqual(2000) // render-capped
+
+    // Export from bytes → every row must survive, including ones past the 2000-row render cap.
+    const blob = await buildWorkbookFromBytes(model.bytes)
+    const back = await parseWorkbook(await blob.arrayBuffer())
+    expect(back.sheets[0].rowCount).toBe(3000)         // no silent truncation
+    const wbFull = XLSX.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' })
+    expect(wbFull.Sheets['Big']['A2999'].v).toBe('row2998') // row well beyond the cap present
+  })
+
+  it('overlays edits onto the full export data', async () => {
+    const { parseWorkbook, buildWorkbookFromBytes } = await import('../xlsxRunner')
+    const aoa = Array.from({ length: 2500 }, (_, i) => [`row${i}`, i])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'S')
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+    const model = await parseWorkbook(new Uint8Array(buf))
+
+    // Edit a cell inside the rendered region; the edit must land in the full export.
+    const editsPerSheet = [new Map([['0:0', 'EDITED']])]
+    const blob = await buildWorkbookFromBytes(model.bytes, editsPerSheet)
+    const wbBack = XLSX.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' })
+    expect(wbBack.Sheets['S']['A1'].v).toBe('EDITED')
+    expect(wbBack.Sheets['S']['A2500'].v).toBe('row2499') // full data still intact
+  })
+
+  it('falls back to the capped sheets when no bytes are available', async () => {
+    const { buildWorkbookFromBytes, parseWorkbook } = await import('../xlsxRunner')
+    const fallback = [{ name: 'F', rows: [['a', 'b'], ['c', 'd']] }]
+    const blob = await buildWorkbookFromBytes(null, [], fallback)
+    const back = await parseWorkbook(await blob.arrayBuffer())
+    expect(back.sheets[0].rows).toEqual([['a', 'b'], ['c', 'd']])
   })
 })
 

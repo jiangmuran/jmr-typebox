@@ -140,6 +140,12 @@
   color: #cc0000;
   background: var(--code-bg);
 }
+/* Shown briefly while the KaTeX runtime loads on demand: the raw TeX as muted
+   code. It auto-upgrades to real math once the chunk lands (onKatexReady). */
+.markdown-body .math-pending code {
+  opacity: 0.6;
+  background: var(--code-bg);
+}
 
 /* ---------- Mermaid diagrams ---------- */
 .markdown-body pre.mermaid,

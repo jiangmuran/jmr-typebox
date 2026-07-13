@@ -22,6 +22,10 @@ watch(results, () => { sel.value = 0 })
 
 function run(cmd) { if (!cmd) return; open.value = false; cmd.run?.() }
 
+// Localize known command groups (registered with English literals) for display.
+const GROUP_KEYS = { Navigate: 'cmdk.group.navigate' }
+function groupLabel(g) { return GROUP_KEYS[g] ? t(GROUP_KEYS[g]) : g }
+
 function onKey(e) {
   const mod = e.metaKey || e.ctrlKey
   // ⌘K (no shift) toggles the palette from anywhere.
@@ -55,13 +59,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
       <div class="cmdk-box" role="dialog" aria-modal="true">
         <div class="cmdk-search">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke-linecap="round"/></svg>
-          <input ref="inputEl" v-model="query" class="cmdk-input" :placeholder="t('cmdk.placeholder')" spellcheck="false" autocomplete="off" />
+          <input ref="inputEl" v-model="query" class="cmdk-input" role="combobox" aria-controls="cmdk-listbox" aria-expanded="true" :aria-activedescendant="results.length ? 'cmdk-opt-' + sel : undefined" :placeholder="t('cmdk.placeholder')" spellcheck="false" autocomplete="off" />
           <kbd>ESC</kbd>
         </div>
-        <div class="cmdk-list">
-          <button v-for="(c, i) in results" :key="c.id" class="cmdk-item" :class="{ sel: i === sel }" @click="run(c)" @mousemove="sel = i">
+        <div id="cmdk-listbox" class="cmdk-list" role="listbox">
+          <button v-for="(c, i) in results" :id="'cmdk-opt-' + i" :key="c.id" class="cmdk-item" :class="{ sel: i === sel }" role="option" :aria-selected="i === sel" @click="run(c)" @mousemove="sel = i">
             <span class="cmdk-title">{{ c.title }}</span>
-            <span class="cmdk-group">{{ c.group }}</span>
+            <span class="cmdk-group">{{ groupLabel(c.group) }}</span>
           </button>
           <div v-if="!results.length" class="cmdk-empty">{{ t('cmdk.empty') }}</div>
         </div>

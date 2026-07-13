@@ -755,7 +755,7 @@ function setTrimEnd(v) { const n = parseFloat(v); trimEnd.value = Number.isFinit
 
 .progress { display: flex; align-items: center; gap: 10px; }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s ease; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width var(--dur-2) ease; }
 .bar-fill.indet { min-width: 12%; }
 .progress-pct { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
 

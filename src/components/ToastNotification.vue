@@ -29,8 +29,8 @@ defineProps({
   pointer-events: none;
 }
 
-.toast-enter-active { transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
-.toast-leave-active { transition: all 0.25s ease; }
+.toast-enter-active { transition: all var(--dur-3) var(--ease-out); }
+.toast-leave-active { transition: all var(--dur-2) ease; }
 
 .toast-enter-from {
   opacity: 0;

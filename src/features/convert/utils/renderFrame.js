@@ -3,7 +3,8 @@
 // image-PDF (html2canvas) path. All functions touch the DOM and must only run in
 // onMounted/handlers (never at import / SSG time).
 
-import { renderMarkdown } from '../../../utils/markdown.js'
+import { renderMarkdown, ensureHljs } from '../../../utils/markdown.js'
+import { ensureKatex, textHasMath } from '../../../utils/math.js'
 import { getThemeCss, getTheme } from '../themes/registry.js'
 import { loadLibrary } from '../../../utils/loadLibrary.js'
 
@@ -24,6 +25,8 @@ body { padding: 0; }
 export async function buildThemedHTML(markdown, title, themeId, { includePrintCss = false } = {}) {
   const css = await getThemeCss(themeId)
   const theme = getTheme(themeId)
+  if (textHasMath(markdown)) await ensureKatex()
+  if (/```|~~~/.test(markdown || '')) await ensureHljs().catch(() => {})
   const body = renderMarkdown(markdown || '')
   const safeTitle = String(title || 'Document').replace(/[<>&]/g, '')
   const pageBg = theme.swatch?.bg || '#ffffff'
@@ -57,26 +60,54 @@ export async function printThemed(markdown, title, themeId) {
   document.body.appendChild(iframe)
 
   await new Promise(resolve => {
-    iframe.onload = () => resolve()
+    // onload and the about:blank fallback timer race; `finish` de-dupes so we resolve exactly once.
+    let done = false
+    const finish = () => { if (!done) { done = true; resolve() } }
+    iframe.onload = finish
     const doc = iframe.contentWindow.document
     doc.open()
     doc.write(html)
     doc.close()
     // Fallback in case onload already fired for about:blank.
-    setTimeout(resolve, 300)
+    setTimeout(finish, 300)
   })
 
   const win = iframe.contentWindow
+  // Wait for every image to finish loading/decoding BEFORE printing — otherwise a slow image races
+  // the print and drops out of the exported PDF. Capped so a broken/stalled image can't hang print.
+  await waitForImages(win.document, 5000)
+
   // Clean up after the print dialog closes. afterprint isn't always reliable, so
   // also remove on a timeout. Register BEFORE print() since the dialog can block.
   const cleanup = () => { if (iframe.parentNode) iframe.remove() }
   win.onafterprint = cleanup
   setTimeout(cleanup, 60000)
 
-  // Give layout/fonts a moment, then print.
+  // Give layout/fonts a moment, then print (fired exactly once, after images are ready).
   await new Promise(r => setTimeout(r, 120))
   win.focus()
   win.print()
+}
+
+// Resolve once every <img> in `doc` has loaded/decoded, or after `timeoutMs` (whichever comes
+// first), so print is never blocked indefinitely by a stalled image.
+export function waitForImages(doc, timeoutMs = 5000) {
+  const imgs = Array.from(doc?.images || [])
+  if (!imgs.length) return Promise.resolve()
+  const each = imgs.map((img) => {
+    if (img.complete && img.naturalWidth > 0) {
+      return typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve()
+    }
+    return new Promise((res) => {
+      const done = () => res()
+      img.addEventListener('load', done, { once: true })
+      img.addEventListener('error', done, { once: true })
+    })
+  })
+  return Promise.race([
+    Promise.all(each),
+    new Promise((res) => setTimeout(res, timeoutMs)),
+  ])
 }
 
 // Build an offscreen themed .markdown-body element for html2canvas capture.
@@ -104,6 +135,8 @@ async function buildImagePdf(markdown, themeId) {
     loadLibrary('jspdf', () => import('jspdf'), { sizeMB: 0.4 }),
   ])
   const theme = getTheme(themeId)
+  if (textHasMath(markdown)) await ensureKatex()
+  if (/```|~~~/.test(markdown || '')) await ensureHljs().catch(() => {})
   const body = renderMarkdown(markdown || '')
 
   // Inject scoped theme CSS for the capture element.

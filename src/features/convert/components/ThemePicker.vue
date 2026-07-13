@@ -62,6 +62,7 @@ function select(id) {
         :key="theme.id"
         class="tp-chip"
         :class="{ active: modelValue === theme.id }"
+        :aria-pressed="modelValue === theme.id"
         type="button"
         @click="select(theme.id)"
         @mouseenter="showPreview(theme)"
@@ -98,7 +99,7 @@ function select(id) {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 10px 6px 6px; border: 1px solid var(--border-light); border-radius: 999px;
   background: var(--surface); color: var(--text); font-size: 12px; font-weight: 500;
-  font-family: var(--font-sans); cursor: pointer; transition: all 0.15s;
+  font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1);
 }
 .tp-chip:hover { background: var(--surface-hover); border-color: var(--border); }
 .tp-chip.active { border-color: var(--accent); background: var(--accent-bg); }
@@ -123,6 +124,6 @@ function select(id) {
 .tp-preview-head svg { width: 13px; height: 13px; }
 .tp-preview-frame { width: 100%; height: 280px; border: 0; display: block; background: #fff; }
 
-.tp-fade-enter-active, .tp-fade-leave-active { transition: opacity 0.18s ease; }
+.tp-fade-enter-active, .tp-fade-leave-active { transition: opacity var(--dur-1) ease; }
 .tp-fade-enter-from, .tp-fade-leave-to { opacity: 0; }
 </style>

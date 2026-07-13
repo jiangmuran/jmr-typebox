@@ -7,7 +7,8 @@ import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import { useTheme } from '../composables/useTheme'
 import { convertersFor } from '../converters/registry'
-import { renderMarkdown } from '../utils/markdown'
+import { renderMarkdown, ensureHljs } from '../utils/markdown'
+import { ensureKatex, textHasMath } from '../utils/math'
 import { prerenderMermaid } from '../utils/mermaid'
 import { useSettings } from '../composables/useSettings'
 import { useHandoff } from '../composables/useHandoff'
@@ -237,6 +238,10 @@ function exportThemeIsDark() {
 // PNG/PDF — all static, no client JS) include diagrams. KaTeX math is already in
 // the HTML (DOMPurify-safe), and buildThemedHtml adds KaTeX CSS when math present.
 async function renderExportBody(extra = '') {
+  // KaTeX + highlight.js load on demand; exports render once (no re-render) so
+  // preload them first when the doc needs them.
+  if (textHasMath(content.value)) await ensureKatex()
+  if (/```|~~~/.test(content.value || '')) await ensureHljs().catch(() => {})
   const body = await prerenderMermaid(renderMarkdown(content.value), exportThemeIsDark())
   return body + extra
 }
@@ -350,7 +355,7 @@ async function maybeOpenOffice(file) {
   router.push('/office')
   return true
 }
-async function importFile(file) {
+async function importFile(file, handle) {
   if (await maybeOpenOffice(file)) return
   if (/\.pdf$/i.test(file.name)) {
     showToast(`${t('pdf.extracting')} ${file.name}...`)
@@ -430,8 +435,12 @@ function onDragLeave(e) { if (!e.relatedTarget) dragging.value = false }
 function onDrop(e) {
   e.preventDefault(); dragging.value = false
   const file = e.dataTransfer?.files?.[0]; if (!file) return
-  if (file.type?.startsWith('image/')) router.push('/image/compress')
-  else importFile(file)
+  if (file.type?.startsWith('image/')) {
+    // Stage the file so the compress page opens with it loaded — a bare redirect
+    // would silently drop the image and the user would have to drag it again.
+    handoff.send(file, { kind: 'image', from: 'editor' })
+    router.push('/image/compress')
+  } else importFile(file)
 }
 
 function handleNew() {
@@ -574,21 +583,23 @@ onUnmounted(() => {
            writing-theme picker + filename live in the overflow to keep the bar quiet. -->
       <div v-show="!zenMode" class="editor-controls">
         <div class="doc-tabs">
-          <button v-for="d in docs" :key="d.id" class="doc-tab" :class="{ active: d.id === activeId }" @click="openDoc(d.id)">
-            <span class="doc-tab-name">{{ d.name || 'untitled' }}</span>
-            <span class="doc-tab-x" :title="t('doc.close')" @click.stop="closeDoc(d.id)">×</span>
-          </button>
+          <!-- The container keeps the whole tab surface clickable (padding + the gap
+               around the × included) — the inner name button alone is a smaller target. -->
+          <div v-for="d in docs" :key="d.id" class="doc-tab" :class="{ active: d.id === activeId }" @click="openDoc(d.id)">
+            <button type="button" class="doc-tab-name" @click="openDoc(d.id)">{{ d.name || 'untitled' }}</button>
+            <button type="button" class="doc-tab-x" :title="t('doc.close')" :aria-label="t('doc.close')" @click.stop="closeDoc(d.id)">×</button>
+          </div>
           <button class="doc-tab-new" :title="t('menu.new')" @click="handleNew">+</button>
         </div>
         <div class="ec-spacer"></div>
         <div class="view-seg">
-          <button :class="{on: viewMode==='editor'}" @click="setViewMode('editor')" :title="t('view.editor')">
+          <button :class="{on: viewMode==='editor'}" :aria-pressed="viewMode==='editor'" @click="setViewMode('editor')" :title="t('view.editor')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
           </button>
-          <button v-if="!isMobile" :class="{on: viewMode==='split'}" @click="setViewMode('split')" :title="t('view.split')">
+          <button v-if="!isMobile" :class="{on: viewMode==='split'}" :aria-pressed="viewMode==='split'" @click="setViewMode('split')" :title="t('view.split')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="1" y="1.5" width="14" height="13" rx="2"/><line x1="8" y1="1.5" x2="8" y2="14.5"/></svg>
           </button>
-          <button :class="{on: viewMode==='preview'}" @click="setViewMode('preview')" :title="t('view.preview')">
+          <button :class="{on: viewMode==='preview'}" :aria-pressed="viewMode==='preview'" @click="setViewMode('preview')" :title="t('view.preview')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>
           </button>
         </div>
@@ -598,7 +609,7 @@ onUnmounted(() => {
 
         <!-- AI: whole-document actions menu (hidden entirely until AI is configured) -->
         <div v-if="ai.ready.value" class="dd-wrap">
-          <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
+          <button class="ec-btn ec-ai" :class="{ on: aiMenuOpen }" :aria-expanded="aiMenuOpen" aria-haspopup="menu" @click="aiMenuOpen = !aiMenuOpen" :title="t('ai.menu')">
             <AiIcon :size="16" />
           </button>
           <Transition name="dd">
@@ -621,7 +632,7 @@ onUnmounted(() => {
         </div>
 
         <div class="dd-wrap">
-          <button class="ec-btn ec-export" @click="exportOpen = !exportOpen" :title="t('export')">
+          <button class="ec-btn ec-export" :aria-expanded="exportOpen" aria-haspopup="menu" @click="exportOpen = !exportOpen" :title="t('export')">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 10v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V10"/><polyline points="5 7 8 10 11 7"/><line x1="8" y1="10" x2="8" y2="2"/></svg>
             <span class="ec-export-lbl">{{ t('export') }}</span>
           </button>
@@ -653,7 +664,7 @@ onUnmounted(() => {
 
         <!-- ⋯ overflow: filename, Open, Find, writing theme, Zen — the lower-frequency actions. -->
         <div class="dd-wrap">
-          <button class="ec-btn ec-more" :class="{ on: moreOpen }" @click="moreOpen = !moreOpen" :title="t('menu.more')">
+          <button class="ec-btn ec-more" :class="{ on: moreOpen }" :aria-expanded="moreOpen" aria-haspopup="menu" @click="moreOpen = !moreOpen" :title="t('menu.more')">
             <svg viewBox="0 0 16 16" fill="currentColor" stroke="none"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg>
           </button>
           <Transition name="dd">
@@ -677,7 +688,7 @@ onUnmounted(() => {
       <div v-if="moreOpen" class="click-away" @click="moreOpen = false"></div>
 
       <div class="editor-body">
-        <MdToolbar v-show="!zenMode" @insert="insertMarkdown" @insert-line="insertLine" />
+        <MdToolbar v-show="!zenMode" :t="t" @insert="insertMarkdown" @insert-line="insertLine" />
         <SearchBar v-if="searchOpen" :editor-ref="editorRef" :content="content" @update-content="updateContent" @close="searchOpen = false" />
         <Workspace :content="content" :view-mode="viewMode" :is-mobile="isMobile" :placeholder="t('editor.placeholder')" :ghost="inlineGhost" @update:content="updateContent" @editor-mounted="onEditorMounted" @accept-ghost="acceptInlineGhost" @import-file="importFile" />
         <StatusBar v-show="!zenMode" :stats="stats" :dirty="dirty" :t="t" />
@@ -729,8 +740,8 @@ onUnmounted(() => {
 .doc-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 6px 8px 6px 11px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-tertiary); font-size: 12px; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; }
 .doc-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
 .doc-tab.active { color: var(--text); background: var(--surface-hover); }
-.doc-tab-name { overflow: hidden; text-overflow: ellipsis; }
-.doc-tab-x { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 4px; font-size: 14px; line-height: 1; color: var(--text-tertiary); }
+.doc-tab-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: none; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+.doc-tab-x { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 4px; font-size: 14px; line-height: 1; color: var(--text-tertiary); border: none; background: transparent; cursor: pointer; padding: 0; font-family: inherit; flex-shrink: 0; }
 .doc-tab-x:hover { background: var(--surface-active); color: var(--text); }
 .doc-tab-new { width: 26px; height: 26px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; border-radius: 6px; }
 .doc-tab-new:hover { background: var(--surface-hover); color: var(--text); }
@@ -745,12 +756,12 @@ onUnmounted(() => {
 .file-ext { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); flex-shrink: 0; }
 
 .view-seg { display: flex; gap: 2px; background: var(--surface-hover); border-radius: 8px; padding: 3px; margin-right: 4px; }
-.view-seg button { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: all 0.18s var(--ease-out); }
+.view-seg button { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: all var(--dur-1) var(--ease-out); }
 .view-seg button:hover { color: var(--text-secondary); }
 .view-seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .view-seg button svg { width: 13px; height: 13px; }
 
-.ec-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+.ec-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all var(--dur-1); }
 .ec-btn:hover { background: var(--surface-hover); color: var(--text); }
 .ec-btn:active { transform: scale(0.88); }
 .ec-btn svg { width: 15px; height: 15px; }
@@ -786,8 +797,8 @@ onUnmounted(() => {
 .dd-menu button kbd { margin-left: auto; font-size: 10px; color: var(--text-tertiary); background: var(--surface-hover); padding: 1px 5px; border-radius: 3px; }
 .dd-label { font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 10px 3px; }
 .dd-sep { height: 1px; background: var(--border-light); margin: 4px 6px; }
-.dd-enter-active { transition: all 0.22s var(--ease-out); }
-.dd-leave-active { transition: all 0.12s ease; }
+.dd-enter-active { transition: all var(--dur-2) var(--ease-out); }
+.dd-leave-active { transition: all var(--dur-1) ease; }
 .dd-enter-from, .dd-leave-to { opacity: 0; transform: scale(0.95) translateY(-4px); }
 .click-away { position: fixed; inset: 0; z-index: 90; }
 
@@ -803,8 +814,8 @@ onUnmounted(() => {
 
 .drag-overlay { position: fixed; inset: 8px; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--accent-bg); border: 2px dashed var(--accent); border-radius: 16px; font-size: 14px; font-weight: 500; color: var(--accent); backdrop-filter: blur(8px); pointer-events: none; }
 .drag-overlay svg { width: 32px; height: 32px; opacity: 0.7; }
-.fade-enter-active { transition: opacity 0.2s; }
-.fade-leave-active { transition: opacity 0.15s; }
+.fade-enter-active { transition: opacity var(--dur-2); }
+.fade-leave-active { transition: opacity var(--dur-1); }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .zen .editor-controls { display: none; }

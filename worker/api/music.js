@@ -130,11 +130,19 @@ export async function music(request, env) {
       }
       clearTimeout(timer)
 
+      // Only cache SUCCESSFUL responses long-term. NCM CDN URLs expire, and an expired URL returns
+      // a 403 (or other non-2xx); caching that for a year would permanently break the track in the
+      // client. Non-2xx responses get no-store so a retry re-fetches a fresh signed URL. (200 full
+      // and 206 partial/range responses are both in [200,300) and safe to cache.)
+      const cacheable = upstream.status >= 200 && upstream.status < 300
       const outHeaders = {
         ...cors,
         'content-type': upstream.headers.get('content-type') || 'audio/mpeg',
-        // Audio bytes are immutable for a given track id → cache aggressively at the edge.
-        'cache-control': 'public, max-age=31536000, immutable',
+        // Audio bytes are immutable for a given track id → cache aggressively at the edge, but only
+        // when the upstream actually served bytes (2xx). Errors must not be cached.
+        'cache-control': cacheable
+          ? 'public, max-age=31536000, immutable'
+          : 'no-store',
       }
       // Forward audio-range headers so <audio>.seek works.
       for (const h of ['content-length', 'content-range', 'accept-ranges']) {

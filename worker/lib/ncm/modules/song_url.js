@@ -15,8 +15,17 @@ export default async function song_url(query, request) {
     br: parseInt(query.br) || 999000,
   }
   const res = await request('/api/song/enhance/player/url', data, createOption(query))
+  // Pass the upstream code/status through instead of masking every response as 200/code:200.
+  // Otherwise an upstream error (e.g. code 301 "need login", or an HTTP 5xx) would be
+  // indistinguishable from a genuinely empty result set, silently breaking playback with no signal.
+  const body = res.body && typeof res.body === 'object' ? res.body : {}
+  const upstreamCode = body.code != null ? Number(body.code) : 200
   // Preserve upstream's id-order on the response.
-  const result = (res.body && res.body.data) || []
+  const result = Array.isArray(body.data) ? body.data : []
   result.sort((a, b) => ids.indexOf(String(a.id)) - ids.indexOf(String(b.id)))
-  return { status: 200, body: { code: 200, data: result }, cookie: res.cookie }
+  return {
+    status: res.status || 200,
+    body: { ...body, code: upstreamCode, data: result },
+    cookie: res.cookie,
+  }
 }

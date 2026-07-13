@@ -11,6 +11,7 @@ import { useToast } from '../../composables/useToast'
 import { useI18n } from '../../composables/useI18n'
 import { playlistDetail, playlistTracks } from './ncmClient'
 import { formatTime } from './playerHelpers'
+import { ncmShareUrl, shareOrCopy } from './mediaDom'
 
 const props = defineProps({
   playlistId: { type: [String, Number], required: true },
@@ -30,6 +31,10 @@ const error = ref('')
 // visible + cancellable from the mini-player. These computeds mirror the store for this drawer's
 // own progress bar.
 const importing = computed(() => store.importState.value.running)
+// The import task is global (one at a time); this drawer's progress bar and cancel button must
+// only reflect an import that belongs to THIS playlist — not mirror another playlist's task.
+const belongsHere = computed(() => store.importState.value.playlistName === (meta.value?.name || ''))
+const importingThis = computed(() => importing.value && belongsHere.value)
 const importDone = computed(() => store.importState.value.done)
 const importTotal = computed(() => store.importState.value.total)
 const importCurrent = computed(() => store.importState.value.currentTitle)
@@ -93,6 +98,13 @@ function importAll() {
 }
 function cancelImport() { store.cancelImport() }
 
+// Share deep links (native sheet → clipboard fallback).
+async function shareItem(kind, id, title) {
+  const r = await shareOrCopy(ncmShareUrl(kind, id), title || '')
+  if (r === 'copied') showToast(t('media.share.copied'))
+  else if (!r) showToast(t('media.share.failed'))
+}
+
 const importProgress = computed(() => {
   if (!importTotal.value) return 0
   return Math.round((importDone.value / importTotal.value) * 100)
@@ -138,19 +150,25 @@ function coverOf(item) { return item?.al?.picUrl || '' }
               {{ t('media.ncm.playAll') }}
             </button>
             <button class="btn cta" @click="importAll" :disabled="importing">
+              <!-- disabled on ANY running import (the store runs one task at a time); the
+                   "importing" label only when the task is this playlist's own -->
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-              {{ importing ? t('media.ncm.importing') : t('media.ncm.importAll') }}
+              {{ importingThis ? t('media.ncm.importing') : t('media.ncm.importAll') }}
+            </button>
+            <button class="btn" @click="shareItem('playlist', props.playlistId, meta?.name)" :title="t('media.share.playlist')" :aria-label="t('media.share.playlist')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 3.9M15.4 6.6L8.6 10.5"/></svg>
+              {{ t('media.share.playlist') }}
             </button>
           </div>
         </div>
       </div>
 
       <!-- Import progress -->
-      <div v-if="importing || importDone > 0" class="npd-progress">
+      <div v-if="belongsHere && (importing || importDone > 0)" class="npd-progress">
         <div class="npd-progress-bar"><div class="npd-progress-fill" :style="{ width: importProgress + '%' }"></div></div>
         <div class="npd-progress-meta">
           <span>{{ importDone }} / {{ importTotal }} · {{ importCurrent }}</span>
-          <button v-if="importing" class="link-btn" @click="cancelImport">{{ t('media.ncm.cancel') }}</button>
+          <button v-if="importingThis" class="link-btn" @click="cancelImport">{{ t('media.ncm.cancel') }}</button>
         </div>
       </div>
 
@@ -167,6 +185,9 @@ function coverOf(item) { return item?.al?.picUrl || '' }
           </div>
           <span class="npd-track-dur">{{ formatTime(Math.floor((song.dt || 0) / 1000)) }}</span>
           <div class="npd-track-actions">
+            <button class="row-act" @click="shareItem('song', song.id, song.name)" :title="t('media.share.song')" :aria-label="t('media.share.song')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 3.9M15.4 6.6L8.6 10.5"/></svg>
+            </button>
             <button class="row-act" @click="cacheSong(song)" :title="t('media.ncm.addToLibrary')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>

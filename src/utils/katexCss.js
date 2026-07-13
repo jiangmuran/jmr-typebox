@@ -71,3 +71,34 @@ export async function getKatexCss() {
   _cache = out
   return out
 }
+
+// ---------------------------------------------------------------------------
+// On-demand <style> injection for the LIVE preview (`.markdown-body`).
+// ---------------------------------------------------------------------------
+// markdown.js no longer statically imports katex.min.css (that dragged ~75KB of
+// gzip CSS into the first screen for documents that have no math at all). Instead
+// renderMarkdown lazily calls ensureKatexStyles() the first time it emits KaTeX
+// HTML. Idempotent and browser-only: the stylesheet (font URLs already rewritten
+// to bundled same-origin assets by getKatexCss) is appended to <head> exactly once.
+
+const STYLE_ID = 'katex-css-live'
+let _injecting = false
+
+export async function ensureKatexStyles() {
+  if (typeof document === 'undefined') return
+  // Already present (this session, or an SSG-inlined tag) → nothing to do.
+  if (_injecting || document.getElementById(STYLE_ID)) return
+  _injecting = true
+  try {
+    const css = await getKatexCss()
+    if (!css) { _injecting = false; return }
+    // Re-check after the await — a concurrent caller may have won the race.
+    if (document.getElementById(STYLE_ID)) return
+    const style = document.createElement('style')
+    style.id = STYLE_ID
+    style.textContent = css
+    document.head.appendChild(style)
+  } catch {
+    _injecting = false
+  }
+}

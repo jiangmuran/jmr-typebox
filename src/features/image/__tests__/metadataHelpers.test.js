@@ -77,6 +77,16 @@ describe('extractGps', () => {
     const g = extractGps({ latitude: 1, longitude: 2, GPSAltitude: 120.5 })
     expect(g.altitude).toBe(120.5)
   })
+  it('signs altitude negative when GPSAltitudeRef marks below sea level', () => {
+    // ref as a number
+    expect(extractGps({ latitude: 1, longitude: 2, GPSAltitude: 12, GPSAltitudeRef: 1 }).altitude).toBe(-12)
+    // ref as a 1-byte array (exifr raw block sometimes gives this)
+    expect(extractGps({ latitude: 1, longitude: 2, GPSAltitude: 8, GPSAltitudeRef: [1] }).altitude).toBe(-8)
+    // ref 0 (above) stays positive
+    expect(extractGps({ latitude: 1, longitude: 2, GPSAltitude: 30, GPSAltitudeRef: 0 }).altitude).toBe(30)
+    // descriptive string
+    expect(extractGps({ latitude: 1, longitude: 2, GPSAltitude: 5, GPSAltitudeRef: 'Below sea level' }).altitude).toBe(-5)
+  })
 })
 
 describe('mapUrl / formatCoord', () => {
@@ -128,6 +138,17 @@ describe('stringifyValue', () => {
     expect(stringifyValue('hi')).toBe('hi')
     expect(stringifyValue(42)).toBe('42')
     expect(stringifyValue(null)).toBe('')
+  })
+  it('renders typed-array (Uint8Array) EXIF values without {"0":..} JSON noise', () => {
+    // Short byte run → hex (e.g. GPSVersionID 2 3 0 0).
+    expect(stringifyValue(new Uint8Array([2, 3, 0, 0]))).toBe('02 03 00 00')
+    expect(stringifyValue(new Uint8Array([]))).toBe('')
+    // Longer run → comma-joined list, never the {"0":..} object form.
+    const long = stringifyValue(new Uint8Array(Array.from({ length: 12 }, (_, i) => i)))
+    expect(long).toBe('0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11')
+    expect(long).not.toContain('{')
+    // ArrayBuffer coerces through the same path.
+    expect(stringifyValue(new Uint8Array([255, 0]).buffer)).toBe('ff 00')
   })
 })
 

@@ -20,6 +20,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsInlineLimit: 8192,
+    rollupOptions: {
+      output: {
+        // Split the two heavy markdown deps into their own long-lived chunks: they
+        // change rarely (better caching) and, more importantly, they no longer bloat
+        // the markdown feature chunk. katex in particular is only needed for docs with
+        // math, so isolating it keeps it off the critical path for everyone else.
+        manualChunks(id) {
+          if (id.includes('node_modules/katex')) return 'katex'
+          if (id.includes('node_modules/highlight.js')) return 'highlight'
+          return undefined
+        },
+      },
+    },
   },
   ssgOptions: {
     script: 'async',

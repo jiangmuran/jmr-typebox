@@ -166,6 +166,9 @@ export default {
         // Dispatch within /api/admin/. Stats routes go to the stats handler; NCM QR routes to
         // adminNcm; everything else to admin.
         if (url.pathname.startsWith('/api/admin/stats')) return stats(request, env)
+        // /api/admin/ncm/probe is a liveness handler that lives in admin.js, not adminNcm.
+        // Route it (and only it) to admin; the rest of /api/admin/ncm/* is QR login → adminNcm.
+        if (url.pathname === '/api/admin/ncm/probe') return admin(request, adminEnv)
         if (url.pathname.startsWith('/api/admin/ncm/')) return adminNcm(request, adminEnv)
         return admin(request, adminEnv)
       })

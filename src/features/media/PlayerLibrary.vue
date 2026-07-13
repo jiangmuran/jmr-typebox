@@ -11,6 +11,7 @@ import { usePlayerStore } from './usePlayerStore'
 import { useI18n } from '../../composables/useI18n'
 import { useToast } from '../../composables/useToast'
 import { filterTracks, formatTime, formatBytes, initialOf, hashHue, ncmThumb } from './playerHelpers'
+import { ncmShareUrl, shareOrCopy } from './mediaDom'
 import NcmSearchPanel from './NcmSearchPanel.vue'
 import NcmPlaylistDetail from './NcmPlaylistDetail.vue'
 
@@ -18,14 +19,17 @@ const store = usePlayerStore()
 const { t } = useI18n()
 const { showToast } = useToast()
 
-const source = ref('files')        // 'files' | 'ncm'
+// Tab + NCM drawer state live in the store: several PlayerLibrary instances can be mounted
+// at once (desktop split/library views + the mobile deck), and deep links drive this state
+// from PlayerPage — a local ref would leave the other instances out of sync.
+const source = store.libSource     // 'files' | 'ncm'
 const dragOver = ref(false)
 const menuFor = ref('')            // track id whose context menu is open
 const newPlaylistOpen = ref(false)
 const newPlaylistName = ref('')
 
 // NCM playlist detail drawer — set to an NCM playlist id to open the detail view.
-const ncmPlaylistOpen = ref('')
+const ncmPlaylistOpen = store.libNcmPlaylist
 
 // Active list = the playlist's tracks (or the whole library), filtered by the local search box.
 const list = computed(() => filterTracks(store.activeTracks.value, store.search.value))
@@ -80,6 +84,16 @@ async function play(id) {
   const ok = await store.playFromActive(id)
   if (ok === false) showToast(t('media.player.cantPlay'))
 }
+// Keyboard activation for a focused track row (role="button"). Only act when the ROW itself has
+// focus — Enter/Space on an inner control (art / ⋯ menu) bubbles up here, and we must not double
+// -fire play() on top of that control's own default.
+function onRowKey(id, e) {
+  if (e.target !== e.currentTarget) return
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault()
+    play(id)
+  }
+}
 function isCurrent(id) { return store.currentId.value === id && store.isPlaying.value }
 function isNcm(rec) { return rec?.source === 'ncm' }
 
@@ -97,6 +111,13 @@ async function removeFromActivePl(trackId) {
   await store.removeTrackFromPlaylist(store.activePlaylistId.value, trackId)
 }
 async function addToPl(playlistId, trackId) { menuFor.value = ''; await store.addTrackToPlaylist(playlistId, trackId); showToast(t('media.player.addedToPlaylist')) }
+// Share an NCM-sourced track as a deep link (native sheet → clipboard fallback).
+async function shareTrack(rec) {
+  menuFor.value = ''
+  const r = await shareOrCopy(ncmShareUrl('song', rec.ncmId), rec.title || rec.name || '')
+  if (r === 'copied') showToast(t('media.share.copied'))
+  else if (!r) showToast(t('media.share.failed'))
+}
 async function deletePl(id) {
   const pl = store.playlists.value.find((p) => p.id === id)
   const msg = t('media.player.deletePlaylistConfirm').replace('{t}', pl?.name || '')
@@ -125,7 +146,9 @@ async function clearCache() {
       <button :class="{ on: source === 'files' }" @click="source = 'files'">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12V3.5l7-1.3V10"/><circle cx="4.3" cy="12" r="1.7"/><circle cx="11.3" cy="10" r="1.7"/></svg>
         {{ t('media.player.tabFiles') }}
-        <span v-if="store.tracks.value.length" class="src-count">{{ store.tracks.value.length }}</span>
+        <!-- Counts reflect the visible library, not raw records — "play all" on an online
+             playlist registers metadata-only rows the list below never renders. -->
+        <span v-if="store.libraryTracks.value.length" class="src-count">{{ store.libraryTracks.value.length }}</span>
       </button>
       <button :class="{ on: source === 'ncm' }" @click="source = 'ncm'">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M5.6 8a2.4 2.4 0 1 1 3.4 2.2v1.6"/><circle cx="8" cy="12.4" r="0.4" fill="currentColor"/></svg>
@@ -144,12 +167,17 @@ async function clearCache() {
       <!-- Playlist chips -->
       <div class="lib-playlists">
         <button class="pl-chip" :class="{ on: !store.activePlaylistId.value }" @click="store.setActivePlaylist('')">
-          {{ t('media.player.allTracks') }} <span class="pl-count">{{ store.tracks.value.length }}</span>
+          {{ t('media.player.allTracks') }} <span class="pl-count">{{ store.libraryTracks.value.length }}</span>
         </button>
-        <button v-for="p in store.playlists.value" :key="p.id" class="pl-chip" :class="{ on: store.activePlaylistId.value === p.id }" @click="store.setActivePlaylist(p.id)">
-          {{ p.name }} <span class="pl-count">{{ p.trackIds.length }}</span>
-          <span class="pl-del" @click.stop="deletePl(p.id)" :title="t('media.player.deletePlaylist')">×</span>
-        </button>
+        <!-- A chip is a container (div) holding two REAL buttons: select-playlist + delete. The old
+             markup nested a clickable <span> inside a <button> — invalid HTML and unreachable by
+             keyboard. Same look, now both actions are focusable buttons. -->
+        <div v-for="p in store.playlists.value" :key="p.id" class="pl-chip" :class="{ on: store.activePlaylistId.value === p.id }">
+          <button class="pl-chip-main" @click="store.setActivePlaylist(p.id)">
+            {{ p.name }} <span class="pl-count">{{ p.trackIds.length }}</span>
+          </button>
+          <button class="pl-del" @click.stop="deletePl(p.id)" :aria-label="t('media.player.deletePlaylist')" :title="t('media.player.deletePlaylist')">×</button>
+        </div>
         <button v-if="!newPlaylistOpen" class="pl-add" @click="newPlaylistOpen = true" :title="t('media.player.newPlaylist')">+</button>
         <form v-else class="pl-new" @submit.prevent="createPlaylist">
           <input v-model="newPlaylistName" class="pl-new-input" :placeholder="t('media.player.playlistName')" autofocus @blur="!newPlaylistName && (newPlaylistOpen = false)" />
@@ -176,7 +204,10 @@ async function clearCache() {
         @dragleave.prevent="dragOver = false"
         @drop.prevent="onDrop"
       >
-        <div v-if="!store.tracks.value.length" class="lib-empty">
+        <!-- Empty-state keys off the collection this list actually renders (activeTracks =
+             playlist tracks when one is selected), not the library — a populated playlist
+             must never be covered by the "library is empty" CTA. -->
+        <div v-if="!store.activeTracks.value.length" class="lib-empty">
           <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 30V12l20-4v18"/><circle cx="14" cy="30" r="4"/><circle cx="34" cy="26" r="4"/></svg>
           <p class="lib-empty-title">{{ t('media.player.emptyTitle') }}</p>
           <p class="lib-empty-sub">{{ t('media.player.emptySub') }}</p>
@@ -194,10 +225,14 @@ async function clearCache() {
             class="track"
             :class="{ current: store.currentId.value === tr.id, ncm: isNcm(tr) }"
             :draggable="canReorder"
+            role="button"
+            tabindex="0"
+            :aria-label="t('media.player.play') + ': ' + (tr.title || tr.name)"
             @dragstart="onItemDragStart(i, $event)"
             @dragover="onItemDragOver(i, $event)"
             @drop="onItemDrop(i)"
             @dblclick="play(tr.id)"
+            @keydown="onRowKey(tr.id, $event)"
           >
             <button class="track-art" @click="play(tr.id)" :title="t('media.player.play')">
               <img v-if="tr.coverUrl" :src="ncmThumb(tr.coverUrl, 80)" alt="" loading="lazy" />
@@ -220,6 +255,8 @@ async function clearCache() {
               <div v-if="menuFor === tr.id" class="track-menu" @click.stop>
                 <div v-if="store.playlists.value.length" class="tm-section">{{ t('media.player.addTo') }}</div>
                 <button v-for="p in store.playlists.value" :key="p.id" class="tm-item" @click="addToPl(p.id, tr.id)">{{ p.name }}</button>
+                <!-- NCM-sourced tracks have a deep link other devices can resolve; local uploads don't. -->
+                <button v-if="isNcm(tr)" class="tm-item" @click="shareTrack(tr)">{{ t('media.share.song') }}</button>
                 <button v-if="store.activePlaylistId.value" class="tm-item" @click="removeFromActivePl(tr.id)">{{ t('media.player.removeFromPlaylist') }}</button>
                 <button class="tm-item danger" @click="removeOne(tr.id)">{{ t('media.player.remove') }}</button>
               </div>
@@ -258,8 +295,11 @@ async function clearCache() {
 .pl-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid var(--border-light); border-radius: 99px; background: var(--surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all var(--dur-1); }
 .pl-chip:hover { color: var(--text); }
 .pl-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+/* The chip body button + delete button are transparent shells that inherit the chip's color, so
+   the .on accent-text state flows down and the look is identical to the old single-<button> chip. */
+.pl-chip-main { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
 .pl-count { font-size: 10px; opacity: 0.7; font-variant-numeric: tabular-nums; }
-.pl-del { margin-left: 2px; font-size: 14px; line-height: 1; opacity: 0.6; }
+.pl-del { margin-left: 2px; border: none; background: none; color: inherit; font-size: 14px; line-height: 1; opacity: 0.6; cursor: pointer; padding: 0; font-family: var(--font-sans); }
 .pl-del:hover { opacity: 1; }
 .pl-add { width: 30px; height: 30px; border: 1px dashed var(--border); border-radius: 99px; background: none; color: var(--text-secondary); font-size: 16px; cursor: pointer; }
 .pl-add:hover { color: var(--accent); border-color: var(--accent); }
@@ -308,7 +348,7 @@ async function clearCache() {
 .tm-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); padding: 5px 9px 3px; }
 .tm-item { display: block; width: 100%; text-align: left; padding: 7px 9px; border: none; background: none; color: var(--text); font-size: 12.5px; font-family: var(--font-sans); border-radius: 7px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tm-item:hover { background: var(--surface-hover); }
-.tm-item.danger { color: #e5484d; border-top: 1px solid var(--border-light); margin-top: 3px; }
+.tm-item.danger { color: var(--danger); border-top: 1px solid var(--border-light); margin-top: 3px; }
 
 .lib-cache { flex-shrink: 0; }
 .cache-bar { height: 4px; border-radius: 99px; background: var(--surface-hover); overflow: hidden; margin-bottom: 6px; }
@@ -316,7 +356,7 @@ async function clearCache() {
 .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cache-label { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cache-clear { border: none; background: none; color: var(--text-tertiary); font-size: 11px; font-family: var(--font-sans); cursor: pointer; text-decoration: underline; }
-.cache-clear:hover { color: #e5484d; }
+.cache-clear:hover { color: var(--danger); }
 
 @media (max-width: 768px) {
   .lib-list { min-height: 220px; }

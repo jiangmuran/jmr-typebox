@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
-import { renderMarkdown } from '../utils/markdown'
+import { renderMarkdown, onHljsReady, ensureHljs } from '../utils/markdown'
+import { onKatexReady, ensureKatex, textHasMath } from '../utils/math'
 import { renderMermaidIn, prerenderMermaid, hasMermaid } from '../utils/mermaid'
 import { useSettings } from '../composables/useSettings'
 import { useTheme } from '../composables/useTheme'
@@ -50,6 +51,11 @@ function scheduleFrame() {
       // Diagrams must be inline SVG inside the iframe (no client JS runs there), so
       // pre-render mermaid to SVG before building the themed doc. KaTeX CSS is added
       // by buildThemedHtml so math styles too.
+      // Themed iframe runs no client JS, so math + highlighting must be fully
+      // rendered up front: wait for the runtimes before rendering when the doc needs
+      // them (math delimiters / a fenced code block).
+      if (textHasMath(props.content)) await ensureKatex()
+      if (/```|~~~/.test(props.content || '')) await ensureHljs().catch(() => {})
       let body = renderMarkdown(props.content)
       body = await prerenderMermaid(body, isDark.value)
       frameHtml.value = await buildThemedHtml(body, settings.writingTheme)
@@ -82,6 +88,21 @@ function scheduleRender() {
 watch(() => props.content, scheduleRender, { immediate: true })
 // Theme toggle: re-render diagrams in the default preview to restyle them.
 watch(isDark, () => { runMermaid() })
+// KaTeX loads on demand (its ~385KB chunk isn't pulled into the first screen).
+// While it's in flight, renderMarkdown emits raw-TeX placeholders; once the chunk
+// lands, re-render so the placeholders upgrade to real KaTeX HTML.
+const offKatexReady = onKatexReady(() => {
+  if (themed.value) scheduleFrame()
+  else scheduleRender()
+})
+// highlight.js also loads on demand (its ~25KB chunk isn't pulled into the first
+// screen). While it's in flight, renderMarkdown emits plain escaped code; once the
+// chunk lands, re-render so code blocks upgrade to real hljs token markup.
+const offHljsReady = onHljsReady(() => {
+  if (themed.value) scheduleFrame()
+  else scheduleRender()
+})
+onUnmounted(() => { offKatexReady(); offHljsReady() })
 
 function onInput(e) {
   emit('update:content', e.target.value)

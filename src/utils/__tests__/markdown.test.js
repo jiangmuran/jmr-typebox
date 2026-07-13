@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest'
-import { renderMarkdown, buildStandaloneHTML } from '../markdown'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { renderMarkdown, buildStandaloneHTML, ensureHljs } from '../markdown'
 import { hasMermaid, prerenderMermaid } from '../mermaid'
-import { hasMathToken } from '../math'
+import { hasMathToken, ensureKatex } from '../math'
+
+// KaTeX + highlight.js load on demand — preload them so renderMarkdown emits real
+// KaTeX HTML / hljs token spans synchronously instead of the pending placeholders.
+beforeAll(async () => { await ensureKatex(); await ensureHljs() })
 
 describe('renderMarkdown — math survives DOMPurify', () => {
   it('keeps KaTeX HTML (spans + MathML) that DOMPurify would otherwise strip', () => {
@@ -49,6 +53,28 @@ describe('renderMarkdown — mermaid container', () => {
     const out = renderMarkdown('```js\nconst x = 1\n```')
     expect(out).not.toContain('class="mermaid"')
     expect(out).toContain('language-js')
+  })
+})
+
+describe('renderMarkdown — syntax highlighting (marked v18 renderer path)', () => {
+  it('emits highlight.js token spans for a fenced code block with a known language', () => {
+    const out = renderMarkdown('```js\nconst x = 1\n```')
+    // hljs wraps tokens in <span class="hljs-*"> — the theme CSS colors these.
+    expect(out).toContain('hljs-keyword') // `const`
+    expect(out).toContain('hljs-number') // `1`
+    expect(out).toContain('class="hljs language-js"')
+  })
+
+  it('highlights python too (proves the language registry is live, not dead weight)', () => {
+    const out = renderMarkdown('```python\ndef f():\n    return 1\n```')
+    expect(out).toContain('hljs-keyword') // `def` / `return`
+    expect(out).toContain('language-python')
+  })
+
+  it('renders an unknown/absent language as plain escaped code (no mis-detection)', () => {
+    const out = renderMarkdown('```\nplain text $x^2$\n```')
+    expect(out).toContain('plain text $x^2$') // untouched — no auto-highlight mangling
+    expect(out).not.toContain('hljs-')
   })
 })
 

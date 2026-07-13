@@ -28,6 +28,8 @@
   --status-ok-bg: rgba(52,199,89,0.1);
   --status-warn: #ff9f0a;
   --status-warn-bg: rgba(255,159,10,0.1);
+  --danger: #ff453a;
+  --danger-bg: rgba(255,69,58,0.1);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "Fira Code", "Cascadia Code", "Menlo", "Consolas", monospace;
   --radius: 10px;
@@ -81,6 +83,8 @@
   --status-ok-bg: rgba(48,209,88,0.12);
   --status-warn: #ff9f0a;
   --status-warn-bg: rgba(255,159,10,0.12);
+  --danger: #ff6961;
+  --danger-bg: rgba(255,105,97,0.12);
 }
 
 /* Theme transition — unified 0.5s for ALL elements, syncs with logo */

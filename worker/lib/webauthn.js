@@ -53,8 +53,9 @@ export function rpFromRequest(request) {
 export async function makeRegistrationOptions({ rp, existingPasskeys = [], nickname }) {
   // Exclude existing credential IDs so a user re-registering doesn't double-bind.
   const excludeCredentials = existingPasskeys.map((p) => {
-    // p.id is a base64url string (we stored it that way). WebAuthn wants raw bytes in a buffer.
-    return { id: base64UrlToBuffer(p.id), type: 'public-key' }
+    // simplewebauthn v13 wants the credential id as a base64url STRING (it does the byte
+    // conversion internally). p.id is already stored that way.
+    return { id: p.id, transports: p.transports || [] }
   })
   const opts = await generateRegistrationOptions({
     rpName: rp.rpName,
@@ -95,16 +96,19 @@ export async function verifyRegistration({ rp, expectedChallenge, response }) {
     return { ok: false, error: 'verification failed' }
   }
   const info = verification.registrationInfo
-  // simplewebauthn 13.x returns credentialID + credentialPublicKey as base64url STRINGS already
-  // (older versions returned Uint8Array). Do NOT double-encode with bufferToBase64Url — that
-  // corrupted the stored id and made subsequent logins fail with "no_passkeys_registered".
+  // simplewebauthn v13 nests the credential under registrationInfo.credential:
+  //   { id: base64url STRING, publicKey: Uint8Array, counter: number, transports? }
+  // We persist through a JSON-over-fetch RPC to the DO, so the raw publicKey bytes must be
+  // encoded to a base64url string here (a Uint8Array would JSON-serialize to {"0":..} garbage).
+  // verifyAuthentication decodes it back to bytes before handing it to simplewebauthn.
+  const cred = info.credential
   return {
     ok: true,
     credential: {
-      id: info.credentialID,
-      publicKey: info.credentialPublicKey,
-      counter: info.counter,
-      transports: response.response.transports || [],
+      id: cred.id,
+      publicKey: bufferToBase64Url(cred.publicKey),
+      counter: cred.counter || 0,
+      transports: cred.transports || response.response.transports || [],
     },
   }
 }
@@ -112,8 +116,8 @@ export async function verifyRegistration({ rp, expectedChallenge, response }) {
 /** Generate authentication options for an EXISTING passkey login. */
 export async function makeAuthenticationOptions({ rp, existingPasskeys = [] }) {
   const allowCredentials = existingPasskeys.map((p) => ({
-    id: base64UrlToBuffer(p.id),
-    type: 'public-key',
+    // v13 wants the credential id as a base64url STRING (not raw bytes).
+    id: p.id,
     transports: p.transports || [],
   }))
   const opts = await generateAuthenticationOptions({
@@ -137,11 +141,13 @@ export async function verifyAuthentication({ rp, expectedChallenge, response, pa
       expectedChallenge,
       expectedOrigin: rp.origin,
       expectedRPID: rp.rpID,
-      // simplewebauthn 13.x: credentialID + credentialPublicKey are base64url STRINGS here too
-      // (the stored values are already base64url — do NOT wrap in base64UrlToBuffer).
-      authenticator: {
-        credentialID: passkey.id,
-        credentialPublicKey: passkey.publicKey,
+      // simplewebauthn v13 takes a `credential` (WebAuthnCredential) shaped as
+      //   { id: base64url STRING, publicKey: Uint8Array, counter: number, transports? }.
+      // The stored id is already a base64url string; the stored publicKey is a base64url string
+      // (see verifyRegistration) that we decode back to bytes for the library.
+      credential: {
+        id: passkey.id,
+        publicKey: base64UrlToBuffer(passkey.publicKey),
         counter: passkey.counter || 0,
         transports: passkey.transports || [],
       },

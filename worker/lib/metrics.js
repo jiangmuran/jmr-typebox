@@ -17,18 +17,27 @@ const recent = []
 const logs = []
 const RECENT_MAX = 200
 const LOG_MAX = 500
+const COUNTERS_MAX = 200
 const subscribers = new Set()
 
-/** Collapse `/api/music/stream/12345` → `/api/music/stream/:id` so counters stay small. */
+/** Collapse `/api/music/stream/12345` → `/api/music/stream/:id` so counters stay small.
+ *  A segment is an id when it's purely numeric, or long (≥12 chars) and contains a digit
+ *  (QR check keys, CDN hashes). Short digit-bearing names like `/media/mp3-to-wav` are
+ *  real routes and must keep their own bucket. Unknown alphabetic segments still get
+ *  through, so the map is also hard-capped (overflow lands in '(other)'). */
 function normalizePath(path) {
-  return String(path || '').replace(/\/\d+/g, '/:id')
+  return String(path || '').replace(/\/[^/]+/g, (seg) => {
+    const s = seg.slice(1)
+    return /^\d+$/.test(s) || (s.length >= 12 && /\d/.test(s)) ? '/:id' : seg
+  })
 }
 
 /**
  * Record one request. Fire-and-forget from the dispatcher's perspective (never throws).
  */
 export function recordRequest(path, ip, status, latencyMs) {
-  const prefix = normalizePath(path)
+  let prefix = normalizePath(path)
+  if (!counters.has(prefix) && counters.size >= COUNTERS_MAX) prefix = '(other)'
   const c = counters.get(prefix) || { total: 0, ok: 0, blocked_ip: 0, blocked_rate: 0, blocked_auth: 0, errors: 0 }
   c.total++
   if (status >= 200 && status < 300) c.ok++

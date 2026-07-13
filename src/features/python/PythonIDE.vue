@@ -1173,7 +1173,7 @@ onBeforeUnmount(() => {
 .run-spin { width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); border-radius: 50%; animation: tb-spin 0.7s linear infinite; }
 .run-spin.small { width: 13px; height: 13px; border-color: color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); }
 /* Stop button — danger-tinted, replaces Run while a program is executing. */
-.tb-btn.stop { padding: 8px 15px; border: none; background: var(--danger, #e5484d); color: #fff; font-weight: 650; }
+.tb-btn.stop { padding: 8px 15px; border: none; background: var(--danger); color: #fff; font-weight: 650; }
 .tb-btn.stop:hover { filter: brightness(1.06); }
 .tb-btn.stop:active { transform: scale(0.98); }
 .stop-ico { display: inline-flex; }
@@ -1221,7 +1221,7 @@ onBeforeUnmount(() => {
 .pkg-ver { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
 .pkg-src { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; color: var(--accent-text); background: var(--accent); border-radius: 99px; padding: 1px 6px; }
 .pkg-x { flex: 0 0 auto; border: none; background: transparent; color: var(--text-tertiary); font-size: 16px; line-height: 1; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
-.pkg-x:hover { background: rgba(229,72,77,0.1); color: var(--danger, #e5484d); }
+.pkg-x:hover { background: var(--danger-bg); color: var(--danger); }
 
 /* ======================= DESKTOP WORKBENCH ======================= */
 .wb { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
@@ -1295,7 +1295,7 @@ onBeforeUnmount(() => {
 .ptab.active { color: var(--text); background: var(--surface-active); }
 .ptab.open-preview { color: var(--accent); }
 .ptab-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-.ptab-dot.err { background: var(--danger, #e5484d); }
+.ptab-dot.err { background: var(--danger); }
 .ptab-badge { font-size: 8.5px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent-text); background: var(--accent); border-radius: 99px; padding: 1px 6px; }
 .panel-spacer { flex: 1; }
 .mini-btn { border: none; background: var(--surface-active); color: var(--text-secondary); font-size: 11px; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: var(--font-sans); }
@@ -1309,7 +1309,7 @@ onBeforeUnmount(() => {
 .output-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 8px 0; }
 .console { margin: 0 0 4px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; color: var(--text); white-space: pre-wrap; word-break: break-word; tab-size: 4; }
 .ln { display: inline; white-space: pre-wrap; }
-.ln-err { color: var(--danger, #e5484d); }
+.ln-err { color: var(--danger); }
 .ln-info { color: var(--text-tertiary); font-style: italic; }
 .ln-in { color: var(--accent); }
 .block { margin-top: 14px; border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; background: var(--bg); animation: tbIn 0.25s var(--ease-out); }
@@ -1335,11 +1335,11 @@ onBeforeUnmount(() => {
 .preview-go:disabled { opacity: 0.5; cursor: default; }
 .preview-status { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 3px 7px; border-radius: 6px; flex: 0 0 auto; }
 .preview-status.ok { color: var(--status-ok, #34c759); background: var(--status-ok-bg, rgba(52,199,89,0.1)); }
-.preview-status.bad { color: var(--danger, #e5484d); background: rgba(229,72,77,0.1); }
+.preview-status.bad { color: var(--danger); background: var(--danger-bg); }
 .preview-close { flex: 0 0 auto; border: none; background: transparent; color: var(--text-tertiary); font-size: 18px; line-height: 1; width: 26px; height: 26px; border-radius: 6px; cursor: pointer; }
 .preview-close:hover { background: var(--surface-active); color: var(--text); }
 .preview-hint { font-size: 10.5px; line-height: 1.5; color: var(--text-tertiary); margin: 8px 12px 0; }
-.preview-error { font-size: 11.5px; line-height: 1.5; color: var(--danger, #e5484d); margin: 10px 12px; white-space: pre-wrap; font-family: var(--font-mono); }
+.preview-error { font-size: 11.5px; line-height: 1.5; color: var(--danger); margin: 10px 12px; white-space: pre-wrap; font-family: var(--font-mono); }
 .preview-frame { flex: 1; width: 100%; min-height: 220px; border: 0; background: #fff; display: block; margin-top: 8px; }
 .preview-empty { color: var(--text-tertiary); font-size: 12.5px; font-style: italic; padding: 18px 14px; }
 
@@ -1361,7 +1361,7 @@ onBeforeUnmount(() => {
 .m-chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 .m-chip.add { font-size: 18px; padding: 9px 16px; color: var(--text-secondary); }
 .m-rename { display: flex; gap: 8px; align-items: center; }
-.m-del { flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--danger, #e5484d); font-size: 12.5px; cursor: pointer; }
+.m-del { flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--danger); font-size: 12.5px; cursor: pointer; }
 
 .m-editor { border: 1px solid var(--border-light); border-radius: 12px; background: var(--surface); overflow: hidden; height: 46vh; min-height: 280px; }
 .m-editor .cm-host { position: relative; height: 100%; }
@@ -1370,7 +1370,7 @@ onBeforeUnmount(() => {
 .m-run { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--text); color: var(--bg); font-size: 16px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; min-height: 52px; }
 .m-run:disabled { opacity: 0.7; cursor: default; }
 .m-run:active:not(:disabled) { transform: scale(0.99); }
-.m-run.stop { background: var(--danger, #e5484d); color: #fff; }
+.m-run.stop { background: var(--danger); color: #fff; }
 .m-progress { display: flex; flex-direction: column; gap: 6px; }
 .m-progress .bar { height: 6px; border-radius: 99px; background: var(--surface-active); overflow: hidden; }
 .m-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 99px; }

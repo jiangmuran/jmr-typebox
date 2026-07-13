@@ -3,7 +3,10 @@
 import { isBlockedHost } from './fetch.js'
 
 function json(obj, status = 200) {
-  return Response.json(obj, { status, headers: { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=600' } })
+  // Only cache successful previews. Caching an error (400/403/502) for 10 minutes would keep a
+  // transient upstream failure (or a rejected URL) "stuck" until the TTL expires.
+  const cacheControl = status >= 200 && status < 300 ? 'public, max-age=600' : 'no-store'
+  return Response.json(obj, { status, headers: { 'access-control-allow-origin': '*', 'cache-control': cacheControl } })
 }
 
 function decode(s) {
